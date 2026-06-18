@@ -51,10 +51,16 @@
 
         </section>
 
-        <!-- ================= RIGHT COLUMN: COMMAND CENTER (8 Cols) ================= -->
+        <!-- ================= RIGHT COLUMN: JOB RESULTS (8 Cols) ================= -->
         <section id="right-workspace" class="lg:col-span-8 flex flex-col gap-6">
-
-
+          <app-job-results
+            [skills]="profileSkills()"
+            [experience]="profileExperience()"
+            [aspirations]="profileAspirations()"
+            [workPrefs]="profileWorkPrefs()"
+            [authToken]="authToken"
+            (notify)="showToast($event.message, $event.type)">
+          </app-job-results>
         </section>
 
       </div>

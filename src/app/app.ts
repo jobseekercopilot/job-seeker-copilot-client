@@ -5,6 +5,7 @@ import { ClaimantProfileComponent } from './features/claimant-profile/claimant-p
 import { NavigationBar } from './features/navigation-bar/navigation-bar';
 import { LandingAuthComponent } from './features/landing-auth/landing-auth';
 import { UserManagementGateway } from './gateways/user-management-gateway';
+import { JobResultsComponent } from './features/job-results/job-results.component';
 
 @Component({
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -14,7 +15,8 @@ import { UserManagementGateway } from './gateways/user-management-gateway';
     MatIconModule,
     ClaimantProfileComponent,
     NavigationBar,
-    LandingAuthComponent
+    LandingAuthComponent,
+    JobResultsComponent
   ],
   templateUrl: './app.html',
   styleUrl: './app.css',
@@ -28,8 +30,8 @@ export class App implements OnInit {
   profileName = signal('Sarah Jenkins');
   profileEmail = signal('sarah.jenkins@gmail.com');
 
-  // JWT token retrieved from login/register
-  private authToken = '';
+  // JWT token retrieved from login/register - exposed publicly for template binding
+  authToken = '';
 
   // Claimant profile inputs
   profileSkills = signal('Customer communication, basic office administration, patient documentation, phone reception, MS Excel, detail-oriented inputting');

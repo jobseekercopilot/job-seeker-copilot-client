@@ -17,6 +17,9 @@ app.use(express.json());
 const userGateway = new UserManagementGateway();
 const locationGateway = new LocationGateway();
 
+// Job finder gateway URL - configurable via environment variable
+const JOB_FINDER_GATEWAY_URL = process.env['JOB_FINDER_GATEWAY_URL'] || 'http://localhost:8080';
+
 const angularApp = new AngularNodeAppEngine();
 
 /**
@@ -99,14 +102,32 @@ app.get('/api/postcodes/:postcode', async (req, res) => {
 });
 
 /**
- * API Route: Semantic Match Job to User Profile
+ * API Route: Search Jobs via Job Finder Gateway
+ * Proxies POST requests from the Angular frontend to the Java job-finder-gateway.
+ * Forwards the Authorization header (JWT Bearer token) for authentication.
  */
-// Semantic matching has been removed to simplify backend integration
+app.post('/api/jobs/search', async (req, res) => {
+  try {
+    const token = req.headers['authorization'] as string;
+    const response = await fetch(`${JOB_FINDER_GATEWAY_URL}/api/jobs/search`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': token } : {}),
+      },
+      body: JSON.stringify(req.body),
+    });
 
-// Tailoring has been removed to simplify backend integration
-
-// Journal entry generation has been removed to simplify backend integration
-
+    const data = await response.text();
+    res.status(response.status).send(data);
+  } catch (error: any) {
+    console.error('Job search proxy error:', error);
+    res.status(503).json({
+      error: 'SERVICE_UNAVAILABLE',
+      message: 'Job search service is currently unavailable',
+    });
+  }
+});
 
 /**
  * Serve static files from /browser
