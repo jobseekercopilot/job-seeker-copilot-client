@@ -1,0 +1,169 @@
+<!-- CARD 1: CLAIMANT PROFESSIONAL PROFILE (DWP COMMITMENTS BASIS) -->
+<div id="card-claimant-profile" class="bg-white rounded-3xl border border-slate-200/80 shadow-2xs p-6 transition-all hover:shadow-xs hover:border-slate-300">
+  <div class="flex items-center justify-between pb-3 mb-1 border-b border-slate-100">
+    <h2 class="font-bold tracking-tight text-slate-900 flex items-center gap-2 font-display">
+      <mat-icon class="text-slate-500">person</mat-icon>
+      Claimant Profile
+    </h2>
+    
+    <div class="flex items-center gap-1.5">
+      @if (!isEditing()) {
+        <button id="btn-edit-profile"
+                (click)="startEditing()"
+                class="text-2xs font-bold uppercase tracking-wide text-slate-700 bg-slate-50 hover:bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200 transition-colors cursor-pointer flex items-center gap-1">
+          <mat-icon class="text-xs">edit</mat-icon>
+          Edit
+        </button>
+      } @else {
+        <button id="btn-save-profile"
+                (click)="save()"
+                class="text-2xs font-bold uppercase tracking-wide text-white bg-slate-900 hover:bg-slate-800 px-2.5 py-1.5 rounded-xl flex items-center gap-1 transition-colors cursor-pointer">
+          <mat-icon class="text-xs">check</mat-icon>
+          Save
+        </button>
+      }
+    </div>
+  </div>
+
+  <!-- Claimant identity badge -->
+  <div id="claimant-identity-badge" class="flex items-center gap-3 bg-gradient-to-r from-slate-50 to-slate-100/50 rounded-2xl p-3 border border-slate-200/40 mb-4 select-none">
+    <div class="w-8 h-8 rounded-xl bg-indigo-600/10 text-indigo-700 flex items-center justify-center font-bold text-xs font-display">
+      {{ claimantName() ? claimantName().substring(0, 1).toUpperCase() : 'C' }}
+    </div>
+    <div class="flex-1 min-w-0">
+      <h3 class="text-xs font-bold text-slate-900 truncate leading-tight">{{ claimantName() || 'Sarah Jenkins' }}</h3>
+      <p class="text-[10px] font-mono text-slate-400 truncate leading-none mt-0.5">{{ claimantEmail() || 'sarah.jenkins@gmail.com' }}</p>
+    </div>
+    <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[9px] font-extrabold uppercase bg-emerald-50 text-emerald-800 border border-emerald-100/80 scale-90 origin-right">
+      Active
+    </span>
+  </div>
+
+  <!-- Profile content container -->
+  <div class="space-y-4">
+    @if (!isEditing()) {
+      <!-- READ MODE (Optimized layout) -->
+      <div id="profile-read-mode" class="space-y-3.5">
+        <div class="p-3 bg-slate-50/75 rounded-2xl border border-slate-100">
+          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Skills & Qualifications</h3>
+          <p class="text-xs font-semibold text-slate-700 leading-relaxed mt-1">{{ skills() }}</p>
+        </div>
+        <div class="p-3 bg-slate-50/75 rounded-2xl border border-slate-100">
+          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Employment & Volunteer History</h3>
+          <p class="text-xs font-semibold text-slate-700 leading-relaxed mt-1">{{ experience() }}</p>
+        </div>
+        <div class="p-3 bg-indigo-50/40 rounded-2xl border border-indigo-50">
+          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-indigo-500">Target Roles & Commitments</h3>
+          <p class="text-xs font-bold text-indigo-900 leading-relaxed mt-1">{{ aspirations() }}</p>
+        </div>
+        <div class="p-3 bg-slate-50/75 rounded-2xl border border-slate-100">
+          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Hours & Commute Area</h3>
+          <p class="text-xs font-semibold text-slate-700 leading-relaxed mt-1 flex flex-col gap-1">
+            <span class="flex items-center gap-1.5"><mat-icon class="text-xs text-slate-400">schedule</mat-icon><strong>Commitment:</strong> {{ parsedWorkPrefs().hours }}</span>
+            <span class="flex items-center gap-1.5"><mat-icon class="text-xs text-slate-400">location_on</mat-icon>
+              <strong>Home Location:</strong> 
+              @if (parsedWorkPrefs().adminDistrict || parsedWorkPrefs().region) {
+                {{ parsedWorkPrefs().adminDistrict }}@if (parsedWorkPrefs().adminDistrict && parsedWorkPrefs().region) {, }{{ parsedWorkPrefs().region }} ({{ parsedWorkPrefs().postcode }})
+              } @else {
+                {{ parsedWorkPrefs().postcode }}
+              }
+            </span>
+            <span class="flex items-center gap-1.5"><mat-icon class="text-xs text-slate-400">commute</mat-icon><strong>Commute Range:</strong> within {{ parsedWorkPrefs().distance }}</span>
+          </p>
+        </div>
+
+        <button id="btn-finder-search"
+                (click)="triggerFinderSearch()"
+                class="w-full text-xs font-bold uppercase tracking-wider text-white bg-indigo-600 hover:bg-indigo-700 py-3 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-indigo-100 hover:scale-[1.01] active:scale-[0.99]">
+          <mat-icon class="text-sm">search</mat-icon>
+          Find Aligned Jobs via Gateway
+        </button>
+      </div>
+    } @else {
+      <!-- WRITE MODE (Form inputs) -->
+      <div id="profile-write-mode" class="space-y-3">
+        <div class="flex flex-col gap-1">
+          <label for="profile-skills-input" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Skills & Qualifications</label>
+          <textarea id="profile-skills-input"
+                    class="text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 h-16 focus:outline-none focus:ring-1 focus:ring-slate-900 leading-relaxed"
+                    (input)="handleUpdateSkills($event)">{{ localSkills() }}</textarea>
+        </div>
+        
+        <div class="flex flex-col gap-1">
+          <label for="profile-experience-input" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Employment & Volunteer History</label>
+          <textarea id="profile-experience-input"
+                    class="text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 h-20 focus:outline-none focus:ring-1 focus:ring-slate-900 leading-relaxed"
+                    (input)="handleUpdateExperience($event)">{{ localExperience() }}</textarea>
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <label for="profile-aspirations-input" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Target Roles / Aspirations</label>
+          <input id="profile-aspirations-input"
+                 type="text" 
+                 class="text-xs font-semibold text-slate-800 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                 [value]="localAspirations()"
+                 (input)="handleUpdateAspirations($event)" />
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <label for="profile-hours-select" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Target Hours</label>
+          <select id="profile-hours-select"
+                  class="text-xs font-semibold py-2.5 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-800 cursor-pointer"
+                  (change)="localTargetHours.set($any($event.target).value)">
+            @for (opt of targetHoursOptions; track opt) {
+              <option [value]="opt" [selected]="opt === localTargetHours()">{{ opt }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="flex flex-col gap-1 relative">
+          <label for="profile-postcode-input" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Postcode / Location</label>
+          <input id="profile-postcode-input"
+                 type="text"
+                 class="text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                 [value]="localPostcode()"
+                 (input)="onLocationInputChange($any($event.target).value)"
+                 (blur)="hideLocationDropdownWithDelay()" />
+          
+          <!-- Suggestions Dropdown -->
+          @if (showLocationDropdown() && locationSuggestions().length > 0) {
+            <div class="absolute top-[100%] left-0 right-0 z-50 mt-1 max-h-40 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg flex flex-col p-1.5 gap-1">
+              @for (loc of locationSuggestions(); track loc.id) {
+                <button type="button"
+                        (click)="selectLocation(loc)"
+                        class="text-left px-3 py-2 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer flex flex-col gap-0.5 border-none bg-transparent w-full">
+                  <span class="text-xs font-bold text-slate-800">{{ loc.name }}</span>
+                  <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">{{ loc.region }} ({{ loc.postcode }})</span>
+                </button>
+              }
+            </div>
+          }
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <label for="profile-commute-select" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Commute Range</label>
+          <select id="profile-commute-select"
+                  class="text-xs font-semibold py-2.5 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-800 cursor-pointer"
+                  (change)="localCommuteDistance.set($any($event.target).value)">
+            @for (dist of commuteDistanceOptions; track dist) {
+              <option [value]="dist" [selected]="dist === localCommuteDistance()">within {{ dist }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="flex items-center gap-2 pt-2">
+          <button id="btn-cancel-edit"
+                  (click)="cancelEditing()"
+                  class="w-1/2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 py-2 rounded-lg border border-slate-300 hover:border-slate-400 transition-colors cursor-pointer">
+            Cancel
+          </button>
+          <button id="btn-save-inline"
+                  (click)="save()"
+                  class="w-1/2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 py-2 rounded-lg shadow-md transition-colors cursor-pointer">
+            Save Profile
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+</div>

@@ -1,0 +1,53 @@
+/* Custom Animations for User Interface Transitions */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Scrollbar customizations for a premium minimal feel */
+#jobs-scroller::-webkit-scrollbar,
+#journal-logs-container::-webkit-scrollbar,
+pre::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+#jobs-scroller::-webkit-scrollbar-track,
+#journal-logs-container::-webkit-scrollbar-track,
+pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#jobs-scroller::-webkit-scrollbar-thumb,
+#journal-logs-container::-webkit-scrollbar-thumb,
+pre::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 99px;
+}
+
+#jobs-scroller::-webkit-scrollbar-thumb:hover,
+#journal-logs-container::-webkit-scrollbar-thumb:hover,
+pre::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Font styles and letter tracking overrides */
+h1, h2, h3, h4 {
+  letter-spacing: -0.02em;
+}
+
+/* Base custom font size helpers */
+.text-2xs {
+  font-size: 0.6875rem; /* 11px */
+}
