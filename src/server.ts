@@ -105,16 +105,25 @@ app.get('/api/postcodes/:postcode', async (req, res) => {
  * API Route: Search Jobs via Job Finder Gateway
  * Proxies POST requests from the Angular frontend to the Java job-finder-gateway.
  * Forwards the Authorization header (JWT Bearer token) for authentication.
+ * For demo mode (no JWT token), generates a synthetic X-User-Id for testing.
  */
 app.post('/api/jobs/search', async (req, res) => {
   try {
     const token = req.headers['authorization'] as string;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers['Authorization'] = token;
+    } else {
+      // Demo mode: use a fixed user ID so the backend returns meaningful errors
+      headers['X-User-Id'] = 'demo-user-001';
+    }
+
     const response = await fetch(`${JOB_FINDER_GATEWAY_URL}/api/jobs/search`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': token } : {}),
-      },
+      headers,
       body: JSON.stringify(req.body),
     });
 
