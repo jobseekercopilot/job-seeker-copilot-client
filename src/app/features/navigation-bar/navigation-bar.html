@@ -1,0 +1,90 @@
+<!-- Top Navigation Header Component -->
+<header id="app-header" class="sticky top-0 z-40 bg-slate-50/80 backdrop-blur-md border-b border-slate-200/50 pb-1">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-100 select-none">
+        <mat-icon class="text-sm">auto_awesome</mat-icon>
+      </div>
+      <div>
+        <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900 flex items-center gap-2 font-display">
+          Jobseeker Copilot
+          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/50 uppercase tracking-wider">
+            DWP Standard
+          </span>
+        </h1>
+        <p class="text-[10px] sm:text-2xs text-slate-500 uppercase tracking-widest font-bold">Universal Credit Claim Navigator</p>
+      </div>
+    </div>
+
+    <!-- Quick Actions / User stats -->
+    <div id="header-stats" class="flex items-center gap-3 relative">
+      <button id="btn-reset-profile"
+              (click)="triggerReset()"
+              class="hidden sm:flex text-2xs font-bold uppercase tracking-wide text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 px-3.5 py-2 rounded-xl shadow-2xs transition-all cursor-pointer items-center gap-1">
+        <mat-icon class="text-xs">restore</mat-icon>
+        Reset Claimant
+      </button>
+
+      <!-- Refactored User Profile Dropdown Widget -->
+      <div id="user-profile-widget" class="relative inline-block text-left">
+        <button id="btn-profile-dropdown"
+                (click)="toggleDropdown()"
+                class="flex items-center gap-2.5 bg-white hover:bg-slate-50 border border-slate-200/85 hover:border-slate-300 rounded-2xl px-3.5 py-1.5 shadow-2xs select-none cursor-pointer transition-all">
+          <div class="flex flex-col items-end hidden sm:flex">
+            <span class="text-xs font-black text-slate-800 tracking-tight flex items-center gap-1">
+              {{ userName() }}
+              <mat-icon class="text-[14px] w-3.5 h-3.5 leading-none text-slate-400">keyboard_arrow_down</mat-icon>
+            </span>
+            <span class="text-[9px] text-indigo-600 font-extrabold px-1.5 py-0.5 bg-indigo-50 rounded-full leading-none mt-0.5 uppercase tracking-wide">
+              Active Session
+            </span>
+          </div>
+          <!-- Avatar Icon with initial letters -->
+          <div class="w-8 h-8 rounded-full bg-slate-200 border border-slate-300 shadow-2xs overflow-hidden flex items-center justify-center select-none relative">
+            <div class="w-full h-full bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center text-white text-xs font-extrabold font-display">
+              {{ userName() ? userName().substring(0, 1).toUpperCase() : 'C' }}
+            </div>
+          </div>
+        </button>
+
+        <!-- Dropdown Dialog Panel -->
+        @if (dropdownOpen()) {
+          <!-- Click outer overlay to close dropdown -->
+          <button type="button" 
+                  class="fixed inset-0 z-40 bg-transparent w-full h-full cursor-default focus:outline-none" 
+                  (click)="closeDropdown()">
+            <span class="sr-only">Close user menu dropdown overlay</span>
+          </button>
+          
+          <div id="profile-dropdown-menu" 
+               class="absolute right-0 mt-2.5 w-60 bg-white border border-slate-200 rounded-2xl shadow-lg z-50 py-3.5 px-4 text-left animate-fade-in origin-top-right">
+            
+            <div class="pb-3 border-b border-slate-100 select-none">
+              <span class="text-[9px] font-black uppercase tracking-widest text-slate-400">Claimant Session</span>
+              <h4 class="text-xs font-extrabold text-slate-900 mt-0.5 truncate">{{ userName() }}</h4>
+              <p class="text-[10px] font-mono text-slate-500 truncate mt-0.5">{{ userEmail() }}</p>
+            </div>
+
+            <!-- Mini details/stats inside dropdown -->
+            <div class="py-1.5 space-y-1">
+              <button (click)="triggerReset()"
+                      class="w-full py-2 px-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer text-left text-[11px] text-slate-700 font-semibold flex items-center gap-1.5 mt-1">
+                <mat-icon class="text-slate-400 text-sm">restore</mat-icon>
+                Reset Workspace
+              </button>
+            </div>
+
+            <div class="pt-2.5 border-t border-slate-100">
+              <button id="btn-dropdown-logout"
+                      (click)="triggerLogout()"
+                      class="w-full py-2 px-3 text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100/80 border border-rose-100 rounded-xl transition-all cursor-pointer font-bold text-2xs uppercase tracking-wider flex items-center justify-center gap-1.5">
+                <mat-icon class="text-base">logout</mat-icon>
+                Sign Out Session
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</header>
