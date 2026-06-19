@@ -1,0 +1,69 @@
+<!-- Interactive Notice Toast Feed -->
+@if (toastMessage()) {
+  <div id="toast-notification" 
+       class="fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl border transition-all duration-300 transform animate-fade-in"
+       [class.bg-emerald-50]="toastType() === 'success'"
+       [class.border-emerald-200]="toastType() === 'success'"
+       [class.text-emerald-800]="toastType() === 'success'"
+       [class.bg-blue-50]="toastType() === 'info'"
+       [class.border-blue-200]="toastType() === 'info'"
+       [class.text-blue-800]="toastType() === 'info'"
+       [class.bg-rose-50]="toastType() === 'error'"
+       [class.border-rose-200]="toastType() === 'error'"
+       [class.text-rose-800]="toastType() === 'error'">
+    <mat-icon class="text-xl">
+      @if (toastType() === 'success') { check_circle }
+      @if (toastType() === 'info') { info }
+      @if (toastType() === 'error') { error }
+    </mat-icon>
+    <p class="font-sans text-sm font-semibold tracking-wide">{{ toastMessage() }}</p>
+  </div>
+}
+
+<div class="min-h-screen bg-slate-50/60 font-sans antialiased text-slate-800 pb-16">
+  @if (!isLoggedIn()) {
+    <!-- Splash Landing Page Onboarding flow -->
+    <app-landing-auth (onboarded)="handleOnboarded($event)"></app-landing-auth>
+  } @else {
+    <!-- Top Navigation Header -->
+    <app-navigation-bar [userName]="profileName()"
+                        [userEmail]="profileEmail()"
+                        (resetClaimant)="resetDemoProfile()"
+                        (logout)="logout()"></app-navigation-bar>
+
+    <!-- Main Grid Workspace Content wrapper -->
+    <main id="app-main-content" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        <!-- ================= LEFT COLUMN: CLAIMANT PROFILE (4 Cols) ================= -->
+        <section id="left-sidebar" class="lg:col-span-4 flex flex-col gap-6">
+          
+          <!-- Claimant Professional Profile -->
+          <app-claimant-profile [claimantName]="profileName()"
+                                [claimantEmail]="profileEmail()"
+                                [skills]="profileSkills()"
+                                [experience]="profileExperience()"
+                                [aspirations]="profileAspirations()"
+                                [workPrefs]="profileWorkPrefs()"
+                                (profileSaved)="handleSaveProfile($event)"
+                                (logoutRequested)="logout()">
+          </app-claimant-profile>
+
+        </section>
+
+        <!-- ================= RIGHT COLUMN: JOB RESULTS (8 Cols) ================= -->
+        <section id="right-workspace" class="lg:col-span-8 flex flex-col gap-6">
+          <app-job-results
+            [skills]="profileSkills()"
+            [experience]="profileExperience()"
+            [aspirations]="profileAspirations()"
+            [workPrefs]="profileWorkPrefs()"
+            [authToken]="authToken"
+            (notify)="showToast($event.message, $event.type)">
+          </app-job-results>
+        </section>
+
+      </div>
+    </main>
+  }
+</div>

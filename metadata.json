@@ -1,0 +1,6 @@
+{
+  "name": "Jobseeker Copilot",
+  "description": "AI-powered copilot for UK Universal Credit claimants to find jobs, match skillsets, tailor cover letters, and generate DWP journal updates.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

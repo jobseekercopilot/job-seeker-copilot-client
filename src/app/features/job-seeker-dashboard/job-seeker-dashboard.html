@@ -1,0 +1,163 @@
+<div class="dashboard-container">
+  <h1>Job Seeker Dashboard</h1>
+
+  <form [formGroup]="searchForm" (ngSubmit)="onSubmit()" class="search-form">
+    <div class="form-section">
+      <h2>Job Search Criteria</h2>
+
+      <div class="form-group">
+        <label for="desiredRoles">Desired Roles *</label>
+        <input
+          type="text"
+          id="desiredRoles"
+          formControlName="desiredRoles"
+          placeholder="e.g., Senior Backend Engineer, Tech Lead"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="industries">Industries</label>
+        <input
+          type="text"
+          id="industries"
+          formControlName="industries"
+          placeholder="e.g., FinTech, SaaS"
+        />
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="salaryMin">Min Salary</label>
+          <input
+            type="number"
+            id="salaryMin"
+            formControlName="salaryMin"
+            placeholder="120000"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="salaryMax">Max Salary</label>
+          <input
+            type="number"
+            id="salaryMax"
+            formControlName="salaryMax"
+            placeholder="180000"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="currency">Currency</label>
+          <select id="currency" formControlName="currency">
+            <option value="USD">USD</option>
+            <option value="GBP">GBP</option>
+            <option value="EUR">EUR</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="locations">Locations</label>
+        <input
+          type="text"
+          id="locations"
+          formControlName="locations"
+          placeholder="e.g., Remote, London, New York"
+        />
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h2>Work Preferences</h2>
+
+      <div class="form-group">
+        <label>Employment Type</label>
+        <div class="checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" value="FULL_TIME" formControlName="employmentType" />
+            Full Time
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" value="PART_TIME" formControlName="employmentType" />
+            Part Time
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" value="CONTRACT" formControlName="employmentType" />
+            Contract
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="remotePreference">Remote Preference</label>
+        <select id="remotePreference" formControlName="remotePreference">
+          <option value="REMOTE">Remote</option>
+          <option value="HYBRID">Hybrid</option>
+          <option value="ONSITE">On-site</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="culture">Company Culture</label>
+        <input
+          type="text"
+          id="culture"
+          formControlName="culture"
+          placeholder="e.g., Innovative, Collaborative"
+        />
+      </div>
+    </div>
+
+    <button type="submit" [disabled]="loading" class="search-button">
+      {{ loading ? 'Searching...' : 'Search Jobs' }}
+    </button>
+  </form>
+
+  <div *ngIf="error" class="error-message">
+    {{ error }}
+  </div>
+
+  <div *ngIf="totalResults > 0" class="results-summary">
+    <h2>Search Results ({{ totalResults }} jobs found)</h2>
+  </div>
+
+  <div class="jobs-list">
+    <div *ngFor="let job of jobs" class="job-card">
+      <div class="job-header">
+        <h3 class="job-title">{{ job.title }}</h3>
+        <span class="job-company">{{ job.company }}</span>
+      </div>
+
+      <div class="job-details">
+        <p class="job-location">
+          <strong>Location:</strong> {{ job.location }}
+        </p>
+        <p class="job-salary">
+          <strong>Salary:</strong> {{ formatSalary(job.salary) }}
+        </p>
+        <p class="job-type">
+          <strong>Type:</strong> {{ job.employmentType }}
+        </p>
+        <p class="job-date">
+          <strong>Posted:</strong> {{ formatDate(job.postedDate) }}
+        </p>
+      </div>
+
+      <div class="job-footer">
+        <div class="match-score">
+          <span class="score-label">Match Score:</span>
+          <span
+            class="score-value"
+            [style.color]="getMatchScoreColor(job.matchScore)"
+          >
+            {{ (job.matchScore * 100).toFixed(0) }}%
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div *ngIf="!loading && jobs.length === 0 && !error" class="no-results">
+    <p>No jobs to display. Start by searching for positions above.</p>
+  </div>
+</div>

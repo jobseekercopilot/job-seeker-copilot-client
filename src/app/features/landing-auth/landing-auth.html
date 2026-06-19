@@ -1,0 +1,367 @@
+<!-- LANDING & CLAIMANT ONBOARDING CONTAINER -->
+<div class="min-h-screen bg-slate-50 flex flex-col justify-between py-12 px-4 sm:px-6 lg:px-8 font-sans transition-all duration-300">
+  
+  <div class="max-w-md w-full mx-auto space-y-8 my-auto">
+    <!-- Header branding segment -->
+    <div class="text-center select-none">
+      <div class="inline-flex w-16 h-16 bg-indigo-600 rounded-2xl items-center justify-center text-white shadow-xl shadow-indigo-100 mb-4 animate-pulse">
+        <mat-icon class="text-3xl">auto_awesome</mat-icon>
+      </div>
+      <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 font-display">
+        Jobseeker Copilot
+      </h2>
+      <p class="text-xs sm:text-sm text-slate-500 mt-1.5 font-medium uppercase tracking-wider">
+        Universal Credit Claim Navigator & AI Assistant
+      </p>
+      <div class="inline-flex items-center gap-1.5 mt-3.5 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100 text-[10px] font-extrabold tracking-wide">
+        <mat-icon class="text-xs text-emerald-600">verified</mat-icon>
+        DWP COMPLIANT DIGITAL AGENT
+      </div>
+    </div>
+
+    <!-- MAIN FORM WINDOW CARD -->
+    <div id="auth-panel-card" class="bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 sm:p-8 space-y-6">
+      <!-- Top switcher tabs: Create Account vs Sign In -->
+      <div class="flex p-1 bg-slate-100 border border-slate-200/50 rounded-2xl select-none">
+        <button id="tab-btn-create"
+                (click)="setMode('create')"
+                class="flex-1 py-2.5 text-2xs font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                [class.bg-white]="mode() === 'create'"
+                [class.text-slate-900]="mode() === 'create'"
+                [class.shadow-2xs]="mode() === 'create'"
+                [class.text-slate-500]="mode() !== 'create'">
+          <mat-icon class="text-sm">person_add</mat-icon>
+          Create Profile
+        </button>
+        <button id="tab-btn-signin"
+                (click)="setMode('signin')"
+                class="flex-1 py-2.5 text-2xs font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                [class.bg-white]="mode() === 'signin'"
+                [class.text-slate-900]="mode() === 'signin'"
+                [class.shadow-2xs]="mode() === 'signin'"
+                [class.text-slate-500]="mode() !== 'signin'">
+          <mat-icon class="text-sm">login</mat-icon>
+          Sign In
+        </button>
+      </div>
+
+      <!-- Error Feedback Panel -->
+      @if (errorMessage()) {
+        <div id="auth-error-alert" class="flex gap-2.5 items-start bg-rose-50 border border-rose-150 text-rose-800 px-4 py-3.5 rounded-2xl text-2xs font-semibold animate-fade-in text-left shadow-sm">
+          <mat-icon class="text-sm shrink-0 leading-none text-rose-600 mt-0.5">error_outline</mat-icon>
+          <div>
+            <span class="block text-slate-900 font-extrabold text-3xs uppercase tracking-wider mb-0.5">Gateway Security Message</span>
+            {{ errorMessage() }}
+          </div>
+        </div>
+      }
+
+      <!-- ================= CREATE ACCOUNT WORDING & STEP COMPONENT ================= -->
+      @if (mode() === 'create') {
+        <div id="mode-create-segment" class="space-y-4 animate-fade-in">
+          
+          <!-- Onboarding step indicators -->
+          <div class="flex items-center justify-between px-1.5 pb-2 text-slate-400 border-b border-slate-100 select-none">
+            <span class="text-2xs font-black uppercase tracking-widest text-slate-400">Step {{ currentStep() }} of 3</span>
+            <div class="flex gap-1.5">
+              <span class="h-1.5 w-6 rounded-full transition-colors" [class.bg-indigo-600]="currentStep() >= 1" [class.bg-slate-200]="currentStep() < 1"></span>
+              <span class="h-1.5 w-6 rounded-full transition-colors" [class.bg-indigo-600]="currentStep() >= 2" [class.bg-slate-200]="currentStep() < 2"></span>
+              <span class="h-1.5 w-6 rounded-full transition-colors" [class.bg-indigo-600]="currentStep() >= 3" [class.bg-slate-200]="currentStep() < 3"></span>
+            </div>
+          </div>
+
+          <!-- STEP 1: PERSONAL & CREDENTIALS -->
+          @if (currentStep() === 1) {
+            <div id="step-1" class="space-y-4 animate-fade-in text-left">
+              <div>
+                <h3 class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Claimant Credentials</h3>
+                <p class="text-2xs text-slate-400 mt-0.5">Please provide your official Universal Credit identification details.</p>
+              </div>
+
+              <div class="flex flex-col gap-1">
+                <label for="reg-name" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Official Full Name</label>
+                <div class="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white">
+                  <mat-icon class="absolute left-3 text-slate-400 text-sm">person</mat-icon>
+                  <input id="reg-name"
+                         type="text"
+                         placeholder="Sarah Jenkins"
+                         class="text-xs pl-10 pr-3 py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
+                         [value]="formName()"
+                         (input)="formName.set($any($event.target).value)" />
+                </div>
+              </div>
+
+              <div class="flex flex-col gap-1">
+                <label for="reg-email" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Contact Email Address</label>
+                <div class="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white">
+                  <mat-icon class="absolute left-3 text-slate-400 text-sm">email</mat-icon>
+                  <input id="reg-email"
+                         type="email"
+                         placeholder="sarah.jenkins@gmail.com"
+                         class="text-xs pl-10 pr-3 py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
+                         [value]="formEmail()"
+                         (input)="formEmail.set($any($event.target).value)" />
+                </div>
+              </div>
+
+              <div class="flex flex-col gap-1">
+                <label for="reg-password" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Password</label>
+                <div class="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white">
+                  <mat-icon class="absolute left-3 text-slate-400 text-sm">lock</mat-icon>
+                  <input id="reg-password"
+                         type="password"
+                         placeholder="••••••••"
+                         class="text-xs pl-10 pr-3 py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
+                         [value]="formPassword()"
+                         (input)="formPassword.set($any($event.target).value)" />
+                </div>
+              </div>
+            </div>
+          }
+
+          <!-- STEP 2: PROFESSIONAL BACKGROUND (SKILLS & HISTORY) -->
+          @if (currentStep() === 2) {
+            <div id="step-2" class="space-y-4 animate-fade-in text-left">
+              <div>
+                <h3 class="text-xs font-extrabold text-slate-900 uppercase tracking-wider px-1">Professional History & Skills</h3>
+                <p class="text-2xs text-slate-400 mt-0.5 px-1">Describe your strengths to allow the copilot to optimize DWP compliance matching.</p>
+              </div>
+
+              <div class="flex flex-col gap-1">
+                <label for="reg-skills" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Core Skills & Qualifications</label>
+                <textarea id="reg-skills"
+                          placeholder="e.g. Customer support, basic reception database tools, patient document filing, detail-oriented inputting"
+                          class="text-xs font-medium border border-slate-200 rounded-xl p-3 h-20 bg-slate-50 focus:border-slate-400 focus:bg-white focus:outline-none text-slate-800 leading-relaxed"
+                          [value]="formSkills()"
+                          (input)="formSkills.set($any($event.target).value)"></textarea>
+              </div>
+
+              <div class="flex flex-col gap-1">
+                <label for="reg-experience" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Work/Volunteer History</label>
+                <textarea id="reg-experience"
+                          placeholder="e.g. Retail Assistant at Co-op (1 year) - managed cashiering; Volunteer helper at Leeds Community Center"
+                          class="text-xs font-medium border border-slate-200 rounded-xl p-3 h-24 bg-slate-50 focus:border-slate-400 focus:bg-white focus:outline-none text-slate-800 leading-relaxed"
+                          [value]="formExperience()"
+                          (input)="formExperience.set($any($event.target).value)"></textarea>
+              </div>
+            </div>
+          }
+
+          <!-- STEP 3: WORKSEARCH OBJECTIVES & COMMITMENTS -->
+          @if (currentStep() === 3) {
+            <div id="step-3" class="space-y-4 animate-fade-in text-left">
+              <div>
+                <h3 class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Benefit Objectives</h3>
+                <p class="text-2xs text-slate-400 mt-0.5 font-medium">Specify target bounds matching your Claimant Commitment.</p>
+              </div>
+
+              <div class="flex flex-col gap-1">
+                <label for="reg-aspirations" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Target Roles & Aspirations</label>
+                <div class="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white pl-3.5 pr-2">
+                  <input id="reg-aspirations"
+                         type="text"
+                         placeholder="e.g. Ward receptionist, clerical data assistant, office coordinator"
+                         class="text-xs py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
+                         [value]="formAspirations()"
+                         (input)="formAspirations.set($any($event.target).value)" />
+                </div>
+              </div>
+
+              <!-- Formalized Target Hours Selector -->
+              <div class="flex flex-col gap-1">
+                <label for="reg-target-hours" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Target Weekly Hours</label>
+                <div class="relative bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white px-3.5 flex items-center">
+                  <mat-icon class="text-slate-400 text-sm select-none mr-2.5">schedule</mat-icon>
+                  <select id="reg-target-hours"
+                          class="text-xs font-semibold py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 cursor-pointer appearance-none pr-8"
+                          [value]="formTargetHours()"
+                          (change)="formTargetHours.set($any($event.target).value)">
+                    @for (opt of targetHoursOptions; track opt) {
+                      <option [value]="opt">{{ opt }}</option>
+                    }
+                  </select>
+                  <mat-icon class="text-slate-400 text-sm select-none absolute right-3 pointer-events-none">expand_more</mat-icon>
+                </div>
+              </div>
+
+              <!-- Postcode & Commute bounds radius selection -->
+              <div class="grid grid-cols-2 gap-3.5">
+                <div class="flex flex-col gap-1 relative">
+                  <label for="reg-postcode" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Home Location</label>
+                  <div class="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white pl-3.5 pr-2">
+                    <input id="reg-postcode"
+                           type="text"
+                           placeholder="Leeds, G1, etc."
+                           class="text-xs py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
+                           [value]="formPostcode()"
+                           (input)="onLocationInputChange($any($event.target).value)"
+                           (focus)="showLocationDropdown.set(locationSuggestions().length > 0)"
+                           (blur)="hideLocationDropdownWithDelay()" />
+                  </div>
+                  
+                  @if (showLocationDropdown() && locationSuggestions().length > 0) {
+                    <div class="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-250 rounded-xl shadow-lg max-h-48 overflow-y-auto divide-y divide-slate-100">
+                      @for (loc of locationSuggestions(); track loc.id) {
+                        <button type="button"
+                                (click)="selectLocation(loc)"
+                                class="w-full text-left px-3 py-2 hover:bg-slate-50 flex flex-col transition-colors cursor-pointer text-slate-700">
+                          <span class="text-xs font-bold">{{ loc.name }}</span>
+                          <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">{{ loc.region }} ({{ loc.postcode }})</span>
+                        </button>
+                      }
+                    </div>
+                  }
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <label for="reg-commute" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Commute Range</label>
+                  <div class="relative bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white px-3.5 flex items-center">
+                    <select id="reg-commute"
+                            class="text-xs font-semibold py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 cursor-pointer appearance-none pr-8"
+                            [value]="formCommuteDistance()"
+                            (change)="formCommuteDistance.set($any($event.target).value)">
+                      @for (dist of commuteDistanceOptions; track dist) {
+                        <option [value]="dist">within {{ dist }}</option>
+                      }
+                    </select>
+                    <mat-icon class="text-slate-400 text-sm select-none absolute right-3 pointer-events-none">expand_more</mat-icon>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          }
+
+          <!-- Flow Buttons Footer -->
+          <div class="flex gap-2.5 pt-2">
+            @if (currentStep() > 1) {
+              <button id="btn-back-step"
+                      (click)="prevStep()"
+                      class="flex-1 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 py-3 rounded-xl cursor-pointer transition-colors">
+                Back
+              </button>
+            }
+            
+            @if (currentStep() < 3) {
+              <button id="btn-next-step"
+                      [disabled]="!isStepValid()"
+                      (click)="nextStep()"
+                      class="flex-1 text-xs font-bold uppercase tracking-wide text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-45 disabled:pointer-events-none py-3 rounded-xl cursor-pointer transition-colors shadow-sm">
+                Next Step
+              </button>
+            } @else {
+              <button id="btn-submit-signup"
+                      [disabled]="!isStepValid() || isLoading()"
+                      (click)="completeRegistration()"
+                      class="flex-1 text-xs font-extrabold uppercase tracking-wide text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-45 disabled:pointer-events-none py-3 rounded-xl cursor-pointer transition-colors shadow-md shadow-indigo-100 flex items-center justify-center gap-1.5 duration-200">
+                @if (isLoading()) {
+                  <mat-icon class="animate-spin text-sm">hourglass_empty</mat-icon>
+                  Syncing Gateway...
+                } @else {
+                  Create & Onboard
+                  <mat-icon class="text-sm">arrow_forward</mat-icon>
+                }
+              </button>
+            }
+          </div>
+
+        </div>
+      }
+
+      <!-- ================= SIGN IN MODE ================= -->
+      @if (mode() === 'signin') {
+        <div id="mode-signin-segment" class="space-y-4 animate-fade-in text-left">
+          
+          <div class="flex flex-col gap-1">
+            <label for="login-email" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Email Address</label>
+            <div class="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white">
+              <mat-icon class="absolute left-3 text-slate-400 text-sm">email</mat-icon>
+              <input id="login-email"
+                     type="email"
+                     placeholder="clara.oswald@gmail.com"
+                     class="text-xs pl-10 pr-3 py-3.5 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
+                     [value]="loginEmail()"
+                     (input)="loginEmail.set($any($event.target).value)" />
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1">
+            <label for="login-password" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Credentials Pin / Password</label>
+            <div class="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white">
+              <mat-icon class="absolute left-3 text-slate-400 text-sm">lock</mat-icon>
+              <input id="login-password"
+                     type="password"
+                     placeholder="••••••••"
+                     class="text-xs pl-10 pr-3 py-3.5 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
+                     [value]="loginPassword()"
+                     (input)="loginPassword.set($any($event.target).value)" />
+            </div>
+          </div>
+
+          <button id="btn-submit-signin"
+                  [disabled]="isLoading()"
+                  (click)="submitLogin()"
+                  class="w-full text-xs font-extrabold uppercase tracking-widest text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-45 disabled:pointer-events-none py-3.5 rounded-xl shadow-md transition-all cursor-pointer text-center flex items-center justify-center gap-2">
+            @if (isLoading()) {
+              <mat-icon class="animate-spin text-sm">hourglass_empty</mat-icon>
+              Verifying Credentials...
+            } @else {
+              Sign In with Account
+            }
+          </button>
+
+        </div>
+      }
+
+      <!-- Dividers and Demo fast links section -->
+      <div class="relative flex items-center justify-center border-t border-slate-100 pt-5">
+        <span class="absolute bg-white px-3 text-3xs font-black uppercase text-slate-400 tracking-widest select-none">
+          Or Quick Launch Demo
+        </span>
+      </div>
+
+      <!-- Quick presets widgets -->
+      <div class="space-y-2.5">
+        <button id="btn-preset-admin"
+                (click)="loadPersona('admin')"
+                class="w-full text-left p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl hover:bg-slate-100 hover:border-slate-350 transition-all cursor-pointer flex items-center justify-between gap-3 group">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold">
+              <mat-icon class="text-base select-none">contact_emergency</mat-icon>
+            </div>
+            <div>
+              <h4 class="text-xs font-bold text-slate-900 group-hover:underline">Sarah Jenkins</h4>
+              <p class="text-[10px] text-slate-400">NHS Admin & Support Representative Preset</p>
+            </div>
+          </div>
+          <mat-icon class="text-slate-400 text-sm select-none transition-transform group-hover:translate-x-0.5">chevron_right</mat-icon>
+        </button>
+
+        <button id="btn-preset-logistics"
+                (click)="loadPersona('logistics')"
+                class="w-full text-left p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl hover:bg-slate-100 hover:border-slate-350 transition-all cursor-pointer flex items-center justify-between gap-3 group">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
+              <mat-icon class="text-base select-none">local_shipping</mat-icon>
+            </div>
+            <div>
+              <h4 class="text-xs font-bold text-slate-900 group-hover:underline">Marcus Vance</h4>
+              <p class="text-[10px] text-slate-400">Warehouse & Logistics Shift Operator Preset</p>
+            </div>
+          </div>
+          <mat-icon class="text-slate-400 text-sm select-none transition-transform group-hover:translate-x-0.5">chevron_right</mat-icon>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- UK digital standards guidelines citation -->
+    <div class="text-center select-none">
+      <p class="text-[10px] text-slate-400 leading-relaxed max-w-[340px] mx-auto">
+        Jobseeker Copilot complies with DWP benefits standards for evidence logging. We never auto-apply or send messages without claimant verification and manual check clicks. Keep "Human-in-the-Loop" active!
+      </p>
+    </div>
+
+  </div>
+
+</div>
