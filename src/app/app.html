@@ -28,7 +28,6 @@
     <!-- Top Navigation Header -->
     <app-navigation-bar [userName]="profileName()"
                         [userEmail]="profileEmail()"
-                        (resetClaimant)="resetDemoProfile()"
                         (logout)="logout()"></app-navigation-bar>
 
     <!-- Main Grid Workspace Content wrapper -->
@@ -46,14 +45,15 @@
                                 [aspirations]="profileAspirations()"
                                 [workPrefs]="profileWorkPrefs()"
                                 (profileSaved)="handleSaveProfile($event)"
-                                (logoutRequested)="logout()">
+                                (logoutRequested)="logout()"
+                                (findJobsRequested)="triggerJobSearch()">
           </app-claimant-profile>
 
         </section>
 
         <!-- ================= RIGHT COLUMN: JOB RESULTS (8 Cols) ================= -->
         <section id="right-workspace" class="lg:col-span-8 flex flex-col gap-6">
-          <app-job-results
+          <app-job-results #jobResults
             [skills]="profileSkills()"
             [experience]="profileExperience()"
             [aspirations]="profileAspirations()"

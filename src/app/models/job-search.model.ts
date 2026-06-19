@@ -35,6 +35,8 @@ export interface Job {
   };
   employmentType: string;
   postedDate: string;
+  description: string;
+  url: string;
   matchScore: number;
 }
 

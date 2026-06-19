@@ -1,12 +1,13 @@
 import { ChangeDetectionStrategy, Component, input, output, signal, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
+import { JobCardComponent } from '../job-card/job-card.component';
 import { JobService } from '../../services/job.service';
 import { Job } from '../../models/job-search.model';
 
 @Component({
   selector: 'app-job-results',
-  imports: [CommonModule, MatIconModule],
+  imports: [CommonModule, MatIconModule, JobCardComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './job-results.component.html',
   styleUrl: './job-results.component.css'
@@ -35,6 +36,27 @@ export class JobResultsComponent implements OnInit {
     this.search();
   }
 
+  trackByJobId(index: number, job: Job): string {
+    return job.id;
+  }
+
+  private validateJob(job: any): Job | null {
+    const requiredFields = ['id', 'title', 'company', 'location', 'salary', 'postedDate', 'description', 'url'];
+    const missingFields = requiredFields.filter(field => {
+      if (field === 'salary') {
+        return !job.salary || typeof job.salary.min !== 'number' || typeof job.salary.max !== 'number';
+      }
+      return job[field] == null || job[field] === '';
+    });
+
+    if (missingFields.length > 0) {
+      console.warn(`[JobResults] Skipping malformed job (id: ${job.id || 'unknown'}): missing/empty fields: ${missingFields.join(', ')}`, job);
+      return null;
+    }
+
+    return job as Job;
+  }
+
   search(): void {
     const token = this.authToken();
     if (!token) {
@@ -53,11 +75,27 @@ export class JobResultsComponent implements OnInit {
       token
     ).subscribe({
       next: (response) => {
-        this.jobs.set(response.jobs);
-        this.totalResults.set(response.totalResults);
+        const validJobs: Job[] = [];
+        const skippedCount = { value: 0 };
+
+        for (const job of response.jobs) {
+          const validated = this.validateJob(job);
+          if (validated) {
+            validJobs.push(validated);
+          } else {
+            skippedCount.value++;
+          }
+        }
+
+        if (skippedCount.value > 0) {
+          console.warn(`[JobResults] Filtered out ${skippedCount.value} malformed job(s) out of ${response.jobs.length} total`);
+        }
+
+        this.jobs.set(validJobs);
+        this.totalResults.set(validJobs.length);
         this.loading.set(false);
         this.notify.emit({
-          message: `Found ${response.totalResults} matching job${response.totalResults === 1 ? '' : 's'}.`,
+          message: `Found ${validJobs.length} matching job${validJobs.length === 1 ? '' : 's'}.`,
           type: 'success'
         });
       },
@@ -100,27 +138,4 @@ export class JobResultsComponent implements OnInit {
     this.search();
   }
 
-  formatSalary(salary: { min: number; max: number; currency: string }): string {
-    return `${salary.currency} ${salary.min.toLocaleString()} - ${salary.max.toLocaleString()}`;
-  }
-
-  formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  }
-
-  matchScoreColor(score: number): string {
-    if (score >= 0.8) return 'text-emerald-600';
-    if (score >= 0.6) return 'text-amber-600';
-    return 'text-rose-600';
-  }
-
-  matchScoreBg(score: number): string {
-    if (score >= 0.8) return 'bg-emerald-50 border-emerald-200';
-    if (score >= 0.6) return 'bg-amber-50 border-amber-200';
-    return 'bg-rose-50 border-rose-200';
-  }
 }

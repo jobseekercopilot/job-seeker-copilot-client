@@ -62,46 +62,8 @@
 
     <!-- Job cards grid -->
     <div class="grid gap-4">
-      @for (job of jobs(); track job.id) {
-        <div class="border border-slate-200 rounded-xl p-5 hover:shadow-md hover:border-slate-300 transition-all duration-150 bg-white">
-
-          <!-- Top row: title + company -->
-          <div class="flex items-start justify-between gap-4 mb-3">
-            <div class="min-w-0 flex-1">
-              <h3 class="text-base font-semibold text-slate-800 m-0 truncate">{{ job.title }}</h3>
-              <p class="text-sm text-slate-500 m-0 mt-0.5">{{ job.company }}</p>
-            </div>
-            <!-- Match Score Badge -->
-            <div class="flex-shrink-0 flex flex-col items-center px-3 py-2 rounded-xl border
-                        {{ matchScoreBg(job.matchScore) }}">
-              <span class="text-xs font-medium text-slate-500 uppercase tracking-wider">Match</span>
-              <span class="text-lg font-bold {{ matchScoreColor(job.matchScore) }}">
-                {{ (job.matchScore * 100).toFixed(0) }}%
-              </span>
-            </div>
-          </div>
-
-          <!-- Details row -->
-          <div class="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-slate-600">
-            <span class="inline-flex items-center gap-1.5">
-              <mat-icon class="text-base text-slate-400">location_on</mat-icon>
-              {{ job.location }}
-            </span>
-            <span class="inline-flex items-center gap-1.5">
-              <mat-icon class="text-base text-slate-400">payments</mat-icon>
-              {{ formatSalary(job.salary) }}
-            </span>
-            <span class="inline-flex items-center gap-1.5">
-              <mat-icon class="text-base text-slate-400">work_history</mat-icon>
-              {{ job.employmentType }}
-            </span>
-            <span class="inline-flex items-center gap-1.5">
-              <mat-icon class="text-base text-slate-400">calendar_today</mat-icon>
-              Posted {{ formatDate(job.postedDate) }}
-            </span>
-          </div>
-
-        </div>
+      @for (job of jobs(); track trackByJobId($index, job)) {
+        <app-job-card [job]="job"></app-job-card>
       }
     </div>
 

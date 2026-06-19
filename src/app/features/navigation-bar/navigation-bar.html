@@ -18,13 +18,6 @@
 
     <!-- Quick Actions / User stats -->
     <div id="header-stats" class="flex items-center gap-3 relative">
-      <button id="btn-reset-profile"
-              (click)="triggerReset()"
-              class="hidden sm:flex text-2xs font-bold uppercase tracking-wide text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 px-3.5 py-2 rounded-xl shadow-2xs transition-all cursor-pointer items-center gap-1">
-        <mat-icon class="text-xs">restore</mat-icon>
-        Reset Claimant
-      </button>
-
       <!-- Refactored User Profile Dropdown Widget -->
       <div id="user-profile-widget" class="relative inline-block text-left">
         <button id="btn-profile-dropdown"
@@ -63,15 +56,6 @@
               <span class="text-[9px] font-black uppercase tracking-widest text-slate-400">Claimant Session</span>
               <h4 class="text-xs font-extrabold text-slate-900 mt-0.5 truncate">{{ userName() }}</h4>
               <p class="text-[10px] font-mono text-slate-500 truncate mt-0.5">{{ userEmail() }}</p>
-            </div>
-
-            <!-- Mini details/stats inside dropdown -->
-            <div class="py-1.5 space-y-1">
-              <button (click)="triggerReset()"
-                      class="w-full py-2 px-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer text-left text-[11px] text-slate-700 font-semibold flex items-center gap-1.5 mt-1">
-                <mat-icon class="text-slate-400 text-sm">restore</mat-icon>
-                Reset Workspace
-              </button>
             </div>
 
             <div class="pt-2.5 border-t border-slate-100">

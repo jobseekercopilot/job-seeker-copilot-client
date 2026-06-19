@@ -13,15 +13,9 @@ export class NavigationBar {
   userName = input<string>('Sarah Jenkins');
   userEmail = input<string>('sarah.jenkins@gmail.com');
 
-  resetClaimant = output<void>();
   logout = output<void>();
 
   dropdownOpen = signal<boolean>(false);
-
-  triggerReset() {
-    this.resetClaimant.emit();
-    this.dropdownOpen.set(false);
-  }
 
   toggleDropdown() {
     this.dropdownOpen.update(open => !open);

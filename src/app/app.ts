@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, signal, PLATFORM_ID, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, signal, PLATFORM_ID, inject, ViewChild } from '@angular/core';
 import { isPlatformBrowser, CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { ClaimantProfileComponent } from './features/claimant-profile/claimant-profile';
@@ -44,6 +44,8 @@ export class App implements OnInit {
   searchLocation = signal('');
   searchSector = signal('');
   isSearching = signal(false);
+
+  @ViewChild('jobResults') jobResults!: JobResultsComponent;
 
   // Notice/Alert Toast triggers
   toastMessage = signal<string | null>(null);
@@ -167,11 +169,11 @@ export class App implements OnInit {
     this.showToast('Logged out of claimant session securely.', 'info');
   }
 
-  resetDemoProfile() {
-    this.profileSkills.set('Customer communication, basic office administration, patient documentation, phone reception, MS Excel, detail-oriented inputting');
-    this.profileExperience.set('Retail Team Member at Co-op (1 year) - managing cash checkouts and stocking shelves; Volunteer Office Assistant at York General Community Hub (6 months)');
-    this.profileAspirations.set('Customer support receptionist, ward administrative assistant, clerical data assistant');
-    this.profileWorkPrefs.set('Full-Time preferred (30-40 hours), commutable within Leeds/Greater Manchester region');
-    this.saveProfile();
+  triggerJobSearch() {
+    if (this.jobResults) {
+      this.jobResults.refresh();
+    } else {
+      this.showToast('Preparing job search...', 'info');
+    }
   }
 }
