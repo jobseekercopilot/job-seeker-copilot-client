@@ -1,4 +1,4 @@
-import {Component, OnInit} from '@angular/core';
+import {Component, inject} from '@angular/core';
 import {CommonModule} from '@angular/common';
 import {FormBuilder, FormGroup, ReactiveFormsModule, Validators} from '@angular/forms';
 import {JobFinderGatewayService} from '../../gateways/job-finder-gateway';
@@ -11,34 +11,26 @@ import {JobSearchRequest, Job, Aspirations, WorkPreferences, SalaryExpectation} 
   templateUrl: './job-seeker-dashboard.html',
   styleUrls: ['./job-seeker-dashboard.css']
 })
-export class JobSeekerDashboardComponent implements OnInit {
-  searchForm: FormGroup;
+export class JobSeekerDashboardComponent {
+  private fb = inject(FormBuilder);
+  private jobFinderGateway = inject(JobFinderGatewayService);
+
+  searchForm: FormGroup = this.fb.group({
+    desiredRoles: ['', Validators.required],
+    industries: [''],
+    salaryMin: [null],
+    salaryMax: [null],
+    currency: ['USD'],
+    locations: [''],
+    employmentType: [[]],
+    remotePreference: ['HYBRID'],
+    companySize: [[]],
+    culture: ['']
+  });
   jobs: Job[] = [];
   loading = false;
   error: string | null = null;
   totalResults = 0;
-
-  constructor(
-    private fb: FormBuilder,
-    private jobFinderGateway: JobFinderGatewayService
-  ) {
-    this.searchForm = this.fb.group({
-      desiredRoles: ['', Validators.required],
-      industries: [''],
-      salaryMin: [null],
-      salaryMax: [null],
-      currency: ['USD'],
-      locations: [''],
-      employmentType: [[]],
-      remotePreference: ['HYBRID'],
-      companySize: [[]],
-      culture: ['']
-    });
-  }
-
-  ngOnInit(): void {
-    // Initialize with default values or load from user profile
-  }
 
   onSubmit(): void {
     if (this.searchForm.invalid) {
@@ -76,8 +68,8 @@ export class JobSeekerDashboardComponent implements OnInit {
 
     this.jobFinderGateway.searchJobs(request).subscribe({
       next: (response) => {
-        this.jobs = response.jobs;
-        this.totalResults = response.totalResults;
+        this.jobs = response.jobs ?? [];
+        this.totalResults = response.totalResults ?? 0;
         this.loading = false;
       },
       error: (err) => {
@@ -93,11 +85,13 @@ export class JobSeekerDashboardComponent implements OnInit {
     return value.split(',').map(item => item.trim()).filter(item => item.length > 0);
   }
 
-  formatSalary(salary: { min: number; max: number; currency: string }): string {
-    return `${salary.currency} ${salary.min.toLocaleString()} - ${salary.max.toLocaleString()}`;
+  formatSalary(salary?: { min?: number; max?: number; currency?: string }): string {
+    if (salary?.min == null || salary.max == null) return 'Salary not specified';
+    return `${salary.currency ?? 'GBP'} ${salary.min.toLocaleString()} - ${salary.max.toLocaleString()}`;
   }
 
-  formatDate(dateString: string): string {
+  formatDate(dateString?: string): string {
+    if (!dateString) return 'Date unknown';
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
@@ -105,7 +99,8 @@ export class JobSeekerDashboardComponent implements OnInit {
     });
   }
 
-  getMatchScoreColor(score: number): string {
+  getMatchScoreColor(score?: number): string {
+    if (score == null) return 'inherit';
     if (score >= 0.8) return 'green';
     if (score >= 0.6) return 'orange';
     return 'red';

@@ -1,66 +1,283 @@
-<div class="border border-slate-200 rounded-xl transition-all duration-150 bg-white hover:border-slate-300"
-     [class.hover:shadow-md]="!expanded()"
-     [class.shadow-md]="expanded()">
+<div class="job-card rounded-xl transition-all duration-150"
+     data-testid="job-result-card"
+     [class.job-card-expanded]="expanded()">
 
-  <!-- Clickable header row -->
-  <button (click)="toggle()"
-          class="w-full text-left px-5 py-4 focus:outline-none focus:ring-2 focus:ring-slate-300 rounded-xl">
+  <div class="job-card-trigger w-full text-left px-5 py-4 rounded-xl">
     <div class="flex items-start justify-between gap-4">
-      <div class="min-w-0 flex-1">
-        <h3 class="text-base font-semibold text-slate-800 m-0 truncate">{{ job().title ?? 'Untitled Role' }}</h3>
-        <p class="text-sm text-slate-500 m-0 mt-0.5">{{ job().company ?? 'Unknown Company' }}</p>
-      </div>
+      <button type="button"
+              (click)="toggle()"
+              class="job-main-toggle min-w-0 flex-1 text-left focus:outline-none">
+        <h3 class="job-title text-base font-semibold m-0 truncate">{{ job().title ?? 'Untitled Role' }}</h3>
+        <p class="job-company text-sm m-0 mt-0.5">{{ job().company ?? 'Unknown Company' }}</p>
+      </button>
       <div class="flex-shrink-0 flex items-center gap-2">
-        <mat-icon class="text-slate-400 transition-transform duration-200"
-                  [class.rotate-180]="expanded()">
-          expand_more
-        </mat-icon>
+        @for (label of sourceLabels(); track label) {
+          <span class="source-badge hidden sm:inline-flex">{{ label }}</span>
+        } @empty {
+          <span class="source-badge hidden sm:inline-flex">{{ sourceLabel() }}</span>
+        }
+        @if (statusActions().length > 0) {
+          <div class="status-menu"
+               [attr.data-demo-focus-group]="demoFocusGroup()">
+            <button type="button"
+                    class="status-badge status-dropdown"
+                    [ngClass]="statusClass()"
+                    [disabled]="!!updatingStatus()"
+                    (click)="toggleStatusMenu($event)"
+                    aria-haspopup="menu"
+                    [attr.aria-controls]="statusMenuId()"
+                    [attr.aria-expanded]="statusMenuOpen()">
+              <span>{{ updatingStatus() ? 'UPDATING' : statusLabel() }}</span>
+              <mat-icon class="status-chevron text-base">expand_more</mat-icon>
+            </button>
+            @if (statusMenuOpen()) {
+              <div class="status-menu-panel"
+                   role="menu"
+                   [id]="statusMenuId()"
+                   [attr.data-demo-focus-group]="demoFocusGroup()">
+                @for (action of statusActions(); track action.status) {
+                  <button type="button"
+                          role="menuitem"
+                          class="status-menu-item"
+                          (click)="requestStatusUpdate(action)">
+                    <mat-icon class="text-base">{{ action.icon }}</mat-icon>
+                    {{ action.label }}
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        } @else {
+          <span class="status-badge" [ngClass]="statusClass()">{{ statusLabel() }}</span>
+        }
+        <button type="button"
+                (click)="toggle()"
+                class="card-caret-button inline-flex items-center justify-center"
+                aria-label="Toggle job details">
+          <mat-icon class="card-caret transition-transform duration-200"
+                    [class.rotate-180]="expanded()">
+            expand_more
+          </mat-icon>
+        </button>
       </div>
     </div>
 
-    <!-- Details row (always visible) -->
-    <div class="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-slate-600 mt-3">
+    <button type="button"
+            (click)="toggle()"
+            class="job-meta-toggle w-full text-left focus:outline-none">
+      <div class="job-meta flex flex-wrap items-center gap-x-5 gap-y-1 text-sm mt-3">
       <span class="inline-flex items-center gap-1.5">
-        <mat-icon class="text-base text-slate-400">location_on</mat-icon>
+        <mat-icon class="text-base">location_on</mat-icon>
         {{ job().location ?? 'Location TBD' }}
+        @if (formatDistance(job().distanceMiles); as distanceText) {
+          <span class="meta-separator">·</span>
+          <span>{{ distanceText }}</span>
+        }
       </span>
       <span class="inline-flex items-center gap-1.5">
-        <mat-icon class="text-base text-slate-400">payments</mat-icon>
+        <mat-icon class="text-base">payments</mat-icon>
         {{ formatSalary(job().salary) }}
       </span>
       @if (job().employmentType) {
         <span class="inline-flex items-center gap-1.5">
-          <mat-icon class="text-base text-slate-400">work_history</mat-icon>
+          <mat-icon class="text-base">work_history</mat-icon>
           {{ job().employmentType }}
         </span>
       }
       <span class="inline-flex items-center gap-1.5">
-        <mat-icon class="text-base text-slate-400">calendar_today</mat-icon>
+        <mat-icon class="text-base">calendar_today</mat-icon>
         Posted {{ formatDate(job().postedDate) }}
       </span>
-    </div>
-  </button>
+      </div>
+    </button>
+  </div>
 
-  <!-- Expanded content -->
   @if (expanded()) {
-    <div class="px-5 pb-5 border-t border-slate-100 mt-0">
+    <div class="expanded-content px-5 pb-5 mt-0">
       <div class="pt-4">
-        <h4 class="text-sm font-medium text-slate-700 mb-2">Job Description</h4>
-        <p class="text-sm text-slate-600 leading-relaxed whitespace-pre-line m-0">
+        <h4 class="text-sm font-medium mb-2">Job Description</h4>
+        <p class="text-sm leading-relaxed whitespace-pre-line m-0">
           {{ job().description ?? 'No description available.' }}
         </p>
       </div>
       <div class="mt-4">
-        <a [href]="job().url"
+        @if (sourceLabels().length > 1) {
+          <div class="available-sources mb-3 flex flex-wrap items-center gap-2 text-xs">
+            <span class="font-semibold">Available from:</span>
+            @for (label of sourceLabels(); track label) {
+              <span class="source-badge">{{ label }}</span>
+            }
+          </div>
+        }
+        <a [href]="primaryApplyUrl()"
            target="_blank"
            rel="noopener noreferrer"
-           class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg
-                  bg-slate-800 hover:bg-slate-700 text-white transition-colors duration-150">
+           class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150">
           <mat-icon class="text-base">open_in_new</mat-icon>
-          View on Reed.co.uk
+          View on {{ sourceLabel() }}
         </a>
+      </div>
+
+      <div class="documents-area mt-5 pt-4">
+        @if (statusLabel() === 'NEW' || generating()) {
+          <button type="button"
+                  (click)="requestGeneration()"
+                  [disabled]="generating()"
+                  data-testid="generate-documents-button"
+                  class="dashboard-button dashboard-button-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
+            <mat-icon class="text-base">description</mat-icon>
+            {{ generating() ? 'Generating CV & Cover Letter...' : 'Generate CV & Cover Letter' }}
+          </button>
+        }
+        @if (generationMessage(); as message) {
+          <p class="generation-message mt-2 mb-0 text-sm" role="status">{{ message }}</p>
+        }
+        @if (generationError(); as errorMessage) {
+          <div class="generation-error mt-3 flex items-start justify-between gap-3 rounded-lg px-3 py-2">
+            <div class="flex items-start gap-2">
+              <mat-icon class="text-base">error_outline</mat-icon>
+              <p class="m-0 text-sm">{{ errorMessage }}</p>
+            </div>
+            <button type="button"
+                    (click)="dismissError()"
+                    class="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md"
+                    aria-label="Dismiss generation error">
+              <mat-icon class="text-base">close</mat-icon>
+            </button>
+          </div>
+        }
+        @if (downloads(); as files) {
+          <div class="generated-downloads mt-4 rounded-lg px-4 py-3">
+            <div class="flex items-center gap-2 text-sm font-semibold">
+              <mat-icon class="text-base">check_circle</mat-icon>
+              <span>CV and Cover Letter generated successfully</span>
+            </div>
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <h4 class="m-0 text-xs font-semibold uppercase tracking-wide">CV</h4>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button type="button"
+                          (click)="requestDownload(files.cv?.docx)"
+                          [disabled]="!files.cv?.docx"
+                          class="dashboard-button dashboard-button-compact inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">
+                    <mat-icon class="text-base">download</mat-icon>
+                    Download DOCX
+                  </button>
+                  <button type="button"
+                          (click)="requestDownload(files.cv?.pdf)"
+                          [disabled]="!files.cv?.pdf"
+                          class="dashboard-button dashboard-button-compact inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">
+                    <mat-icon class="text-base">download</mat-icon>
+                    Download PDF
+                  </button>
+                  @if (canUploadDocuments()) {
+                    <button type="button"
+                            (click)="openUpload('CV')"
+                            [disabled]="!cvDocumentId() || uploadingDocument() === 'CV'"
+                            class="dashboard-button dashboard-button-upload inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">
+                      <mat-icon class="text-base">upload_file</mat-icon>
+                      {{ uploadingDocument() === 'CV' ? 'Uploading...' : 'Upload CV' }}
+                    </button>
+                  }
+                </div>
+              </div>
+              <div>
+                <h4 class="m-0 text-xs font-semibold uppercase tracking-wide">Cover Letter</h4>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button type="button"
+                          (click)="requestDownload(files.coverLetter?.docx)"
+                          [disabled]="!files.coverLetter?.docx"
+                          class="dashboard-button dashboard-button-compact inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">
+                    <mat-icon class="text-base">download</mat-icon>
+                    Download DOCX
+                  </button>
+                  <button type="button"
+                          (click)="requestDownload(files.coverLetter?.pdf)"
+                          [disabled]="!files.coverLetter?.pdf"
+                          class="dashboard-button dashboard-button-compact inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">
+                    <mat-icon class="text-base">download</mat-icon>
+                    Download PDF
+                  </button>
+                  @if (canUploadDocuments()) {
+                    <button type="button"
+                            (click)="openUpload('COVER_LETTER')"
+                            [disabled]="!coverLetterDocumentId() || uploadingDocument() === 'COVER_LETTER'"
+                            class="dashboard-button dashboard-button-upload inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">
+                      <mat-icon class="text-base">upload_file</mat-icon>
+                      {{ uploadingDocument() === 'COVER_LETTER' ? 'Uploading...' : 'Upload Letter' }}
+                    </button>
+                  }
+                </div>
+              </div>
+            </div>
+            @if (documentsLocked()) {
+              <p class="document-lock-note mt-3 mb-0 text-sm">
+                Documents are locked after applying to preserve the application record.
+              </p>
+            }
+          </div>
+        }
       </div>
     </div>
   }
-
 </div>
+
+@if (uploadModalKind()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 py-6"
+       role="dialog"
+       aria-modal="true">
+    <div class="upload-modal w-full max-w-lg rounded-xl shadow-xl">
+      <div class="upload-modal-header flex items-center justify-between px-5 py-4">
+        <h3 class="m-0 text-base font-semibold">{{ uploadTitle() }}</h3>
+        <button type="button"
+                (click)="closeUpload()"
+                [disabled]="!!uploadingDocument()"
+                class="dashboard-icon-button inline-flex h-9 w-9 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Close upload dialog">
+          <mat-icon class="text-base">close</mat-icon>
+        </button>
+      </div>
+      <div class="px-5 py-4">
+        <p class="m-0 text-sm">
+          Upload your updated {{ replacementName() }} as a Microsoft Word .docx file. We'll replace the current version and update the PDF.
+        </p>
+
+        <label class="upload-dropzone mt-4 flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-6 text-center"
+               (dragover)="onDragOver($event)"
+               (drop)="onDrop($event)">
+          <mat-icon class="text-4xl">upload_file</mat-icon>
+          @if (selectedFile(); as file) {
+            <span class="mt-2 text-sm font-medium">{{ file.name }}</span>
+            <span class="mt-1 text-xs">{{ (file.size / 1024 / 1024).toFixed(2) }} MB</span>
+          } @else {
+            <span class="mt-2 text-sm font-medium">Drop DOCX here or choose file</span>
+            <span class="mt-1 text-xs">25MB maximum</span>
+          }
+          <input type="file"
+                 class="sr-only"
+                 accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                 (change)="onFileSelected($event)">
+        </label>
+
+        @if (uploadError(); as error) {
+          <p class="mt-3 mb-0 text-sm text-rose-700">{{ error }}</p>
+        }
+      </div>
+      <div class="upload-modal-actions flex justify-end gap-2 px-5 py-4">
+        <button type="button"
+                (click)="closeUpload()"
+                [disabled]="!!uploadingDocument()"
+                class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">
+          Cancel
+        </button>
+        <button type="button"
+                (click)="submitUpload()"
+                [disabled]="!selectedFile() || !!uploadingDocument()"
+                class="dashboard-button dashboard-button-primary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">
+          <mat-icon class="text-base">{{ uploadingDocument() ? 'hourglass_top' : 'upload_file' }}</mat-icon>
+          {{ uploadingDocument() ? 'Uploading...' : 'Upload' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

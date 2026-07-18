@@ -20,30 +20,80 @@
   </div>
 }
 
-<div class="min-h-screen bg-slate-50/60 font-sans antialiased text-slate-800 pb-16">
-  @if (!isLoggedIn()) {
+<div class="app-shell min-h-screen font-sans antialiased pb-16">
+  @if (paymentReturnStatus()) {
+    <main class="payment-return-page mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+      <section class="payment-return-card">
+        <span class="eyebrow">AI Credit checkout</span>
+        <h1>{{ paymentReturnTitle() }}</h1>
+        <p>{{ paymentReturnMessage() }}</p>
+        <button type="button" class="return-button" (click)="goToDashboard()">Return to dashboard</button>
+      </section>
+
+      @if (isLoggedIn() && paymentReturnStatus() === 'success') {
+        <app-payment-panel [userId]="userAccountId()"
+                           [authToken]="authToken"
+                           mode="purchase"
+                           (balanceChanged)="updateAiTokenBalance($event)"></app-payment-panel>
+      }
+    </main>
+  } @else if (!isLoggedIn()) {
     <!-- Splash Landing Page Onboarding flow -->
     <app-landing-auth (onboarded)="handleOnboarded($event)"></app-landing-auth>
   } @else {
     <!-- Top Navigation Header -->
     <app-navigation-bar [userName]="profileName()"
                         [userEmail]="profileEmail()"
+                        [aiTokenBalance]="aiTokenBalance()"
+                        [aiCreditPencePerToken]="aiCreditPencePerToken()"
+                        (refreshTokens)="refreshAiTokenBalance()"
                         (logout)="logout()"></app-navigation-bar>
 
     <!-- Main Grid Workspace Content wrapper -->
-    <main id="app-main-content" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    <main id="app-main-content" class="dashboard-main mx-auto px-4 sm:px-6 lg:px-8 mt-5">
+      @if (currentRoute() === 'payment') {
+        <section class="tokens-page">
+          <div class="tokens-page-header">
+            <div>
+              <span class="eyebrow">AI Credit</span>
+              <h1>Buy AI Credit</h1>
+              <p>Choose a credit package for AI-powered job search features.</p>
+            </div>
+          </div>
+          <app-payment-panel [userId]="userAccountId()"
+                             [authToken]="authToken"
+                             mode="purchase"
+                             (balanceChanged)="updateAiTokenBalance($event)"></app-payment-panel>
+        </section>
+      } @else if (currentRoute() === 'history') {
+        <section class="tokens-page">
+          <div class="tokens-page-header">
+            <div>
+              <span class="eyebrow">AI Credit</span>
+              <h1>Spending Log</h1>
+              <p>Track AI Credit purchases, AI feature usage, and running balances.</p>
+            </div>
+          </div>
+          <app-payment-panel [userId]="userAccountId()"
+                             [authToken]="authToken"
+                             mode="history"
+                             (balanceChanged)="updateAiTokenBalance($event)"></app-payment-panel>
+        </section>
+      } @else {
+        <div class="dashboard-grid grid grid-cols-1 gap-5 items-start">
         
         <!-- ================= LEFT COLUMN: CLAIMANT PROFILE (4 Cols) ================= -->
-        <section id="left-sidebar" class="lg:col-span-4 flex flex-col gap-6">
+        <section id="left-sidebar" class="dashboard-left flex flex-col gap-5">
           
           <!-- Claimant Professional Profile -->
           <app-claimant-profile [claimantName]="profileName()"
                                 [claimantEmail]="profileEmail()"
+                                [profile]="structuredProfile()"
                                 [skills]="profileSkills()"
                                 [experience]="profileExperience()"
                                 [aspirations]="profileAspirations()"
                                 [workPrefs]="profileWorkPrefs()"
+                                [authToken]="authToken"
                                 (profileSaved)="handleSaveProfile($event)"
                                 (logoutRequested)="logout()"
                                 (findJobsRequested)="triggerJobSearch()">
@@ -51,19 +101,92 @@
 
         </section>
 
-        <!-- ================= RIGHT COLUMN: JOB RESULTS (8 Cols) ================= -->
-        <section id="right-workspace" class="lg:col-span-8 flex flex-col gap-6">
-          <app-job-results #jobResults
-            [skills]="profileSkills()"
-            [experience]="profileExperience()"
-            [aspirations]="profileAspirations()"
-            [workPrefs]="profileWorkPrefs()"
-            [authToken]="authToken"
-            (notify)="showToast($event.message, $event.type)">
-          </app-job-results>
+        <!-- ================= CENTER COLUMN: WORKSPACE ================= -->
+        <section id="center-workspace" class="dashboard-center flex flex-col gap-5">
+          <div class="workspace-tabs">
+            <button type="button"
+                    class="workspace-tab"
+                    data-testid="workspace-tab-search"
+                    [class.workspace-tab-active]="activeWorkspaceTab() === 'search'"
+                    (click)="activeWorkspaceTab.set('search')">
+              <mat-icon>search</mat-icon>
+              <span>
+                Search Results
+                <small>Find new opportunities</small>
+              </span>
+            </button>
+            <button type="button"
+                    class="workspace-tab"
+                    data-testid="workspace-tab-applications"
+                    [class.workspace-tab-active]="activeWorkspaceTab() === 'applications'"
+                    (click)="activeWorkspaceTab.set('applications')">
+              <mat-icon>work_history</mat-icon>
+              <span>
+                My Applications
+                <small>Track and manage</small>
+              </span>
+            </button>
+            <button type="button"
+                    class="workspace-tab"
+                    data-testid="workspace-tab-documents"
+                    [class.workspace-tab-active]="activeWorkspaceTab() === 'documents'"
+                    (click)="activeWorkspaceTab.set('documents')">
+              <mat-icon>description</mat-icon>
+              <span>
+                Documents
+                <small>Your CVs and cover letters</small>
+              </span>
+            </button>
+          </div>
+
+          <div data-testid="workspace-panel-search" [hidden]="activeWorkspaceTab() !== 'search'">
+            <app-job-results #jobResults
+              [skills]="profileSkills()"
+              [experience]="profileExperience()"
+              [aspirations]="profileAspirations()"
+              [workPrefs]="profileWorkPrefs()"
+              [authToken]="authToken"
+              [userId]="userAccountId()"
+              (notify)="showToast($event.message, $event.type)"
+              (applicationChanged)="refreshAfterAiGeneration()">
+            </app-job-results>
+          </div>
+
+          <div data-testid="workspace-panel-applications" [hidden]="activeWorkspaceTab() !== 'applications'">
+            <app-my-applications #myApplications
+              [authToken]="authToken"
+              [userId]="userAccountId()"
+              [selectedApplicationId]="selectedApplicationId()"
+              (notify)="showToast($event.message, $event.type)"
+              (applicationChanged)="refreshAfterAiGeneration()">
+            </app-my-applications>
+          </div>
+
+          <div data-testid="workspace-panel-documents" [hidden]="activeWorkspaceTab() !== 'documents'">
+            <app-documents-workspace #documentsWorkspace
+              [authToken]="authToken"
+              [userId]="userAccountId()"
+              [selectedApplicationId]="selectedApplicationId()"
+              (notify)="showToast($event.message, $event.type)"
+              (applicationChanged)="refreshAfterAiGeneration()"
+              (openApplication)="openApplicationFromDocument($event)">
+            </app-documents-workspace>
+          </div>
         </section>
 
+        <aside id="right-sidebar" class="dashboard-right flex flex-col gap-5">
+          <app-payment-panel [userId]="userAccountId()"
+                             [authToken]="authToken"
+                             mode="summary"
+                             (balanceChanged)="updateAiTokenBalance($event)"></app-payment-panel>
+
+          <app-reporting-panel #reportingPanel
+                               [userId]="userAccountId()"
+                               [authToken]="authToken"></app-reporting-panel>
+        </aside>
+
       </div>
+      }
     </main>
   }
 </div>

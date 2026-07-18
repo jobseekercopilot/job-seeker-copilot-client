@@ -1,34 +1,24 @@
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
+import {
+  Location as UKLocation,
+  LocationResponse as LocationGatewayResponse,
+  LocationService as GeneratedLocationService
+} from '../api/location';
 
-export interface UKLocation {
-  id: string;
-  name: string;
-  postcode: string;
-  region: string;
-}
-
-export interface LocationGatewayResponse {
-  statusCode: number;
-  success: boolean;
-  message: string;
-  locations: UKLocation[];
-}
+export type { UKLocation, LocationGatewayResponse };
 
 @Injectable({
   providedIn: 'root'
 })
 export class LocationService {
-  private apiUrl = '/api';
-
-  constructor(private http: HttpClient) {}
+  private locationApi = inject(GeneratedLocationService);
 
   search(query: string): Observable<LocationGatewayResponse> {
-    return this.http.get<LocationGatewayResponse>(`${this.apiUrl}/locations?q=${encodeURIComponent(query)}`);
+    return this.locationApi.searchLocations(query);
   }
 
   getByPostcode(postcode: string): Observable<LocationGatewayResponse> {
-    return this.http.get<LocationGatewayResponse>(`${this.apiUrl}/postcodes/${encodeURIComponent(postcode)}`);
+    return this.locationApi.getLocationByPostcode(postcode);
   }
 }

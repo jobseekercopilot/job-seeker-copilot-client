@@ -1,0 +1,152 @@
+<section class="applications-workspace" data-testid="applications-workspace">
+  <div class="applications-toolbar">
+    <div class="status-filters" aria-label="Application status filters">
+      @for (filter of filters; track filter.key) {
+        <button type="button"
+                class="status-filter"
+                [class.status-filter-active]="selectedFilter() === filter.key"
+                (click)="selectFilter(filter.key)">
+          <span>{{ filter.label }}</span>
+          <strong>{{ countFor(filter.key) }}</strong>
+        </button>
+      }
+    </div>
+    <button type="button" class="refresh-button" (click)="refresh()" [disabled]="loading()">
+      <mat-icon [class.spin]="loading()">refresh</mat-icon>
+      Refresh
+    </button>
+  </div>
+
+  @if (error()) {
+    <div class="applications-error">{{ error() }}</div>
+  }
+
+  @if (loading()) {
+    <div class="applications-loading">Loading saved applications...</div>
+  } @else if (filteredApplications().length === 0) {
+    <div class="applications-empty">
+      <mat-icon>folder_open</mat-icon>
+      <h3>No applications in this view</h3>
+      <p>Generated documents and tracked applications will appear here after you interact with a job.</p>
+    </div>
+  } @else {
+    <div class="application-list">
+      @for (application of filteredApplications(); track applicationId(application)) {
+        <article class="application-card"
+                 data-testid="application-card"
+                 data-demo-focus="application-card"
+                 [attr.data-demo-focus-id]="applicationFocusId(application)"
+                 [attr.data-demo-focus-group]="applicationFocusGroup(application)"
+                 [class.application-card-selected]="isSelected(application)">
+          <div class="application-card-header">
+            <div class="application-title">
+              <h3>{{ application.jobTitle || 'Untitled role' }}</h3>
+              <div class="application-meta">
+                <span>{{ application.companyName || 'Unknown company' }}</span>
+                @if (application.location) {
+                  <span>{{ application.location }}</span>
+                }
+                @if (postedDate(application)) {
+                  <span>Posted {{ formatDate(postedDate(application)) }}</span>
+                }
+              </div>
+            </div>
+            <span class="status-badge" [class]="statusClass(application)">
+              {{ statusLabel(application.status) }}
+            </span>
+          </div>
+
+          <div class="application-details">
+            <span>Created {{ formatDate(createdDate(application), true) }}</span>
+            @if (application.appliedAt) {
+              <span>Applied {{ formatDate(application.appliedAt, true) }}</span>
+            }
+            @if (interviewDate(application)) {
+              <span>Interview {{ formatDate(interviewDate(application), true) }}</span>
+            }
+            @if (offerDate(application)) {
+              <span>Offer {{ formatDate(offerDate(application), true) }}</span>
+            }
+            <span>{{ documentState(application) }}</span>
+          </div>
+
+          <div class="timeline" aria-label="Application progress">
+            @for (step of timeline(application); track step.key) {
+              <div class="timeline-step" [class.timeline-step-done]="step.completedAt">
+                <span class="timeline-dot"></span>
+                <div>
+                  <strong>{{ step.label }}</strong>
+                  @if (step.completedAt) {
+                    <small>{{ formatDate(step.completedAt, true) }}</small>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+
+          <div class="application-footer">
+            <span class="application-source">{{ sourceText(application) }}</span>
+            <details class="actions-menu"
+                     data-demo-focus="application-status-control"
+                     [attr.data-demo-focus-group]="applicationFocusGroup(application)">
+              <summary>
+                View Application
+                <mat-icon>expand_more</mat-icon>
+              </summary>
+              <div class="actions-list">
+                <button type="button"
+                        [disabled]="!downloadGroup(application, 'CV')?.docx"
+                        (click)="downloadFile(downloadGroup(application, 'CV')?.docx)">
+                  Download CV DOCX
+                </button>
+                <button type="button"
+                        [disabled]="!downloadGroup(application, 'CV')?.pdf"
+                        (click)="downloadFile(downloadGroup(application, 'CV')?.pdf)">
+                  Download CV PDF
+                </button>
+                <button type="button"
+                        [disabled]="!downloadGroup(application, 'COVER_LETTER')?.docx"
+                        (click)="downloadFile(downloadGroup(application, 'COVER_LETTER')?.docx)">
+                  Download Cover Letter DOCX
+                </button>
+                <button type="button"
+                        [disabled]="!downloadGroup(application, 'COVER_LETTER')?.pdf"
+                        (click)="downloadFile(downloadGroup(application, 'COVER_LETTER')?.pdf)">
+                  Download Cover Letter PDF
+                </button>
+
+                @if (canUploadDocuments(application)) {
+                  <input #cvInput type="file" class="file-input"
+                         accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                         (change)="onFileSelected(application, 'CV', $event)" />
+                  <input #coverLetterInput type="file" class="file-input"
+                         accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                         (change)="onFileSelected(application, 'COVER_LETTER', $event)" />
+                  <button type="button"
+                          [disabled]="isUploading(application, 'CV')"
+                          (click)="cvInput.click()">
+                    {{ isUploading(application, 'CV') ? 'Uploading CV...' : 'Upload CV' }}
+                  </button>
+                  <button type="button"
+                          [disabled]="isUploading(application, 'COVER_LETTER')"
+                          (click)="coverLetterInput.click()">
+                    {{ isUploading(application, 'COVER_LETTER') ? 'Uploading Letter...' : 'Upload Cover Letter' }}
+                  </button>
+                }
+
+                @for (action of actions(application); track action.label) {
+                  <button type="button"
+                          [class.danger-action]="action.danger"
+                          [disabled]="isUpdating(application)"
+                          (click)="updateStatus(application, action.status)">
+                    {{ isUpdating(application) ? 'Updating...' : action.label }}
+                  </button>
+                }
+              </div>
+            </details>
+          </div>
+        </article>
+      }
+    </div>
+  }
+</section>

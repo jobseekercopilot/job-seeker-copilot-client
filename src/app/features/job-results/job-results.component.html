@@ -1,35 +1,112 @@
-<div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+<div class="job-results-panel rounded-2xl overflow-hidden" data-testid="job-results-workspace">
 
   <!-- Header bar -->
-  <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-    <div class="flex items-center gap-3">
-      <mat-icon class="text-slate-400">work</mat-icon>
-      <h2 class="text-lg font-semibold text-slate-800 m-0">Job Matches</h2>
+  <div class="job-results-header flex flex-col gap-4 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="min-w-0">
+      <div class="flex items-center gap-3">
+        <mat-icon class="panel-icon">work</mat-icon>
+        <h2 class="text-lg font-semibold m-0">Job Matches</h2>
+      </div>
     </div>
-    <button (click)="refresh()"
-            [disabled]="loading()"
-            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg
-                   bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-800
-                   border border-slate-200 transition-colors duration-150
-                   disabled:opacity-50 disabled:cursor-not-allowed">
-      <mat-icon class="text-lg" [class.animate-spin]="loading()">refresh</mat-icon>
-      <span>{{ loading() ? 'Searching...' : 'Refresh' }}</span>
-    </button>
+    <div class="flex flex-wrap items-center gap-2">
+      @if (!loading() && !error() && roleResults().length > 0) {
+        <label class="sort-control inline-flex items-center gap-2">
+          <span class="text-xs font-semibold">Sort</span>
+          <select class="sort-select"
+                  [value]="selectedSort()"
+                  (change)="selectSort($any($event.target).value)">
+            @for (option of sortOptions; track option.value) {
+              <option [value]="option.value">{{ option.label }}</option>
+            }
+            <optgroup label="Coming soon">
+              @for (option of futureSortOptions; track option) {
+                <option disabled>{{ option }}</option>
+              }
+            </optgroup>
+          </select>
+        </label>
+      }
+      @if (!loading() && !error() && publisherOptions().length > 1) {
+        <button type="button"
+                (click)="toggleFilters()"
+                class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150"
+                [class.filter-button-active]="filtersOpen() || sourceFilterActive()"
+                [attr.aria-expanded]="filtersOpen()">
+          <mat-icon class="text-lg">filter_list</mat-icon>
+          <span>
+            @if (sourceFilterActive()) {
+              Filter: {{ selectedPublisher() }}
+            } @else {
+              Filter
+            }
+          </span>
+        </button>
+      }
+      <button (click)="refresh()"
+              [disabled]="loading()"
+              class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
+        <mat-icon class="text-lg" [class.animate-spin]="loading()">refresh</mat-icon>
+        <span>{{ loading() ? 'Searching...' : 'Refresh' }}</span>
+      </button>
+    </div>
   </div>
+
+  @if (!loading() && !error() && filtersOpen() && publisherOptions().length > 1) {
+    <div class="filter-panel mx-4 mt-4 rounded-lg p-4">
+      <div class="mb-3 flex items-center justify-between gap-3">
+        <h3 class="m-0 text-sm font-semibold">Filters</h3>
+      </div>
+      <section class="filter-section">
+        <h4 class="filter-section-title m-0 mb-2 text-xs font-semibold uppercase tracking-wider">Sources</h4>
+        <div class="flex flex-wrap gap-2" aria-label="Job site filters">
+          @for (option of publisherOptions(); track option.label) {
+            <button type="button"
+                    (click)="selectPublisher(option.label)"
+                    class="source-chip inline-flex items-center gap-2 border px-3 py-1.5 text-sm font-medium transition-colors"
+                    [class.source-chip-active]="selectedPublisher() === option.label">
+              <span>{{ option.label }}</span>
+              <span class="text-xs opacity-80">({{ option.count }})</span>
+            </button>
+          }
+        </div>
+      </section>
+      <div class="future-filter-sections mt-4 grid gap-2 sm:grid-cols-2">
+        @for (section of futureFilterSections; track section) {
+          <div class="future-filter-section rounded-md px-3 py-2">
+            <span class="text-xs font-semibold">{{ section }}</span>
+            <span class="text-xs">Future filter</span>
+          </div>
+        }
+      </div>
+    </div>
+  }
 
   <!-- Content area -->
   <div class="px-6 py-5 space-y-4">
+    @if (!loading() && !error() && roleResults().length > 0) {
+      <div class="flex flex-wrap gap-2" aria-label="Target role filters">
+        @for (group of roleResults(); track group.targetRole) {
+          <button type="button"
+                  (click)="selectTargetRole(group.targetRole)"
+                  class="role-tab inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors"
+                  [class.role-tab-active]="selectedTargetRole() === group.targetRole">
+            <span>{{ group.targetRole }}</span>
+            <span class="text-xs opacity-80">({{ group.jobs.length }})</span>
+          </button>
+        }
+      </div>
+    }
 
     <!-- Loading skeleton -->
     @if (loading()) {
       <div class="space-y-4">
         @for (skeleton of [1, 2, 3]; track skeleton) {
-          <div class="animate-pulse border border-slate-200 rounded-xl p-5">
-            <div class="h-5 bg-slate-200 rounded w-3/4 mb-3"></div>
-            <div class="h-4 bg-slate-200 rounded w-1/2 mb-3"></div>
+          <div class="skeleton-card animate-pulse rounded-xl p-5">
+            <div class="h-5 rounded w-3/4 mb-3"></div>
+            <div class="h-4 rounded w-1/2 mb-3"></div>
             <div class="flex gap-4">
-              <div class="h-4 bg-slate-200 rounded w-1/4"></div>
-              <div class="h-4 bg-slate-200 rounded w-1/4"></div>
+              <div class="h-4 rounded w-1/4"></div>
+              <div class="h-4 rounded w-1/4"></div>
             </div>
           </div>
         }
@@ -38,34 +115,83 @@
 
     <!-- Error state -->
     @if (error(); as errMsg) {
-      <div class="flex items-start gap-3 bg-rose-50 border border-rose-200 rounded-xl p-4">
+      <div class="error-state flex items-start gap-3 rounded-xl p-4">
         <mat-icon class="text-rose-500 text-lg flex-shrink-0">error_outline</mat-icon>
-        <p class="text-sm text-rose-700 m-0">{{ errMsg }}</p>
+        <p class="text-sm m-0">{{ errMsg }}</p>
+      </div>
+    }
+
+    @for (warning of providerWarnings(); track warning) {
+      <div class="warning-state flex items-start gap-3 rounded-xl p-4">
+        <mat-icon class="text-amber-500 text-lg flex-shrink-0">warning</mat-icon>
+        <p class="text-sm m-0">{{ warning }}</p>
       </div>
     }
 
     <!-- Empty state (no error, not loading, zero jobs) -->
-    @if (!loading() && !error() && jobs().length === 0) {
+    @if (!loading() && !error() && filteredJobs().length === 0) {
       <div class="flex flex-col items-center justify-center py-12 text-center">
-        <mat-icon class="text-slate-300 text-5xl mb-4">search_off</mat-icon>
-        <p class="text-slate-500 text-sm m-0">No job matches found based on your current profile.</p>
-        <p class="text-slate-400 text-xs mt-1">Try updating your skills, aspirations, or work preferences.</p>
+        <mat-icon class="empty-icon text-5xl mb-4">search_off</mat-icon>
+        <p class="text-sm m-0">No job matches found based on your current profile.</p>
+        <p class="text-xs mt-1">Try updating your skills, aspirations, or work preferences.</p>
       </div>
     }
 
     <!-- Results count -->
-    @if (totalResults() > 0 && !loading()) {
-      <p class="text-xs font-medium text-slate-500 uppercase tracking-wider m-0">
-        {{ totalResults() }} match{{ totalResults() === 1 ? '' : 'es' }} found
-      </p>
+    @if (filteredJobs().length > 0 && !loading()) {
+      <div class="results-summary">
+        <p class="results-count text-xs font-medium uppercase tracking-wider m-0">
+          Showing {{ ((currentPage() - 1) * jobsPerPage) + 1 }}-{{ Math.min(currentPage() * jobsPerPage, filteredJobs().length) }}
+          of {{ filteredJobs().length }} match{{ filteredJobs().length === 1 ? '' : 'es' }}
+          for {{ selectedTargetRole() }}
+        </p>
+      </div>
     }
 
     <!-- Job cards grid -->
     <div class="grid gap-4">
-      @for (job of jobs(); track trackByJobId($index, job)) {
-        <app-job-card [job]="job"></app-job-card>
+      @for (job of paginatedJobs(); track trackByJobId($index, job)) {
+        <app-job-card
+          [job]="job"
+          [generating]="generatingJobIds().has(job.id ?? '')"
+          [generationMessage]="generationMessages()[job.id ?? ''] ?? null"
+          [generationError]="generationErrors()[job.id ?? ''] ?? null"
+          [downloads]="generationDownloads()[job.id ?? ''] ?? null"
+          [cvDocumentId]="generatedDocumentIds()[job.id ?? '']?.cvDocumentId ?? job.cvDocumentId ?? null"
+          [coverLetterDocumentId]="generatedDocumentIds()[job.id ?? '']?.coverLetterDocumentId ?? job.coverLetterDocumentId ?? null"
+          [uploadingDocument]="uploadingDocuments()[job.id ?? ''] ?? null"
+          [updatingStatus]="updatingApplicationStatuses()[job.id ?? ''] ?? null"
+          (generateDocuments)="generateDocuments($event)"
+          (updateApplicationStatus)="updateApplicationStatus(job, $event)"
+          (withdrawGeneratedApplication)="withdrawGeneratedApplication(job)"
+          (downloadFile)="downloadFile($event)"
+          (uploadReplacement)="uploadReplacement(job, $event)"
+          (dismissGenerationError)="dismissGenerationError($event)">
+        </app-job-card>
       }
     </div>
+
+    @if (filteredJobs().length > jobsPerPage && !loading()) {
+      <div class="pagination-row flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <p class="m-0 text-sm">Page {{ currentPage() }} of {{ totalPages() }}</p>
+        <div class="flex gap-2">
+          <button type="button"
+                  (click)="previousPage()"
+                  [disabled]="currentPage() === 1"
+                  class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">
+            <mat-icon class="text-base">chevron_left</mat-icon>
+            Previous
+          </button>
+          <button type="button"
+                  (click)="nextPage()"
+                  [disabled]="currentPage() === totalPages()"
+                  class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">
+            Next
+            <mat-icon class="text-base">chevron_right</mat-icon>
+          </button>
+        </div>
+      </div>
+    }
 
   </div>
 </div>

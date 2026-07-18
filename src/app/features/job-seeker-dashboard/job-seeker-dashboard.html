@@ -71,7 +71,7 @@
       <h2>Work Preferences</h2>
 
       <div class="form-group">
-        <label>Employment Type</label>
+        <p>Employment Type</p>
         <div class="checkbox-group">
           <label class="checkbox-label">
             <input type="checkbox" value="FULL_TIME" formControlName="employmentType" />
@@ -113,16 +113,19 @@
     </button>
   </form>
 
-  <div *ngIf="error" class="error-message">
-    {{ error }}
-  </div>
+  @if (error) {
+    <div class="error-message">{{ error }}</div>
+  }
 
-  <div *ngIf="totalResults > 0" class="results-summary">
-    <h2>Search Results ({{ totalResults }} jobs found)</h2>
-  </div>
+  @if (totalResults > 0) {
+    <div class="results-summary">
+      <h2>Search Results ({{ totalResults }} jobs found)</h2>
+    </div>
+  }
 
   <div class="jobs-list">
-    <div *ngFor="let job of jobs" class="job-card">
+    @for (job of jobs; track job.id) {
+    <div class="job-card">
       <div class="job-header">
         <h3 class="job-title">{{ job.title }}</h3>
         <span class="job-company">{{ job.company }}</span>
@@ -150,14 +153,17 @@
             class="score-value"
             [style.color]="getMatchScoreColor(job.matchScore)"
           >
-            {{ (job.matchScore * 100).toFixed(0) }}%
+            {{ ((job.matchScore ?? 0) * 100).toFixed(0) }}%
           </span>
         </div>
       </div>
     </div>
+    }
   </div>
 
-  <div *ngIf="!loading && jobs.length === 0 && !error" class="no-results">
-    <p>No jobs to display. Start by searching for positions above.</p>
-  </div>
+  @if (!loading && jobs.length === 0 && !error) {
+    <div class="no-results">
+      <p>No jobs to display. Start by searching for positions above.</p>
+    </div>
+  }
 </div>

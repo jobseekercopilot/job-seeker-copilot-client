@@ -1,14 +1,31 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { JobSearchRequest, JobSearchResponse } from '../models/job-search.model';
+import { catchError, map, switchMap } from 'rxjs/operators';
+import { of } from 'rxjs';
+import {
+  ApplicationRecordResponse,
+  JobSearchRequest,
+  JobSearchResponse,
+  JobSearchService as GeneratedJobSearchService,
+  UpdateApplicationStatusRequest
+} from '../api/job-finder';
+import { LocationService } from './location.service';
+
+export interface WithdrawGeneratedApplicationResponse {
+  applicationId?: string;
+  status?: 'NEW';
+  withdrawn?: boolean;
+  message?: string;
+}
 
 @Injectable({
   providedIn: 'root'
 })
 export class JobService {
+  private jobSearchApi = inject(GeneratedJobSearchService);
   private http = inject(HttpClient);
-  private baseUrl = '/api/jobs';
+  private locationService = inject(LocationService);
 
   /**
    * Calls POST /api/jobs/search with the claimant profile as a JSON body.
@@ -25,7 +42,8 @@ export class JobService {
     experience: string,
     aspirations: string,
     workPrefs: string,
-    token: string
+    token: string,
+    userId: string
   ): Observable<JobSearchResponse> {
     // Parse aspirations into desired roles
     const desiredRoles = aspirations
@@ -53,13 +71,25 @@ export class JobService {
 
     // Default location from work prefs postcode or use a broad search
     const locations: string[] = [];
+    let homeDisplayName: string | undefined;
+    let homePostcode: string | undefined;
+    let homeLatitude: number | undefined;
+    let homeLongitude: number | undefined;
     try {
       const prefs = JSON.parse(workPrefs);
       if (prefs.postcode) {
-        locations.push(prefs.postcode);
+        homePostcode = String(prefs.postcode).trim().toUpperCase();
+        locations.push(homePostcode);
       }
       if (prefs.region) {
-        locations.push(prefs.region);
+        homeDisplayName = String(prefs.region).trim();
+        locations.push(homeDisplayName);
+      }
+      if (typeof prefs.latitude === 'number') {
+        homeLatitude = prefs.latitude;
+      }
+      if (typeof prefs.longitude === 'number') {
+        homeLongitude = prefs.longitude;
       }
     } catch {
       // Fallback
@@ -83,17 +113,87 @@ export class JobService {
         employmentType,
         remotePreference,
         companySize: [],
-        culture: []
+        culture: [],
+        homeLatitude,
+        homeLongitude
+      },
+      homeLocation: {
+        displayName: homeDisplayName,
+        postcode: homePostcode,
+        latitude: homeLatitude,
+        longitude: homeLongitude
       }
     };
 
-    const headers = new HttpHeaders({
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`
-    });
+    return this.resolveHomeLocation(body).pipe(
+      switchMap(searchBody => this.jobSearchApi.searchJobs(userId || undefined, searchBody))
+    );
+  }
 
-    return this.http.post<JobSearchResponse>(`${this.baseUrl}/search`, body, {
-      headers
-    });
+  private resolveHomeLocation(body: JobSearchRequest): Observable<JobSearchRequest> {
+    const homeLocation = body.homeLocation;
+    if ((homeLocation?.latitude != null && homeLocation?.longitude != null) || !homeLocation?.postcode) {
+      return of(body);
+    }
+
+    return this.locationService.getByPostcode(homeLocation.postcode).pipe(
+      map(response => {
+        const resolved = response.locations?.[0];
+        if (!resolved || resolved.latitude == null || resolved.longitude == null) {
+          return body;
+        }
+        return {
+          ...body,
+          workPreferences: {
+            ...body.workPreferences,
+            homeLatitude: resolved.latitude,
+            homeLongitude: resolved.longitude
+          },
+          homeLocation: {
+            displayName: resolved.name ?? homeLocation.displayName,
+            postcode: resolved.postcode ?? homeLocation.postcode,
+            latitude: resolved.latitude,
+            longitude: resolved.longitude
+          }
+        };
+      }),
+      catchError(() => of(body))
+    );
+  }
+
+  updateApplicationStatus(
+    applicationId: string,
+    status: UpdateApplicationStatusRequest['status'],
+    token: string,
+    userId: string
+  ): Observable<ApplicationRecordResponse> {
+    return this.http.patch<ApplicationRecordResponse>(
+      `/api/jobs/applications/${encodeURIComponent(applicationId)}/status`,
+      { status },
+      { headers: this.applicationActionHeaders(token, userId) }
+    );
+  }
+
+  withdrawGeneratedApplication(
+    applicationId: string,
+    token: string,
+    userId: string
+  ): Observable<WithdrawGeneratedApplicationResponse> {
+    return this.http.post<WithdrawGeneratedApplicationResponse>(
+      `/api/jobs/applications/${encodeURIComponent(applicationId)}/withdraw-generated`,
+      {},
+      { headers: this.applicationActionHeaders(token, userId) }
+    );
+  }
+
+  private applicationActionHeaders(token: string, userId: string): HttpHeaders {
+    let headers = new HttpHeaders();
+    if (token) {
+      headers = headers.set('Authorization', token.startsWith('Bearer ') ? token : `Bearer ${token}`);
+    }
+    if (userId) {
+      headers = headers.set('X-User-Id', userId);
+    }
+    return headers;
   }
 }

@@ -1,4 +1,68 @@
 /* Local layout additions for landing page */
+:host {
+  font-size: 14px;
+}
+
+#auth-panel-card {
+  border-radius: var(--radius-card) !important;
+  padding: 1.25rem !important;
+}
+
+#auth-panel-card .rounded-2xl,
+#auth-panel-card .rounded-xl,
+#auth-panel-card .rounded-lg {
+  border-radius: var(--radius-control) !important;
+}
+
+#auth-panel-card input,
+#auth-panel-card select,
+#auth-panel-card button {
+  font-size: 0.82rem !important;
+}
+
+#auth-panel-card button {
+  padding-bottom: 0.65rem !important;
+  padding-top: 0.65rem !important;
+}
+
+.brand-logo {
+  display: block;
+  height: 3.25rem;
+  width: 3.25rem;
+}
+
+.bg-indigo-600,
+.hover\:bg-indigo-700:hover,
+.bg-slate-900,
+.hover\:bg-slate-800:hover {
+  background-color: var(--color-primary) !important;
+}
+
+#btn-next-step:hover:not(:disabled),
+#btn-submit-signup:hover:not(:disabled),
+#btn-submit-signin:hover:not(:disabled) {
+  background-color: var(--color-primary-hover) !important;
+}
+
+.shadow-indigo-100 {
+  box-shadow: none !important;
+}
+
+.text-indigo-600,
+.text-indigo-700 {
+  color: var(--color-primary) !important;
+}
+
+.bg-indigo-50,
+.bg-indigo-100\/60 {
+  background-color: var(--color-soft-blue) !important;
+}
+
+.border-indigo-100,
+.border-indigo-200 {
+  border-color: #bfdbfe !important;
+}
+
 .animate-fade-in {
   animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

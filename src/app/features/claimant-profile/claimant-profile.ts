@@ -1,117 +1,173 @@
-import { ChangeDetectionStrategy, Component, input, output, signal, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output, signal, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
-import { parseWorkPrefs, WorkPreference } from '../../utils/work-prefs';
+import { FormsModule } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
 import { LocationService, UKLocation } from '../../services/location.service';
+import { TagInputComponent } from '../../shared/tag-input/tag-input';
+import { QualificationFormComponent } from '../../shared/qualification-form/qualification-form';
+import { RoleFormComponent } from '../../shared/role-form/role-form';
+import type {
+  GatewayResponse,
+  UserProfile,
+  Qualification,
+  Role
+} from '../../api';
+import { AspirationsTargetWeeklyHoursEnum, ProfileService } from '../../api';
+import {
+  normaliseProfile,
+  serialiseProfile
+} from '../../models/user-profile.model';
+
+type TargetWeeklyHours = AspirationsTargetWeeklyHoursEnum;
 
 @Component({
   selector: 'app-claimant-profile',
-  imports: [CommonModule, MatIconModule],
+  imports: [
+    CommonModule,
+    MatIconModule,
+    FormsModule,
+    TagInputComponent,
+    QualificationFormComponent,
+    RoleFormComponent
+  ],
+  host: {
+    'data-demo-focus': 'app-claimant-profile',
+    'data-demo-focus-id': 'claimant-profile'
+  },
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './claimant-profile.html',
   styleUrl: './claimant-profile.css'
 })
 export class ClaimantProfileComponent {
+  private userManagementApi = inject(ProfileService);
   private locationService = inject(LocationService);
 
-  claimantName = input<string>('Sarah Jenkins');
-  claimantEmail = input<string>('sarah.jenkins@gmail.com');
+  // Inputs remain as free-text strings for backward compatibility with app.ts and localStorage
+  claimantName = input<string>('');
+  claimantEmail = input<string>('');
+  authToken = input<string>('');
+  profile = input<UserProfile | null>(null);
   skills = input<string>('');
   experience = input<string>('');
   aspirations = input<string>('');
   workPrefs = input<string>('');
 
-  profileSaved = output<{ skills: string; experience: string; aspirations: string; workPrefs: string }>();
+  // Emit structured UserProfile JSON for API submission
+  profileSaved = output<{ profile: UserProfile; apiResult?: GatewayResponse; apiError?: unknown }>();
   logoutRequested = output<void>();
   findJobsRequested = output<void>();
 
   isEditing = signal(false);
+  isSaving = signal(false);
 
-  // Local write cache
-  localSkills = signal('');
-  localExperience = signal('');
-  localAspirations = signal('');
+  // ===== Structured Form State =====
+  // These are initialised from the free-text inputs when editing begins.
+  localSkills = signal<string[]>([]);
+  localQualifications = signal<Qualification[]>([]);
+  localRoles = signal<Role[]>([]);
+  localTargetRoles = signal<string[]>([]);
+  localTargetWeeklyHours = signal<TargetWeeklyHours>(AspirationsTargetWeeklyHoursEnum.FullTime);
 
-  // Structured Work Preferences Write Cache
-  localTargetHours = signal('');
+  // Work Preferences
   localPostcode = signal('');
-  localCommuteDistance = signal('');
   localRegion = signal('');
   localAdminDistrict = signal('');
+  localLatitude = signal<number | undefined>(undefined);
+  localLongitude = signal<number | undefined>(undefined);
+  localCommuteRange = signal<number>(10);
 
   locationSuggestions = signal<UKLocation[]>([]);
   showLocationDropdown = signal<boolean>(false);
 
-  targetHoursOptions = [
-    'Full-Time (35-40 hours)',
-    'Part-Time (16-30 hours)',
-    'Part-Time (Under 16 hours)',
-    'Flexible / Any Hours'
-  ];
+  commuteDistanceOptions = [5, 10, 15, 25, 50];
 
-  commuteDistanceOptions = [
-    '5 miles',
-    '10 miles',
-    '15 miles',
-    '25 miles',
-    '50 miles'
-  ];
+  constructor() {
+    effect(() => {
+      const profile = this.profile() || normaliseProfile({
+        skills: this.skills(),
+        experience: this.experience(),
+        aspirations: this.aspirations(),
+        workPrefs: this.workPrefs()
+      });
 
-  parsedWorkPrefs(): WorkPreference {
-    return parseWorkPrefs(this.workPrefs());
+      if (!this.isEditing()) this.populateForm(profile);
+    });
   }
 
   startEditing() {
-    this.localSkills.set(this.skills());
-    this.localExperience.set(this.experience());
-    this.localAspirations.set(this.aspirations());
-    
-    // Populate structured preferences from workPrefs input
-    const parsed = parseWorkPrefs(this.workPrefs());
-    this.localTargetHours.set(parsed.hours);
-    this.localPostcode.set(parsed.postcode);
-    this.localCommuteDistance.set(parsed.distance);
-    this.localRegion.set(parsed.region);
-    this.localAdminDistrict.set(parsed.adminDistrict);
+    const profile = this.profile() || normaliseProfile({
+      skills: this.skills(),
+      experience: this.experience(),
+      aspirations: this.aspirations(),
+      workPrefs: this.workPrefs()
+    });
 
+    this.populateForm(profile);
     this.isEditing.set(true);
+  }
+
+  private populateForm(profile: UserProfile): void {
+    this.localSkills.set(profile.skills || []);
+    this.localQualifications.set(profile.qualifications || []);
+    this.localRoles.set(profile.roles || []);
+    this.localTargetRoles.set(profile.aspirations?.targetRoles || []);
+    this.localTargetWeeklyHours.set(profile.aspirations?.targetWeeklyHours || AspirationsTargetWeeklyHoursEnum.FullTime);
+    this.localPostcode.set(profile.workPreferences?.location?.postcode || '');
+    this.localRegion.set(profile.workPreferences?.location?.region || '');
+    this.localAdminDistrict.set(profile.workPreferences?.location?.adminDistrict || '');
+    this.localLatitude.set(profile.workPreferences?.location?.latitude);
+    this.localLongitude.set(profile.workPreferences?.location?.longitude);
+    this.localCommuteRange.set(profile.workPreferences?.commuteRange || 10);
   }
 
   cancelEditing() {
     this.isEditing.set(false);
   }
 
-  save() {
-    const formattedPrefs = JSON.stringify({
-      hours: this.localTargetHours(),
-      postcode: this.localPostcode().trim().toUpperCase(),
-      distance: this.localCommuteDistance(),
-      region: this.localRegion(),
-      adminDistrict: this.localAdminDistrict()
-    });
-
-    this.profileSaved.emit({
+  async save(): Promise<void> {
+    const profile: UserProfile = serialiseProfile({
       skills: this.localSkills(),
-      experience: this.localExperience(),
-      aspirations: this.localAspirations(),
-      workPrefs: formattedPrefs
+      qualifications: this.localQualifications(),
+      roles: this.localRoles(),
+      aspirations: {
+        targetRoles: this.localTargetRoles(),
+        targetWeeklyHours: this.localTargetWeeklyHours()
+      },
+      workPreferences: {
+        location: {
+          postcode: this.localPostcode().trim().toUpperCase(),
+          region: this.localRegion(),
+          adminDistrict: this.localAdminDistrict(),
+          latitude: this.localLatitude(),
+          longitude: this.localLongitude()
+        },
+        commuteRange: this.localCommuteRange()
+      }
     });
-    this.isEditing.set(false);
+
+    this.isSaving.set(true);
+    try {
+      const apiResult = await firstValueFrom(
+        this.userManagementApi.updateProfile(
+          profile,
+          this.claimantEmail().trim().toLowerCase(),
+          this.authorizationHeader()
+        )
+      );
+      this.profileSaved.emit({ profile, apiResult });
+      this.isEditing.set(false);
+    } catch (apiError) {
+      this.profileSaved.emit({ profile, apiError });
+    } finally {
+      this.isSaving.set(false);
+    }
   }
 
-  handleUpdateSkills(event: Event) {
-    const el = event.target as HTMLTextAreaElement;
-    this.localSkills.set(el.value);
-  }
-
-  handleUpdateExperience(event: Event) {
-    const el = event.target as HTMLTextAreaElement;
-    this.localExperience.set(el.value);
-  }
-
-  handleUpdateAspirations(event: Event) {
-    const el = event.target as HTMLInputElement;
-    this.localAspirations.set(el.value);
+  private authorizationHeader(): string | undefined {
+    const token = this.authToken().trim();
+    if (!token) return undefined;
+    return token.startsWith('Bearer ') ? token : `Bearer ${token}`;
   }
 
   onLocationInputChange(query: string) {
@@ -160,17 +216,23 @@ export class ClaimantProfileComponent {
     }
   }
 
-  selectLocation(loc: UKLocation) {
-    this.localPostcode.set(loc.postcode);
-    this.localRegion.set(loc.region);
-    this.localAdminDistrict.set(loc.name.split(',')[0].trim());
+  private safeSplitName(name: unknown): string {
+    const nameStr = typeof name === 'string' ? name : '';
+    return nameStr.split(',')[0].trim();
+  }
 
-    this.locationService.getByPostcode(loc.postcode).subscribe({
+  selectLocation(loc: UKLocation) {
+    const postcode = loc.postcode ?? '';
+    this.localPostcode.set(postcode);
+    this.localRegion.set(loc.region ?? '');
+    this.localAdminDistrict.set(this.safeSplitName(loc.name));
+
+    this.locationService.getByPostcode(postcode).subscribe({
       next: (res) => {
         if (res.success && res.locations && res.locations.length > 0) {
           const l = res.locations[0];
-          this.localRegion.set(l.region);
-          this.localAdminDistrict.set(l.name.split(',')[0].trim());
+          this.localRegion.set(l.region ?? '');
+          this.localAdminDistrict.set(this.safeSplitName(l.name));
         }
       }
     });
@@ -183,6 +245,16 @@ export class ClaimantProfileComponent {
     setTimeout(() => {
       this.showLocationDropdown.set(false);
     }, 250);
+  }
+
+  targetWeeklyHoursLabel(): string {
+    const map: Record<string, string> = {
+      'FULL_TIME': 'Full-Time (35-40 hours)',
+      'PART_TIME_16_30': 'Part-Time (16-30 hours)',
+      'PART_TIME_UNDER_16': 'Part-Time (Under 16 hours)',
+      'FLEXIBLE': 'Flexible / Any Hours'
+    };
+    return map[this.localTargetWeeklyHours()] || this.localTargetWeeklyHours();
   }
 
   triggerLogout() {

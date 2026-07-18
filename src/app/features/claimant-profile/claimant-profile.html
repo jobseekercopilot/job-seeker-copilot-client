@@ -1,5 +1,5 @@
 <!-- CARD 1: CLAIMANT PROFESSIONAL PROFILE (DWP COMMITMENTS BASIS) -->
-<div id="card-claimant-profile" class="bg-white rounded-3xl border border-slate-200/80 shadow-2xs p-6 transition-all hover:shadow-xs hover:border-slate-300">
+<div id="card-claimant-profile" class="claimant-card bg-white rounded-3xl border border-slate-200/80 shadow-2xs p-6 transition-all hover:shadow-xs hover:border-slate-300">
   <div class="flex items-center justify-between pb-3 mb-1 border-b border-slate-100">
     <h2 class="font-bold tracking-tight text-slate-900 flex items-center gap-2 font-display">
       <mat-icon class="text-slate-500">person</mat-icon>
@@ -31,8 +31,8 @@
       {{ claimantName() ? claimantName().substring(0, 1).toUpperCase() : 'C' }}
     </div>
     <div class="flex-1 min-w-0">
-      <h3 class="text-xs font-bold text-slate-900 truncate leading-tight">{{ claimantName() || 'Sarah Jenkins' }}</h3>
-      <p class="text-[10px] font-mono text-slate-400 truncate leading-none mt-0.5">{{ claimantEmail() || 'sarah.jenkins@gmail.com' }}</p>
+      <h3 class="text-xs font-bold text-slate-900 truncate leading-tight">{{ claimantName() || 'Claimant' }}</h3>
+      <p class="text-[10px] text-slate-400 truncate leading-none mt-0.5">{{ claimantEmail() || 'No email provided' }}</p>
     </div>
     <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[9px] font-extrabold uppercase bg-emerald-50 text-emerald-800 border border-emerald-100/80 scale-90 origin-right">
       Active
@@ -42,87 +42,155 @@
   <!-- Profile content container -->
   <div class="space-y-4">
     @if (!isEditing()) {
-      <!-- READ MODE (Optimized layout) -->
+      <!-- READ MODE (Structured display) -->
       <div id="profile-read-mode" class="space-y-3.5">
+        <!-- Skills -->
         <div class="p-3 bg-slate-50/75 rounded-2xl border border-slate-100">
-          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Skills & Qualifications</h3>
-          <p class="text-xs font-semibold text-slate-700 leading-relaxed mt-1">{{ skills() }}</p>
+          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Core Skills</h3>
+          <div class="flex flex-wrap gap-1 mt-1">
+            @for (skill of localSkills(); track skill) {
+              <span class="inline-flex px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-lg text-[10px] font-semibold border border-indigo-100">{{ skill }}</span>
+            } @empty {
+              <p class="text-xs font-medium text-slate-400">No core skills added yet.</p>
+            }
+          </div>
         </div>
+
+        <!-- Qualifications Summary -->
         <div class="p-3 bg-slate-50/75 rounded-2xl border border-slate-100">
-          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Employment & Volunteer History</h3>
-          <p class="text-xs font-semibold text-slate-700 leading-relaxed mt-1">{{ experience() }}</p>
+          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Qualifications</h3>
+          <div class="space-y-1 mt-1">
+            @for (q of localQualifications(); track q) {
+              <p class="text-xs font-semibold text-slate-700">
+                {{ q.qualificationName }} &middot;
+                <span class="font-medium text-slate-500">{{ q.issuingBody }}</span>
+                <span class="text-[10px] text-slate-400 ml-1">
+                  ({{ q.status === 'COMPLETED' ? 'Completed' : 'In Progress' }})
+                </span>
+              </p>
+            } @empty {
+              <p class="text-xs font-medium text-slate-400">No qualifications added yet.</p>
+            }
+          </div>
         </div>
+
+        <!-- Work History Summary -->
+        <div class="p-3 bg-slate-50/75 rounded-2xl border border-slate-100">
+          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Work History</h3>
+          <div class="space-y-1 mt-1">
+            @for (r of localRoles(); track r) {
+              <p class="text-xs font-semibold text-slate-700">
+                {{ r.jobTitle }} at {{ r.employer }}
+                <span class="text-[10px] font-medium text-slate-400 ml-1">({{ r.startDate }}@if (r.endDate) { &ndash; {{ r.endDate }} })</span>
+              </p>
+            } @empty {
+              <p class="text-xs font-medium text-slate-400">No work history added yet.</p>
+            }
+          </div>
+        </div>
+
+        <!-- Target Roles & Commitments -->
         <div class="p-3 bg-indigo-50/40 rounded-2xl border border-indigo-50">
           <h3 class="text-2xs uppercase font-extrabold tracking-widest text-indigo-500">Target Roles & Commitments</h3>
-          <p class="text-xs font-bold text-indigo-900 leading-relaxed mt-1">{{ aspirations() }}</p>
+          <div class="flex flex-wrap gap-1 mt-1">
+            @for (role of localTargetRoles(); track role) {
+              <span class="inline-flex px-2 py-0.5 bg-indigo-100/60 text-indigo-800 rounded-lg text-[10px] font-semibold border border-indigo-200">{{ role }}</span>
+            } @empty {
+              <p class="text-xs font-medium text-indigo-400">No target roles added yet.</p>
+            }
+          </div>
+          <p class="text-[10px] font-semibold text-indigo-600 mt-1">
+            {{ targetWeeklyHoursLabel() }}
+          </p>
         </div>
+
+        <!-- Hours & Commute Area -->
         <div class="p-3 bg-slate-50/75 rounded-2xl border border-slate-100">
           <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Hours & Commute Area</h3>
-          <p class="text-xs font-semibold text-slate-700 leading-relaxed mt-1 flex flex-col gap-1">
-            <span class="flex items-center gap-1.5"><mat-icon class="text-xs text-slate-400">schedule</mat-icon><strong>Commitment:</strong> {{ parsedWorkPrefs().hours }}</span>
-            <span class="flex items-center gap-1.5"><mat-icon class="text-xs text-slate-400">location_on</mat-icon>
-              <strong>Home Location:</strong> 
-              @if (parsedWorkPrefs().adminDistrict || parsedWorkPrefs().region) {
-                {{ parsedWorkPrefs().adminDistrict }}@if (parsedWorkPrefs().adminDistrict && parsedWorkPrefs().region) {, }{{ parsedWorkPrefs().region }} ({{ parsedWorkPrefs().postcode }})
-              } @else {
-                {{ parsedWorkPrefs().postcode }}
-              }
-            </span>
-            <span class="flex items-center gap-1.5"><mat-icon class="text-xs text-slate-400">commute</mat-icon><strong>Commute Range:</strong> within {{ parsedWorkPrefs().distance }}</span>
-          </p>
+          <div class="commute-summary mt-1">
+            <div class="commute-summary-row">
+              <mat-icon class="text-slate-400">schedule</mat-icon>
+              <strong>Commitment:</strong>
+              <span>{{ targetWeeklyHoursLabel() }}</span>
+            </div>
+            <div class="commute-summary-row">
+              <mat-icon class="text-slate-400">location_on</mat-icon>
+              <strong>Home Location:</strong>
+              <span>
+                @if (localAdminDistrict() || localRegion()) {
+                  {{ localAdminDistrict() }}@if (localAdminDistrict() && localRegion()) {, }{{ localRegion() }} ({{ localPostcode() }})
+                } @else if (localPostcode()) {
+                  {{ localPostcode() }}
+                } @else {
+                  No home location added yet.
+                }
+              </span>
+            </div>
+            <div class="commute-summary-row">
+              <mat-icon class="text-slate-400">commute</mat-icon>
+              <strong>Commute Range:</strong>
+              <span>within {{ localCommuteRange() }} miles</span>
+            </div>
+          </div>
         </div>
 
         <button id="btn-finder-search"
                 (click)="triggerFinderSearch()"
                 class="w-full text-xs font-bold uppercase tracking-wider text-white bg-indigo-600 hover:bg-indigo-700 py-3 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-indigo-100 hover:scale-[1.01] active:scale-[0.99]">
           <mat-icon class="text-sm">search</mat-icon>
-          Find Aligned Jobs
+          Find Jobs
         </button>
       </div>
     } @else {
-      <!-- WRITE MODE (Form inputs) -->
-      <div id="profile-write-mode" class="space-y-3">
-        <div class="flex flex-col gap-1">
-          <label for="profile-skills-input" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Skills & Qualifications</label>
-          <textarea id="profile-skills-input"
-                    class="text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 h-16 focus:outline-none focus:ring-1 focus:ring-slate-900 leading-relaxed"
-                    (input)="handleUpdateSkills($event)">{{ localSkills() }}</textarea>
-        </div>
-        
-        <div class="flex flex-col gap-1">
-          <label for="profile-experience-input" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Employment & Volunteer History</label>
-          <textarea id="profile-experience-input"
-                    class="text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 h-20 focus:outline-none focus:ring-1 focus:ring-slate-900 leading-relaxed"
-                    (input)="handleUpdateExperience($event)">{{ localExperience() }}</textarea>
-        </div>
+      <!-- WRITE MODE (Reactive structured forms) -->
+      <div id="profile-write-mode" class="space-y-4">
 
-        <div class="flex flex-col gap-1">
-          <label for="profile-aspirations-input" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Target Roles / Aspirations</label>
-          <input id="profile-aspirations-input"
-                 type="text" 
-                 class="text-xs font-semibold text-slate-800 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-slate-900"
-                 [value]="localAspirations()"
-                 (input)="handleUpdateAspirations($event)" />
-        </div>
+        <!-- Skills Tag Input (Step 1) -->
+        <app-tag-input label="Skills"
+                       placeholder="Type a skill and press Enter"
+                       [(tags)]="localSkills">
+        </app-tag-input>
 
-        <div class="flex flex-col gap-1">
-          <label for="profile-hours-select" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Target Hours</label>
-          <select id="profile-hours-select"
-                  class="text-xs font-semibold py-2.5 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-800 cursor-pointer"
-                  (change)="localTargetHours.set($any($event.target).value)">
-            @for (opt of targetHoursOptions; track opt) {
-              <option [value]="opt" [selected]="opt === localTargetHours()">{{ opt }}</option>
-            }
+        <!-- Target Roles Tag Input (Step 2) -->
+        <app-tag-input label="Target Roles"
+                       placeholder="Type a target role and press Enter"
+                       [(tags)]="localTargetRoles">
+        </app-tag-input>
+
+        <!-- Target Weekly Hours -->
+        <div class="flex flex-col gap-1.5">
+          <label for="profile-target-hours" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Target Weekly Hours</label>
+          <select id="profile-target-hours"
+                  [ngModel]="localTargetWeeklyHours()"
+                  (ngModelChange)="localTargetWeeklyHours.set($event)"
+                  class="text-xs font-semibold py-2.5 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-800 cursor-pointer">
+            <option value="FULL_TIME">Full-Time (35-40 hours)</option>
+            <option value="PART_TIME_16_30">Part-Time (16-30 hours)</option>
+            <option value="PART_TIME_UNDER_16">Part-Time (Under 16 hours)</option>
+            <option value="FLEXIBLE">Flexible / Any Hours</option>
           </select>
         </div>
 
-        <div class="flex flex-col gap-1 relative">
+        <!-- Qualifications (Step 2 - repeatable cards) -->
+        <div class="flex flex-col gap-1.5">
+          <p class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Qualifications</p>
+          <app-qualification-form [(items)]="localQualifications"></app-qualification-form>
+        </div>
+
+        <!-- Work History (Step 3 - repeatable cards) -->
+        <div class="flex flex-col gap-1.5">
+          <p class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Work History</p>
+          <app-role-form [(items)]="localRoles"></app-role-form>
+        </div>
+
+        <!-- Work Preferences: Postcode / Location -->
+        <div class="flex flex-col gap-1.5 relative">
           <label for="profile-postcode-input" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Postcode / Location</label>
           <input id="profile-postcode-input"
                  type="text"
                  class="text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-slate-900"
-                 [value]="localPostcode()"
-                 (input)="onLocationInputChange($any($event.target).value)"
+                 [ngModel]="localPostcode()"
+                 (ngModelChange)="onLocationInputChange($event)"
                  (blur)="hideLocationDropdownWithDelay()" />
           
           <!-- Suggestions Dropdown -->
@@ -140,13 +208,15 @@
           }
         </div>
 
-        <div class="flex flex-col gap-1">
+        <!-- Commute Range -->
+        <div class="flex flex-col gap-1.5">
           <label for="profile-commute-select" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Commute Range</label>
           <select id="profile-commute-select"
-                  class="text-xs font-semibold py-2.5 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-800 cursor-pointer"
-                  (change)="localCommuteDistance.set($any($event.target).value)">
+                  [ngModel]="localCommuteRange()"
+                  (ngModelChange)="localCommuteRange.set($event)"
+                  class="text-xs font-semibold py-2.5 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-800 cursor-pointer">
             @for (dist of commuteDistanceOptions; track dist) {
-              <option [value]="dist" [selected]="dist === localCommuteDistance()">within {{ dist }}</option>
+              <option [value]="dist">within {{ dist }} miles</option>
             }
           </select>
         </div>

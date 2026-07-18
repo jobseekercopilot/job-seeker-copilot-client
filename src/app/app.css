@@ -1,4 +1,156 @@
 /* Custom Animations for User Interface Transitions */
+.app-shell {
+  background: var(--color-bg);
+  color: var(--text-primary);
+}
+
+.dashboard-main {
+  max-width: 1560px;
+}
+
+.dashboard-grid {
+  grid-template-columns: minmax(250px, 0.85fr) minmax(480px, 2.35fr) minmax(280px, 0.95fr);
+}
+
+.dashboard-left,
+.dashboard-right {
+  position: sticky;
+  top: 5rem;
+}
+
+.dashboard-grid {
+  gap: 1rem;
+}
+
+.dashboard-left,
+.dashboard-center,
+.dashboard-right {
+  gap: 1rem;
+}
+
+.workspace-tabs {
+  background: var(--color-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+}
+
+.workspace-tab {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  gap: 0.7rem;
+  justify-content: center;
+  min-height: 4.15rem;
+  padding: 0.75rem 0.9rem;
+  position: relative;
+  text-align: left;
+}
+
+.workspace-tab:last-child {
+  border-right: 0;
+}
+
+.workspace-tab::before {
+  background: transparent;
+  content: "";
+  height: 2px;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.workspace-tab mat-icon {
+  color: inherit;
+  font-size: 1.2rem;
+  height: 1.2rem;
+  width: 1.2rem;
+}
+
+.workspace-tab span {
+  color: var(--text-primary);
+  display: grid;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.workspace-tab small {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+
+.workspace-tab:hover,
+.workspace-tab-active {
+  background: var(--color-surface-soft);
+  color: var(--color-primary);
+}
+
+.workspace-tab-active::before {
+  background: var(--color-primary);
+}
+
+.documents-placeholder {
+  align-items: center;
+  background: var(--color-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-height: 16rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.documents-placeholder h2,
+.documents-placeholder p {
+  margin: 0;
+}
+
+.documents-placeholder h2 {
+  color: var(--text-primary);
+  font-size: 1.15rem;
+}
+
+.documents-placeholder mat-icon {
+  color: var(--color-primary);
+}
+
+#app-main-content {
+  margin-top: 1rem;
+}
+
+.rounded-3xl {
+  border-radius: var(--radius-card) !important;
+}
+
+.rounded-2xl {
+  border-radius: var(--radius-card) !important;
+}
+
+.rounded-xl {
+  border-radius: var(--radius-control) !important;
+}
+
+.shadow-md,
+.shadow-lg,
+.shadow-xl,
+.shadow-2xl {
+  box-shadow: var(--shadow-card) !important;
+}
 
 @keyframes fadeIn {
   from {
@@ -44,10 +196,121 @@ pre::-webkit-scrollbar-thumb:hover {
 
 /* Font styles and letter tracking overrides */
 h1, h2, h3, h4 {
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
+  line-height: 1.25;
 }
 
 /* Base custom font size helpers */
 .text-2xs {
   font-size: 0.6875rem; /* 11px */
+}
+
+#toast-notification {
+  background: var(--color-surface);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+@media (max-width: 1279px) {
+  .dashboard-grid {
+    grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.7fr);
+  }
+
+  .dashboard-right {
+    grid-column: 1 / -1;
+    position: static;
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-left,
+  .dashboard-right {
+    position: static;
+  }
+
+  .workspace-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-tab {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    justify-content: flex-start;
+  }
+
+  .workspace-tab:last-child {
+    border-bottom: 0;
+  }
+}
+.payment-return-page {
+  display: grid;
+  gap: 1rem;
+  max-width: 760px;
+}
+
+.payment-return-card {
+  background: #fff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  color: #0f172a;
+  padding: 1.25rem;
+}
+
+.payment-return-card h1 {
+  font-size: 1.7rem;
+  line-height: 1.2;
+  margin: 0.25rem 0;
+}
+
+.payment-return-card p {
+  color: #475569;
+  margin: 0 0 1rem;
+}
+
+.return-button {
+  background: #2563eb;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.55rem 0.8rem;
+}
+
+.tokens-page {
+  display: grid;
+  gap: 1rem;
+  margin: 0 auto;
+  max-width: 1040px;
+}
+
+.tokens-page-header {
+  align-items: flex-start;
+  background: var(--color-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1.1rem 1.25rem;
+}
+
+.tokens-page-header h1 {
+  font-size: 1.65rem;
+  margin: 0.2rem 0 0.25rem;
+}
+
+.tokens-page-header p {
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .tokens-page-header {
+    flex-direction: column;
+  }
 }

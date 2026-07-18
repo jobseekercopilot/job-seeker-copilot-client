@@ -1,0 +1,242 @@
+<section class="documents-workspace" data-testid="documents-workspace">
+  <header class="documents-header">
+    <div>
+      <h2>Your Documents</h2>
+      <p>Every CV and cover letter generated during your job search.</p>
+    </div>
+  </header>
+
+  <div class="summary-cards">
+    <article class="summary-card">
+      <mat-icon>description</mat-icon>
+      <div>
+        <span>Total Documents</span>
+        <strong>{{ documents().length }}</strong>
+        <small>All time</small>
+      </div>
+    </article>
+    <article class="summary-card summary-card-cv">
+      <mat-icon>article</mat-icon>
+      <div>
+        <span>CVs</span>
+        <strong>{{ countFor('CV') }}</strong>
+        <small>All versions</small>
+      </div>
+    </article>
+    <article class="summary-card summary-card-letter">
+      <mat-icon>feed</mat-icon>
+      <div>
+        <span>Cover Letters</span>
+        <strong>{{ countFor('COVER_LETTER') }}</strong>
+        <small>All versions</small>
+      </div>
+    </article>
+  </div>
+
+  <div class="document-controls">
+    <div class="document-filters" aria-label="Document filters">
+      @for (filter of filterOptions; track filter.key) {
+        <button type="button"
+                class="document-filter"
+                [class.document-filter-active]="selectedFilter() === filter.key"
+                (click)="selectFilter(filter.key)">
+          <span>{{ filter.label }}</span>
+          <strong>{{ countFor(filter.key) }}</strong>
+        </button>
+      }
+    </div>
+
+    <div class="document-tools">
+      <label class="document-search">
+        <mat-icon>search</mat-icon>
+        <input type="search"
+               placeholder="Search documents"
+               [ngModel]="searchTerm()"
+               (ngModelChange)="setSearchTerm($event)" />
+      </label>
+      <label class="document-sort">
+        <span>Sort by</span>
+        <select [ngModel]="selectedSort()" (ngModelChange)="selectedSort.set($event)">
+          @for (option of sortOptions; track option.key) {
+            <option [value]="option.key">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+    </div>
+  </div>
+
+  @if (error()) {
+    <div class="documents-error">{{ error() }}</div>
+  }
+
+  <div class="documents-content">
+    <section class="documents-list-card">
+      <div class="documents-list-header">
+        <h3>Documents</h3>
+        <button type="button" (click)="refresh()" [disabled]="loading()">
+          <mat-icon [class.spin]="loading()">refresh</mat-icon>
+          Refresh
+        </button>
+      </div>
+
+      @if (loading()) {
+        <div class="documents-empty">Loading documents...</div>
+      } @else if (filteredDocuments().length === 0) {
+        <div class="documents-empty">
+          <mat-icon>folder_open</mat-icon>
+          <p>No documents match this view.</p>
+        </div>
+      } @else {
+        <div class="documents-list">
+          @for (document of filteredDocuments(); track document.documentId) {
+            <article class="document-card"
+                     data-testid="document-card"
+                     data-demo-focus="document-card"
+                     [attr.data-demo-focus-id]="documentFocusId(document)"
+                     [attr.data-demo-focus-group]="documentFocusGroup(document)"
+                     [class.document-card-expanded]="isExpanded(document)">
+              <button type="button"
+                      class="document-summary"
+                      [attr.aria-expanded]="isExpanded(document)"
+                      [attr.aria-controls]="'document-details-' + document.documentId"
+                      (click)="toggleDocument(document)">
+                <span class="document-icon" [class.document-icon-letter]="document.documentType === 'COVER_LETTER'">
+                  <mat-icon>{{ document.documentType === 'CV' ? 'description' : 'article' }}</mat-icon>
+                </span>
+                <span class="document-main">
+                  <span class="document-title">{{ document.documentTitle }}</span>
+                  <span class="document-row-meta">
+                    <span class="type-chip">{{ documentTypeLabel(document.documentType) }}</span>
+                    <span>Created {{ formatDate(document.createdAt, true) }}</span>
+                    <span>v{{ document.version }}</span>
+                  </span>
+                </span>
+                <span class="application-link">
+                  <span>Linked job</span>
+                  <strong>{{ document.jobTitle || 'Application' }} - {{ document.companyName || 'Unknown company' }}</strong>
+                </span>
+                <span class="status-badge" [class]="statusClass(document.status)">
+                  {{ statusLabel(document.status) }}
+                </span>
+                <mat-icon class="document-caret" [class.document-caret-open]="isExpanded(document)">
+                  expand_more
+                </mat-icon>
+              </button>
+
+              @if (isExpanded(document)) {
+                <div class="document-expanded"
+                     data-demo-focus="document-version-history"
+                     [attr.data-demo-focus-id]="documentFocusId(document) + '-history'"
+                     [attr.data-demo-focus-group]="documentFocusGroup(document)"
+                     [id]="'document-details-' + document.documentId">
+                  <section class="expanded-section">
+                    <h4>Document Details</h4>
+                    <dl class="details-grid">
+                      <div>
+                        <dt>Created</dt>
+                        <dd>{{ formatDate(document.createdAt, true) }}</dd>
+                      </div>
+                      <div>
+                        <dt>Last Updated</dt>
+                        <dd>{{ formatDate(document.updatedAt, true) }}</dd>
+                      </div>
+                      <div>
+                        <dt>Version</dt>
+                        <dd>v{{ document.version }}</dd>
+                      </div>
+                      <div>
+                        <dt>Document Type</dt>
+                        <dd>{{ documentTypeLabel(document.documentType) }}</dd>
+                      </div>
+                      <div>
+                        <dt>File Size</dt>
+                        <dd>{{ fileSize(document) }}</dd>
+                      </div>
+                      <div>
+                        <dt>Latest Format</dt>
+                        <dd>{{ latestFileType(document) }}</dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  <section class="expanded-section">
+                    <h4>Linked Application</h4>
+                    <dl class="details-grid linked-grid">
+                      <div>
+                        <dt>Job Title</dt>
+                        <dd>{{ document.jobTitle || 'Application' }}</dd>
+                      </div>
+                      <div>
+                        <dt>Company</dt>
+                        <dd>{{ document.companyName || 'Unknown company' }}</dd>
+                      </div>
+                      <div>
+                        <dt>Application Status</dt>
+                        <dd>
+                          <span class="status-badge" [class]="statusClass(document.status)">
+                            {{ statusLabel(document.status) }}
+                          </span>
+                        </dd>
+                      </div>
+                      @if (document.appliedAt) {
+                        <div>
+                          <dt>Applied Date</dt>
+                          <dd>{{ formatDate(document.appliedAt, true) }}</dd>
+                        </div>
+                      }
+                      @if (document.interviewAt) {
+                        <div>
+                          <dt>Interview Date</dt>
+                          <dd>{{ formatDate(document.interviewAt, true) }}</dd>
+                        </div>
+                      }
+                    </dl>
+                  </section>
+
+                  <section class="expanded-section actions-section">
+                    <h4>Actions</h4>
+                    <div class="details-actions">
+                      <button type="button" [disabled]="!document.downloads?.docx" (click)="download(document.downloads?.docx)">
+                        <mat-icon>download</mat-icon>
+                        Download DOCX
+                      </button>
+                      <button type="button" [disabled]="!document.downloads?.pdf" (click)="download(document.downloads?.pdf)">
+                        <mat-icon>download</mat-icon>
+                        Download PDF
+                      </button>
+                      @if (canReplace(document)) {
+                        <input #detailsReplacement type="file" class="file-input"
+                               accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                               (change)="onReplacementSelected(document, $event)" />
+                        <button type="button"
+                                [disabled]="replacingDocumentId() === document.documentId"
+                                (click)="detailsReplacement.click()">
+                          <mat-icon>upload_file</mat-icon>
+                          {{ replacingDocumentId() === document.documentId ? 'Replacing...' : 'Replace Document' }}
+                        </button>
+                      }
+                      <button type="button" (click)="openLinkedApplication(document)">
+                        <mat-icon>open_in_new</mat-icon>
+                        Open Application
+                      </button>
+                      @if (canDelete(document)) {
+                        <button type="button"
+                                class="delete-action"
+                                [disabled]="deletingDocumentId() === document.documentId"
+                                (click)="deleteDocument(document)">
+                          <mat-icon>delete</mat-icon>
+                          {{ deletingDocumentId() === document.documentId ? 'Withdrawing...' : 'Delete / Withdraw Generated Application' }}
+                        </button>
+                      }
+                    </div>
+                  </section>
+                </div>
+              }
+            </article>
+          }
+        </div>
+        <p class="documents-count">Showing 1-{{ filteredDocuments().length }} of {{ filteredDocuments().length }} documents</p>
+      }
+    </section>
+  </div>
+</section>

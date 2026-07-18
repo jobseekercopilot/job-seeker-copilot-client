@@ -1,0 +1,121 @@
+<section class="payment-panel" [class.summary-panel]="mode() === 'summary'" [class.history-panel]="mode() === 'history'">
+  @if (mode() === 'summary') {
+    <div class="summary-token-card">
+      <div class="summary-token-header">
+        <div>
+          <span class="eyebrow">AI Credit Usage</span>
+          <h2>AI Credit Usage</h2>
+        </div>
+        <a class="text-link" href="/payment/history">View usage</a>
+      </div>
+
+      <div class="usage-summary-body">
+        <div class="usage-ring" [style.background]="ringStyle()" aria-hidden="true">
+          <span>{{ spentPercent() }}%</span>
+        </div>
+        <div class="usage-stats">
+          <div>
+            <span>Remaining</span>
+            <strong>{{ formatCredit(wallet()?.balanceTokens) }}</strong>
+            <small>{{ formatTokenEquivalent(wallet()?.balanceTokens) }}</small>
+          </div>
+          <div>
+            <span>Spent</span>
+            <strong>{{ formatCredit(wallet()?.lifetimeSpentTokens) }}</strong>
+            <small>{{ formatTokenEquivalent(wallet()?.lifetimeSpentTokens) }}</small>
+          </div>
+        </div>
+      </div>
+    </div>
+  } @else {
+    <div class="payment-header">
+      <div>
+        <span class="eyebrow">AI Credit</span>
+        <h2>{{ mode() === 'history' ? 'Spending Log' : formatCredit(wallet()?.balanceTokens) }}</h2>
+        <p>
+          @if (mode() === 'history') {
+            Review AI Credit purchases, AI feature usage, and balance changes.
+          } @else {
+            Core job search features are free. AI features use AI Credit when generating documents.
+          }
+        </p>
+        @if (mode() !== 'history') {
+          <small class="token-equivalent">≈ {{ formatTokens(wallet()?.balanceTokens) }} AI tokens</small>
+        }
+      </div>
+      <button type="button" class="secondary-button" (click)="refresh()" [disabled]="loading()">Refresh</button>
+    </div>
+  }
+
+  @if (error()) {
+    <div class="payment-error">{{ error() }}</div>
+  }
+  @if (success()) {
+    <div class="payment-success">{{ success() }}</div>
+  }
+
+  @if (mode() === 'purchase') {
+    <div class="wallet-meta">
+      <span>Free starter AI Credit</span>
+      <strong>{{ wallet()?.freeTrialGranted ? 'Granted' : 'Not granted' }}</strong>
+    </div>
+
+    <div class="pricing-grid">
+      @for (plan of plans(); track plan.id) {
+        <article class="pricing-card">
+          <div class="plan-copy">
+            <h3>{{ plan.name }}</h3>
+            <p>{{ planUsageSummary(plan) }}</p>
+          </div>
+          <strong class="plan-price">{{ formatPrice(plan.priceGbpPence) }}</strong>
+          <span class="plan-token-equivalent">{{ formatTokens(plan.tokenAmount) }} AI tokens</span>
+          <div class="purchase-actions">
+            <button type="button"
+                    class="purchase-button stripe-button"
+                    (click)="buyWithStripe(plan)"
+                    [disabled]="checkoutPlanId() === plan.id">
+              {{ checkoutPlanId() === plan.id ? 'Opening...' : 'Buy with Stripe' }}
+            </button>
+            <button type="button"
+                    class="purchase-button demo-button"
+                    (click)="purchase(plan)"
+                    [disabled]="purchasingPlanId() === plan.id">
+              {{ purchasingPlanId() === plan.id ? 'Adding...' : 'Demo purchase' }}
+            </button>
+          </div>
+        </article>
+      }
+    </div>
+  }
+
+  @if (mode() === 'history') {
+    <div class="transactions">
+      @if (visibleTransactions().length > 0) {
+        <div class="transactions-table">
+          <div class="transactions-row transactions-heading">
+            <span>Date</span>
+            <span>Activity</span>
+            <span>Cost</span>
+            <span>Balance After</span>
+          </div>
+          @for (transaction of visibleTransactions(); track transaction.id) {
+            <div class="transactions-row">
+              <span>{{ formatDate(transaction.createdAt) }}</span>
+              <strong>{{ transactionActivity(transaction) }}</strong>
+              <span>
+                <em>{{ formatSignedTransactionCredit(transaction) }}</em>
+                <small>{{ formatTokenEquivalent(transaction.tokenAmount) }}</small>
+              </span>
+              <span>
+                <em>{{ formatBalanceAfterCredit(transaction) }}</em>
+                <small>{{ formatTokenEquivalent(transaction.balanceAfter) }}</small>
+              </span>
+            </div>
+          }
+        </div>
+      } @else {
+        <p>No AI Credit activity yet.</p>
+      }
+    </div>
+  }
+</section>

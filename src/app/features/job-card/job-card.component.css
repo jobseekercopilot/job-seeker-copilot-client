@@ -1,1 +1,328 @@
-/* JobCardComponent styles - currently using Tailwind utility classes in the template */
+.job-card,
+.upload-modal {
+  background: var(--color-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card) !important;
+  color: var(--text-primary);
+}
+
+.job-card:hover,
+.job-card-expanded {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.job-main-toggle:focus-visible,
+.job-meta-toggle:focus-visible,
+.card-caret-button:focus-visible,
+.status-dropdown:focus-visible {
+  box-shadow: 0 0 0 3px #bfdbfe;
+}
+
+.job-title {
+  color: var(--text-primary);
+  font-size: 0.98rem !important;
+  font-weight: 700;
+}
+
+.job-card-trigger {
+  border-radius: var(--radius-card) !important;
+  padding: 0.85rem 1rem !important;
+}
+
+.job-main-toggle,
+.job-meta-toggle,
+.card-caret-button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+}
+
+.job-main-toggle,
+.job-meta-toggle {
+  min-width: 0;
+}
+
+.card-caret-button {
+  border-radius: 6px;
+  height: 1.6rem;
+  width: 1.6rem;
+}
+
+.card-caret-button:hover {
+  background: var(--color-surface-soft);
+}
+
+.job-company,
+.job-meta {
+  font-size: 0.82rem !important;
+}
+
+.job-meta {
+  gap: 0.35rem 1rem !important;
+  margin-top: 0.55rem !important;
+}
+
+.job-meta mat-icon {
+  font-size: 0.95rem !important;
+  height: 0.95rem !important;
+  width: 0.95rem !important;
+}
+
+.job-company,
+.job-meta,
+.expanded-content p,
+.generation-message,
+.upload-modal p,
+.upload-dropzone span:last-of-type {
+  color: var(--text-secondary);
+}
+
+.job-meta mat-icon,
+.card-caret {
+  color: var(--text-muted);
+}
+
+.expanded-content,
+.documents-area,
+.upload-modal-header,
+.upload-modal-actions {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.expanded-content {
+  padding: 0 1rem 1rem !important;
+}
+
+.expanded-content > div:first-child {
+  padding-top: 0.8rem !important;
+}
+
+.expanded-content h4,
+.generated-downloads h4,
+.upload-modal h3 {
+  font-size: 0.85rem !important;
+}
+
+.expanded-content h4,
+.generated-downloads h4,
+.upload-modal h3 {
+  color: var(--text-primary);
+}
+
+.source-badge,
+.status-badge {
+  align-items: center;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  display: inline-flex;
+  font-size: 0.62rem;
+  font-weight: 700;
+  gap: 0.16rem;
+  line-height: 1;
+  padding: 0.24rem 0.42rem;
+  text-transform: uppercase;
+}
+
+.status-menu {
+  position: relative;
+}
+
+.status-dropdown {
+  cursor: pointer;
+  min-height: 1.45rem;
+}
+
+.status-dropdown:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.status-chevron {
+  font-size: 0.9rem !important;
+  height: 0.9rem !important;
+  width: 0.9rem !important;
+}
+
+.status-menu-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  box-shadow: 0 14px 32px rgba(17, 24, 39, 0.16);
+  min-width: 12rem;
+  padding: 0.25rem;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 20;
+}
+
+.status-menu-item {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-primary);
+  display: flex;
+  font-size: 0.82rem;
+  gap: 0.45rem;
+  padding: 0.5rem 0.55rem;
+  text-align: left;
+  width: 100%;
+}
+
+.status-menu-item:hover {
+  background: var(--color-surface-soft);
+}
+
+.source-badge {
+  background: var(--color-soft-grey);
+  color: var(--text-secondary);
+}
+
+.status-new {
+  background: var(--color-soft-green);
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.status-documents-generated {
+  background: var(--color-soft-amber);
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.status-applied {
+  background: var(--color-soft-blue);
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.status-interview {
+  background: var(--color-soft-purple);
+  border-color: #ddd6fe;
+  color: #6d28d9;
+}
+
+.status-unsuccessful {
+  background: var(--color-soft-red);
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.status-offer,
+.status-accepted {
+  background: var(--color-soft-green);
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.status-rejected-by-user,
+.status-withdrawn {
+  background: var(--color-soft-grey);
+  border-color: var(--border-subtle);
+  color: #4b5563;
+}
+
+.dashboard-button {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control) !important;
+  font-size: 0.82rem !important;
+  line-height: 1.2;
+  padding: 0.45rem 0.7rem !important;
+}
+
+.dashboard-button-primary {
+  background: var(--color-primary);
+  color: white;
+}
+
+.dashboard-button-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.dashboard-button-secondary,
+.dashboard-button-compact {
+  background: var(--color-surface);
+  color: var(--text-primary);
+}
+
+.dashboard-button-secondary:hover:not(:disabled),
+.dashboard-button-compact:hover:not(:disabled) {
+  background: var(--color-surface-soft);
+  border-color: var(--border-strong);
+  color: var(--color-primary);
+}
+
+.dashboard-button-upload {
+  background: var(--color-soft-blue);
+  border-color: #bfdbfe;
+  color: var(--color-primary);
+}
+
+.dashboard-button-danger {
+  background: var(--color-soft-red);
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.dashboard-button-danger:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
+.readonly-status {
+  background: var(--color-surface-soft);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.document-lock-note {
+  color: #4b5563 !important;
+}
+
+.generated-downloads {
+  background: var(--color-soft-green);
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-control) !important;
+  color: #166534;
+  padding: 0.75rem !important;
+}
+
+.generation-error {
+  background: var(--color-soft-red);
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-control) !important;
+  color: #991b1b;
+}
+
+.upload-modal {
+  box-shadow: 0 18px 48px rgba(17, 24, 39, 0.18);
+}
+
+.upload-modal-header {
+  border-top: 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.upload-dropzone {
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-control) !important;
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+  min-height: 8rem !important;
+}
+
+.upload-dropzone:hover {
+  background: var(--color-soft-blue);
+  border-color: var(--border-strong);
+}
+
+.upload-dropzone mat-icon,
+.dashboard-icon-button {
+  color: var(--text-secondary);
+}
+
+.dashboard-icon-button:hover:not(:disabled) {
+  background: var(--color-surface-soft);
+  color: var(--text-primary);
+}

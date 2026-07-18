@@ -1,59 +1,57 @@
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
-import { UserManagementGateway } from '../../gateways/user-management-gateway';
+import { FormsModule } from '@angular/forms';
 import { LocationService, UKLocation } from '../../services/location.service';
+import { firstValueFrom } from 'rxjs';
 import {
   ChangeDetectionStrategy,
   Component,
   output,
   signal,
-  inject,
-  Injector,
-  runInInjectionContext
+  inject
 } from '@angular/core';
+import { TagInputComponent } from '../../shared/tag-input/tag-input';
+import { QualificationFormComponent } from '../../shared/qualification-form/qualification-form';
+import { RoleFormComponent } from '../../shared/role-form/role-form';
+import type {
+  GatewayResponse,
+  UserProfile,
+  Qualification,
+  Role
+} from '../../api';
+import { AspirationsTargetWeeklyHoursEnum, AuthenticationService } from '../../api';
+import {
+  normaliseProfile,
+  serialiseProfile,
+  emptyUserProfile
+} from '../../models/user-profile.model';
 
-interface AuthResponse {
-  success: boolean;
-  statusCode: number;
-  message: string;
-  user?: {
-    id: string;
-    name: string;
-    email: string;
-    token: string;
-    profile: {
-      name: string;
-      email: string;
-      skills: string;
-      experience: string;
-      aspirations: string;
-      workPrefs: string;
-    };
-  };
-}
+type TargetWeeklyHours = AspirationsTargetWeeklyHoursEnum;
 
 @Component({
   selector: 'app-landing-auth',
-  imports: [CommonModule, MatIconModule],
+  imports: [CommonModule, MatIconModule, FormsModule, TagInputComponent, QualificationFormComponent, RoleFormComponent],
+  host: {
+    'data-demo-focus': 'app-landing-auth',
+    'data-demo-focus-id': 'registration-form'
+  },
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './landing-auth.html',
   styleUrl: './landing-auth.css'
 })
 export class LandingAuthComponent {
-  private userManagementGateway = inject(UserManagementGateway);
+  private userManagementApi = inject(AuthenticationService);
   private locationService = inject(LocationService);
 
   locationSuggestions = signal<UKLocation[]>([]);
   showLocationDropdown = signal<boolean>(false);
 
   onboarded = output<{
+    profile: UserProfile;
     name: string;
     email: string;
-    skills: string;
-    experience: string;
-    aspirations: string;
-    workPrefs: string;
     token?: string;
+    userId?: string;
   }>();
 
   mode = signal<'create' | 'signin'>('create');
@@ -61,43 +59,39 @@ export class LandingAuthComponent {
   errorMessage = signal<string | null>(null);
   isLoading = signal<boolean>(false);
 
-  // Form Field Signals
+  // Auth Field Signals
   formName = signal('');
   formEmail = signal('');
   formPassword = signal('');
-  
-  formSkills = signal('Customer support receptionist, ward administrative assistant, clerical data assistant');
-  formExperience = signal('Retail Team Member at Co-op (1 year) - managing cash checkouts and stocking shelves; Volunteer Office Assistant at York General Community Hub (6 months)');
-  formAspirations = signal('Customer support receptionist, ward administrative assistant, clerical data assistant');
-  
-  // Structured Work Preferences
-  formPostcode = signal('LS1 1UR');
-  formTargetHours = signal('Full-Time (35-40 hours)');
-  formCommuteDistance = signal('10 miles');
-  formRegion = signal('Yorkshire and the Humber');
-  formAdminDistrict = signal('Leeds');
+
+  // Structured Form State (aligned with claimant-profile)
+  localSkills = signal<string[]>([]);
+  localQualifications = signal<Qualification[]>([]);
+  localRoles = signal<Role[]>([]);
+  localTargetRoles = signal<string[]>([]);
+  localTargetWeeklyHours = signal<TargetWeeklyHours>(AspirationsTargetWeeklyHoursEnum.FullTime);
+  localPostcode = signal('');
+  localRegion = signal('');
+  localAdminDistrict = signal('');
+  localLatitude = signal<number | undefined>(undefined);
+  localLongitude = signal<number | undefined>(undefined);
+  localCommuteRange = signal<number>(10);
+
+  commuteDistanceOptions = [5, 10, 15, 25, 50];
 
   targetHoursOptions = [
-    'Full-Time (35-40 hours)',
-    'Part-Time (16-30 hours)',
-    'Part-Time (Under 16 hours)',
-    'Flexible / Any Hours'
-  ];
-
-  commuteDistanceOptions = [
-    '5 miles',
-    '10 miles',
-    '15 miles',
-    '25 miles',
-    '50 miles'
-  ];
+    { value: 'FULL_TIME', label: 'Full-Time (35-40 hours)' },
+    { value: 'PART_TIME_16_30', label: 'Part-Time (16-30 hours)' },
+    { value: 'PART_TIME_UNDER_16', label: 'Part-Time (Under 16 hours)' },
+    { value: 'FLEXIBLE', label: 'Flexible / Any Hours' }
+  ] as const;
 
   // Sign In Field Signals
   loginEmail = signal('');
   loginPassword = signal('');
 
   onLocationInputChange(query: string) {
-    this.formPostcode.set(query);
+    this.localPostcode.set(query);
     if (!query || query.trim().length < 2) {
       this.locationSuggestions.set([]);
       this.showLocationDropdown.set(false);
@@ -142,17 +136,23 @@ export class LandingAuthComponent {
     }
   }
 
-  selectLocation(loc: UKLocation) {
-    this.formPostcode.set(loc.postcode);
-    this.formRegion.set(loc.region);
-    this.formAdminDistrict.set(loc.name.split(',')[0].trim());
+  private safeSplitName(name: unknown): string {
+    const nameStr = typeof name === 'string' ? name : '';
+    return nameStr.split(',')[0].trim();
+  }
 
-    this.locationService.getByPostcode(loc.postcode).subscribe({
+  selectLocation(loc: UKLocation) {
+    const postcode = loc.postcode ?? '';
+    this.localPostcode.set(postcode);
+    this.localRegion.set(loc.region ?? '');
+    this.localAdminDistrict.set(this.safeSplitName(loc.name));
+
+    this.locationService.getByPostcode(postcode).subscribe({
       next: (res) => {
         if (res.success && res.locations && res.locations.length > 0) {
           const l = res.locations[0];
-          this.formRegion.set(l.region);
-          this.formAdminDistrict.set(l.name.split(',')[0].trim());
+          this.localRegion.set(l.region ?? '');
+          this.localAdminDistrict.set(this.safeSplitName(l.name));
         }
       }
     });
@@ -162,12 +162,8 @@ export class LandingAuthComponent {
   }
 
   hideLocationDropdownWithDelay() {
-    const injector = inject(Injector);
-
     setTimeout(() => {
-      runInInjectionContext(injector, () => {
-        this.showLocationDropdown.set(false);
-      });
+      this.showLocationDropdown.set(false);
     }, 250);
   }
 
@@ -175,21 +171,40 @@ export class LandingAuthComponent {
     this.mode.set(newMode);
     if (newMode === 'create') {
       this.currentStep.set(1);
+      this.resetForm();
     }
+  }
+
+  private resetForm() {
+    this.formName.set('');
+    this.formEmail.set('');
+    this.formPassword.set('');
+    const empty = emptyUserProfile();
+    this.localSkills.set(empty.skills || []);
+    this.localQualifications.set(empty.qualifications || []);
+    this.localRoles.set(empty.roles || []);
+    this.localTargetRoles.set(empty.aspirations?.targetRoles || []);
+    this.localTargetWeeklyHours.set(empty.aspirations?.targetWeeklyHours || AspirationsTargetWeeklyHoursEnum.FullTime);
+    this.localPostcode.set(empty.workPreferences?.location?.postcode || '');
+    this.localRegion.set(empty.workPreferences?.location?.region || '');
+    this.localAdminDistrict.set(empty.workPreferences?.location?.adminDistrict || '');
+    this.localLatitude.set(empty.workPreferences?.location?.latitude);
+    this.localLongitude.set(empty.workPreferences?.location?.longitude);
+    this.localCommuteRange.set(empty.workPreferences?.commuteRange || 10);
   }
 
   isStepValid(): boolean {
     if (this.mode() !== 'create') return true;
-    
+
     const step = this.currentStep();
     if (step === 1) {
-      return this.formName().trim().length >= 2 && this.formEmail().includes('@');
+      return this.formName().trim().length >= 2 && this.formEmail().includes('@') && this.formPassword().trim().length >= 6;
     }
     if (step === 2) {
-      return this.formSkills().trim().length > 5 && this.formExperience().trim().length > 5;
+      return this.localSkills().length > 0;
     }
     if (step === 3) {
-      return this.formAspirations().trim().length > 3 && this.formPostcode().trim().length >= 4;
+      return this.localTargetRoles().length > 0 && this.localPostcode().trim().length >= 4;
     }
     return true;
   }
@@ -207,111 +222,101 @@ export class LandingAuthComponent {
   }
 
   async completeRegistration() {
-     if (!this.isStepValid()) return;
-     this.isLoading.set(true);
-     this.errorMessage.set(null);
+    if (!this.isStepValid()) return;
+    this.isLoading.set(true);
+    this.errorMessage.set(null);
 
-     const formattedPrefs = JSON.stringify({
-       hours: this.formTargetHours(),
-       postcode: this.formPostcode().trim().toUpperCase(),
-       distance: this.formCommuteDistance(),
-       region: this.formRegion(),
-       adminDistrict: this.formAdminDistrict()
-     });
+    const structuredProfile: UserProfile = serialiseProfile({
+      skills: this.localSkills(),
+      qualifications: this.localQualifications(),
+      roles: this.localRoles(),
+      aspirations: {
+        targetRoles: this.localTargetRoles(),
+        targetWeeklyHours: this.localTargetWeeklyHours()
+      },
+      workPreferences: {
+        location: {
+          postcode: this.localPostcode().trim().toUpperCase(),
+          region: this.localRegion().trim(),
+          adminDistrict: this.localAdminDistrict().trim(),
+          latitude: this.localLatitude(),
+          longitude: this.localLongitude()
+        },
+        commuteRange: this.localCommuteRange()
+      }
+    });
 
-     const profile = {
-       name: this.formName().trim(),
-       email: this.formEmail().trim(),
-       skills: this.formSkills().trim(),
-       experience: this.formExperience().trim(),
-       aspirations: this.formAspirations().trim(),
-       workPrefs: formattedPrefs
-     };
+    try {
+      const res = await firstValueFrom(this.userManagementApi.register({
+        name: this.formName().trim(),
+        email: this.formEmail().trim().toLowerCase(),
+        password: this.formPassword().trim(),
+        profile: structuredProfile
+      }));
 
-
-     const res = await this.userManagementGateway.handleRegistration(
-       this.formName().trim(),
-       this.formEmail().trim(),
-       this.formPassword().trim(),
-       profile
-     );
-
-     this.isLoading.set(false);
-     if (res.success && res.user) {
-       const { name, email, ...restOfProfile } = res.user.profile;
-
-       this.onboarded.emit({
-         name: res.user.name,
-         email: res.user.email,
-         token: res.user.token,
-         ...restOfProfile
-       });
-     } else {
-       this.errorMessage.set(res.message || 'Registration failed at gateway level.');
-     }
+      if (res.success && res.user) {
+        this.emitProfileFromResponse(res);
+      } else {
+        this.errorMessage.set(res.message || 'Registration failed at gateway level.');
+      }
+    } catch (error: unknown) {
+      this.errorMessage.set(this.httpErrorMessage(error, 'Unable to contact the registration service.'));
+    } finally {
+      this.isLoading.set(false);
+    }
   }
 
   async submitLogin() {
-     const email = this.loginEmail().trim();
-     const password = this.loginPassword().trim();
+    const email = this.loginEmail().trim();
+    const password = this.loginPassword().trim();
 
-     if (!email || !password) {
-       this.errorMessage.set('Please fill out both email and password.');
-       return;
-     }
+    if (!email || !password) {
+      this.errorMessage.set('Please fill out both email and password.');
+      return;
+    }
 
-     this.isLoading.set(true);
-     this.errorMessage.set(null);
+    this.isLoading.set(true);
+    this.errorMessage.set(null);
 
-     const res = await this.userManagementGateway.handleLogin(email, password);
+    try {
+      const res = await firstValueFrom(this.userManagementApi.login({
+        email: email.toLowerCase(),
+        password
+      }));
 
-     this.isLoading.set(false);
-     if (res.success && res.user) {
-       // Destructure to remove duplicates from the profile object
-       const { name, email, ...restOfProfile } = res.user.profile;
-
-       this.onboarded.emit({
-         name: res.user.name,
-         email: res.user.email,
-         token: res.user.token,
-         ...restOfProfile
-       });
-     } else {
-       this.errorMessage.set(res.message || 'Verification failed.');
-     }
-   }
-
-  loadPersona(role: 'admin' | 'logistics') {
-    if (role === 'admin') {
-      this.onboarded.emit({
-        name: 'Sarah Jenkins',
-        email: 'sarah.jenkins@gmail.com',
-        skills: 'Customer communication, basic office administration, patient documentation, phone reception, MS Excel, detail-oriented inputting',
-        experience: 'Retail Team Member at Co-op (1 year) - managing cash checkouts and stocking shelves; Volunteer Office Assistant at York General Community Hub (6 months)',
-        aspirations: 'Customer support receptionist, ward administrative assistant, clerical data assistant',
-        workPrefs: JSON.stringify({
-          hours: 'Full-Time (35-40 hours)',
-          postcode: 'LS1 1UR',
-          distance: '10 miles',
-          region: 'Yorkshire and the Humber',
-          adminDistrict: 'Leeds'
-        })
-      });
-    } else {
-      this.onboarded.emit({
-        name: 'Marcus Vance',
-        email: 'marcus.vance@live.co.uk',
-        skills: 'Stock replenishment operations, forklift loading, manual inventory audits, load security safety compliance, goods in-out documentation systems, team logistics tools',
-        experience: 'Depot Stock Porter at DHL Express (9 months) - sorting shipments and handling inbound cargo containers; Seasonal Warehouse Assistant at Amazon Fulfilment (5 months)',
-        aspirations: 'Logistics cargo handler, warehouse logistics colleague, yard coordinator, stock control team helper',
-        workPrefs: JSON.stringify({
-          hours: 'Part-Time (16-30 hours)',
-          postcode: 'LS11 5BY',
-          distance: '15 miles',
-          region: 'Yorkshire and the Humber',
-          adminDistrict: 'Leeds'
-        })
-      });
+      if (res.success && res.user) {
+        this.emitProfileFromResponse(res);
+      } else {
+        this.errorMessage.set(res.message || 'Verification failed.');
+      }
+    } catch (error: unknown) {
+      this.errorMessage.set(this.httpErrorMessage(error, 'Unable to contact the authentication service.'));
+    } finally {
+      this.isLoading.set(false);
     }
   }
+
+  private httpErrorMessage(error: unknown, fallback: string): string {
+    if (typeof error !== 'object' || error === null || !('error' in error)) return fallback;
+    const body = (error as { error?: unknown }).error;
+    if (typeof body === 'object' && body !== null && 'message' in body) {
+      const message = (body as { message?: unknown }).message;
+      if (typeof message === 'string' && message.trim()) return message;
+    }
+    return fallback;
+  }
+
+  private emitProfileFromResponse(res: GatewayResponse): void {
+    if (!res.user) return;
+    const profile = normaliseProfile(res.user.profile);
+
+    this.onboarded.emit({
+      profile,
+      name: res.user.name || '',
+      email: res.user.email || '',
+      token: res.user.token,
+      userId: res.user.id
+    });
+  }
+
 }

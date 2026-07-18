@@ -1,0 +1,34 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Job Seeker Copilot logo</title>
+  <desc id="desc">A rounded blue app icon with a briefcase, guided path, and spark.</desc>
+  <defs>
+    <linearGradient id="app-gradient" x1="10" y1="8" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#155EEF"/>
+      <stop offset="0.56" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#0F766E"/>
+    </linearGradient>
+    <linearGradient id="spark-gradient" x1="43" y1="12" x2="56" y2="28" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FDE68A"/>
+      <stop offset="1" stop-color="#2DD4BF"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="6" y="9" width="53" height="52" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="2"/>
+      <feGaussianBlur stdDeviation="2"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.059 0 0 0 0 0.165 0 0 0 0 0.384 0 0 0 0.24 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_3"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_3" result="shape"/>
+    </filter>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="url(#app-gradient)"/>
+  <path d="M14 43.5C20.2 34.8 27.7 31 36.5 31H45" stroke="#DFF7FF" stroke-width="4.5" stroke-linecap="round"/>
+  <path d="M40.5 24.5L46.5 31L40.5 37.5" stroke="#DFF7FF" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <g filter="url(#soft-shadow)">
+    <path d="M20.5 25.5C20.5 23.8 21.8 22.5 23.5 22.5H40.5C42.2 22.5 43.5 23.8 43.5 25.5V43.5C43.5 45.2 42.2 46.5 40.5 46.5H23.5C21.8 46.5 20.5 45.2 20.5 43.5V25.5Z" fill="white"/>
+    <path d="M27 22.5V19.8C27 18.5 28 17.5 29.3 17.5H34.7C36 17.5 37 18.5 37 19.8V22.5" stroke="white" stroke-width="3.6" stroke-linecap="round"/>
+    <path d="M20.5 33.5H43.5" stroke="#BFDBFE" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M29.5 33.5H34.5" stroke="#155EEF" stroke-width="3.4" stroke-linecap="round"/>
+  </g>
+  <path d="M50 12.5L51.9 17.1L56.5 19L51.9 20.9L50 25.5L48.1 20.9L43.5 19L48.1 17.1L50 12.5Z" fill="url(#spark-gradient)"/>
+</svg>
