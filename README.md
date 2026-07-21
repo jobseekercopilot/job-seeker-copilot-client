@@ -11,6 +11,7 @@ and postcode requests to location-gateway.
 ## Prerequisites
 
 - Node.js 24 (CI baseline)
+- Java 17 or newer (OpenAPI Generator runtime)
 - npm and the committed `package-lock.json`
 - user-management-gateway on port 8083 and location-gateway on port 8081
 
@@ -40,6 +41,11 @@ Each command verifies the pinned contracts and regenerates ignored TypeScript
 clients. `npm run api:verify` checks provenance without generating code. Contract
 updates must change the versioned snapshot and `contracts/contracts.lock.json`
 together, with evidence from the owning backend's contract tests.
+
+The first generation downloads the pinned OpenAPI Generator JAR from Maven Central
+into `.cache/`; its locked SHA-256 is verified before execution. See the
+[dependency security baseline](docs/dependency-security.md) for audit policy and
+current residual findings.
 
 The selected User Management beta enables authentication, profile, and location
 lookup only. Job finder, document generation, reporting, and payment UI source is

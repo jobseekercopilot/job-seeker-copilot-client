@@ -14,6 +14,11 @@ export async function verifyContractManifest(rootDir = defaultRoot) {
   if (lock.schemaVersion !== 1 || !Array.isArray(lock.contracts) || lock.contracts.length === 0) {
     throw new Error('contracts.lock.json must contain at least one schemaVersion 1 contract');
   }
+  if (!/^https:\/\/repo1\.maven\.org\//.test(lock.generator?.artifactUrl ?? '') ||
+      !/^[a-f0-9]{64}$/.test(lock.generator?.artifactSha256 ?? '') ||
+      !/^\d+\.\d+\.\d+$/.test(lock.generator?.engineVersion ?? '')) {
+    throw new Error('contracts.lock.json must pin a Maven generator URL, version, and SHA-256');
+  }
 
   for (const contract of lock.contracts) {
     const contractPath = resolve(rootDir, contract.path);
