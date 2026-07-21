@@ -2,6 +2,10 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
+# OpenAPI Generator is checksum-pinned and runs only while creating the
+# ignored TypeScript clients; Java is not copied into the runtime image.
+RUN apk add --no-cache openjdk17-jre-headless
+
 COPY package*.json ./
 
 RUN npm ci
