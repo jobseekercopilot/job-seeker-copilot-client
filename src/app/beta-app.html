@@ -1,0 +1,25 @@
+<main class="app-shell min-h-screen font-sans antialiased">
+  @if (!authenticated()) {
+    <app-landing-auth (onboarded)="handleOnboarded($event)" />
+  } @else {
+    <section class="dashboard-main mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <header class="mb-5">
+        <p class="eyebrow">Private beta</p>
+        <h1>Your claimant profile</h1>
+        <p>Job search, document generation, and reporting are not enabled in this beta path.</p>
+      </header>
+
+      @if (message()) {
+        <p role="status">{{ message() }}</p>
+      }
+
+      <app-claimant-profile
+        [claimantName]="name()"
+        [claimantEmail]="email()"
+        [profile]="profile()"
+        [authToken]="authToken"
+        (profileSaved)="handleProfileSaved($event)"
+        (logoutRequested)="logout()" />
+    </section>
+  }
+</main>

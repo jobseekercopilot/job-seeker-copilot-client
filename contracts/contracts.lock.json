@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "generator": {
+    "package": "@openapitools/openapi-generator-cli",
+    "version": "2.39.0",
+    "engineVersion": "7.23.0",
+    "generatorName": "typescript-angular",
+    "additionalProperties": "ngVersion=21.0.0,stringEnums=true,providedInRoot=true"
+  },
+  "contracts": [
+    {
+      "id": "user-management-gateway",
+      "version": "1.0.0",
+      "sourceRepository": "jobseekercopilot/user-management-gateway",
+      "sourceCommit": "cefd11879e65a3d2f06d115a3f3354c40931d743",
+      "path": "contracts/user-management-gateway/1.0.0/openapi.json",
+      "sha256": "3e1085f83d533e43299ea8cdc11b0714fcfef15714f5a4a7b683a3dee2553f31",
+      "output": "src/app/api",
+      "requiredPaths": [
+        "/api/auth/login",
+        "/api/auth/profile",
+        "/api/auth/register"
+      ]
+    },
+    {
+      "id": "location-gateway",
+      "version": "1.0.0",
+      "sourceRepository": "jobseekercopilot/location-gateway",
+      "sourceCommit": "dfef2c93389a2a95bb30201c2f6b3a29cf2fe3f6",
+      "path": "contracts/location-gateway/1.0.0/openapi.json",
+      "sha256": "76a7e2847118f93e885dfa5a3737fd61b877284e45c47d133377cefa2da09f60",
+      "output": "src/app/api/location",
+      "requiredPaths": [
+        "/api/locations",
+        "/api/postcodes/{postcode}"
+      ]
+    }
+  ]
+}

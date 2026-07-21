@@ -1,15 +1,15 @@
 import {TestBed} from '@angular/core/testing';
-import {App} from './app';
+import {BetaApp} from './beta-app';
 
-describe('App', () => {
+describe('BetaApp', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [App],
+      imports: [BetaApp],
     }).compileComponents();
   });
 
   it('should create the app', () => {
-    const fixture = TestBed.createComponent(App);
+    const fixture = TestBed.createComponent(BetaApp);
     const app = fixture.componentInstance;
     expect(app).toBeTruthy();
   });

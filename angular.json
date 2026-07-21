@@ -82,7 +82,14 @@
           "defaultConfiguration": "development"
         },
         "test": {
-          "builder": "@angular/build:unit-test"
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "include": [
+              "src/app/app.spec.ts",
+              "src/app/config/**/*.spec.ts",
+              "src/app/shared/**/*.spec.ts"
+            ]
+          }
         },
         "lint": {
           "builder": "@angular-eslint/builder:lint",
