@@ -4,15 +4,15 @@ Angular 21 browser application with an Express SSR/BFF layer. In the selected
 beta path it proxies authentication/profile requests to user-management-gateway
 and postcode requests to location-gateway.
 
-> Beta status: not beta-ready. Generated API sources are not committed and the
-> clean-clone generation/publication workflow is P0 work. See
+> Beta status: not beta-ready. The reproducible client build foundation is in
+> place, while session, lifecycle, and end-to-end readiness work remains. See
 > [the audit](docs/BETA_READINESS_AUDIT.md).
 
 ## Prerequisites
 
 - Node.js 24 (CI baseline)
+- Java 17 or newer (OpenAPI Generator runtime)
 - npm and the committed `package-lock.json`
-- compatible OpenAPI contracts/client generation for every imported API
 - user-management-gateway on port 8083 and location-gateway on port 8081
 
 Runtime configuration is supplied to the SSR process, not committed:
@@ -37,8 +37,20 @@ npm test -- --watch=false
 npm run build
 ```
 
-The commands currently fail from a clean clone until CLIENT-01 supplies the
-generated-client inputs. This failure is intentional and visible in CI.
+Each command verifies the pinned contracts and regenerates ignored TypeScript
+clients. `npm run api:verify` checks provenance without generating code. Contract
+updates must change the versioned snapshot and `contracts/contracts.lock.json`
+together, with evidence from the owning backend's contract tests.
+
+The first generation downloads the pinned OpenAPI Generator JAR from Maven Central
+into `.cache/`; its locked SHA-256 is verified before execution. See the
+[dependency security baseline](docs/dependency-security.md) for audit policy and
+current residual findings.
+
+The selected User Management beta enables authentication, profile, and location
+lookup only. Job finder, document generation, reporting, and payment UI source is
+retained but disabled pending authoritative contracts and separate approval. See
+[ADR 0001](docs/adr/0001-reproducible-beta-api-clients.md).
 
 ## Local and Docker startup
 
@@ -59,8 +71,8 @@ Use `feature/* → develop`. Do not push feature work directly to `develop`.
 
 ## Troubleshooting
 
-- Missing imports below `src/app/api` or `src/generated`: CLIENT-01 is open;
-  regenerate only from reviewed contracts and do not commit output.
+- Missing imports below `src/app/api`: run `npm run api:generate`. A checksum
+  mismatch means the reviewed snapshot or lock was changed and generation stops.
 - `503` from `/api/auth/*` or `/api/postcodes/*`: confirm SSR gateway URLs and
   dependency health.
 - Session errors: clear local beta data and sign in again; token lifecycle

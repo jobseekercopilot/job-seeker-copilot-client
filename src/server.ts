@@ -137,6 +137,22 @@ app.get('/api/postcodes/:postcode', async (req, res) => {
   res.status(result.statusCode).json(result);
 });
 
+// These capabilities have no authoritative private contract in the selected
+// User Management beta. Register the fail-closed boundary before their retained
+// legacy proxy handlers so they cannot be reached accidentally.
+app.use([
+  '/api/jobs',
+  '/api/v1/applications',
+  '/api/v1/document-generation',
+  '/api/v1/documents',
+  '/api/v1/reports',
+], (_req, res) => {
+  res.status(404).json({
+    error: 'FEATURE_NOT_AVAILABLE',
+    message: 'This capability is not available in the User Management beta',
+  });
+});
+
 /**
  * API Route: Search Jobs via Job Finder Gateway
  * Proxies POST requests from the Angular frontend to the Java job-finder-gateway.
@@ -401,7 +417,7 @@ app.get('/api/v1/document-generation/documents/:generatedDocumentId/files/latest
       return;
     }
 
-    const files = JSON.parse(data) as Array<{ id?: string; fileType?: string; fileName?: string }>;
+    const files = JSON.parse(data) as { id?: string; fileType?: string; fileName?: string }[];
     const toDownload = (file: { id?: string; fileName?: string } | undefined) => file?.id ? {
       fileId: file.id,
       downloadUrl: `/api/v1/document-generation/files/${file.id}/download`,

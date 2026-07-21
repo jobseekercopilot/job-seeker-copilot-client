@@ -13,7 +13,7 @@ import type {
   Qualification,
   Role
 } from '../../api';
-import { AspirationsTargetWeeklyHoursEnum, ProfileService } from '../../api';
+import { AspirationsTargetWeeklyHoursEnum, Configuration, ProfileService } from '../../api';
 import {
   normaliseProfile,
   serialiseProfile
@@ -41,6 +41,7 @@ type TargetWeeklyHours = AspirationsTargetWeeklyHoursEnum;
 })
 export class ClaimantProfileComponent {
   private userManagementApi = inject(ProfileService);
+  private userManagementConfig = inject(Configuration);
   private locationService = inject(LocationService);
 
   // Inputs remain as free-text strings for backward compatibility with app.ts and localStorage
@@ -148,12 +149,12 @@ export class ClaimantProfileComponent {
 
     this.isSaving.set(true);
     try {
+      this.userManagementConfig.credentials['bearerAuth'] = () => {
+        const header = this.authorizationHeader();
+        return header?.replace(/^Bearer\s+/i, '');
+      };
       const apiResult = await firstValueFrom(
-        this.userManagementApi.updateProfile(
-          profile,
-          this.claimantEmail().trim().toLowerCase(),
-          this.authorizationHeader()
-        )
+        this.userManagementApi.updateProfile(profile)
       );
       this.profileSaved.emit({ profile, apiResult });
       this.isEditing.set(false);

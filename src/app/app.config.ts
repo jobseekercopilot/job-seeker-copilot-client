@@ -11,10 +11,6 @@ import {
   BASE_PATH as LOCATION_BASE_PATH,
   Configuration as LocationConfiguration
 } from './api/location';
-import {
-  BASE_PATH as JOB_FINDER_BASE_PATH,
-  Configuration as JobFinderConfiguration
-} from './api/job-finder';
 
 class JsonApiConfiguration extends Configuration {
   override selectHeaderAccept(accepts: string[]): string | undefined {
@@ -37,7 +33,6 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(),
     {provide: BASE_PATH, useValue: ''},
     {provide: LOCATION_BASE_PATH, useValue: ''},
-    {provide: JOB_FINDER_BASE_PATH, useValue: ''},
     {
       provide: Configuration,
       useFactory: () => new JsonApiConfiguration({basePath: ''}),
@@ -45,10 +40,6 @@ export const appConfig: ApplicationConfig = {
     {
       provide: LocationConfiguration,
       useFactory: () => new JsonLocationConfiguration({basePath: ''}),
-    },
-    {
-      provide: JobFinderConfiguration,
-      useFactory: () => new JobFinderConfiguration({basePath: ''}),
     },
   ],
 };

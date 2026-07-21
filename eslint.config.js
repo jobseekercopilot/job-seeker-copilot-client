@@ -6,7 +6,26 @@ const angular = require('angular-eslint');
 
 module.exports = defineConfig([
   {
-    ignores: ['src/app/api/**'],
+    ignores: [
+      'src/app/api/**',
+      'src/app/app.ts',
+      'src/app/app.html',
+      'src/app/features/documents-workspace/**',
+      'src/app/features/job-card/**',
+      'src/app/features/job-results/**',
+      'src/app/features/job-seeker-dashboard/**',
+      'src/app/features/my-applications/**',
+      'src/app/features/navigation-bar/**',
+      'src/app/features/payment-panel/**',
+      'src/app/features/reporting-panel/**',
+      'src/app/gateways/job-finder-gateway.ts',
+      'src/app/models/job-search.model.ts',
+      'src/app/services/application-tracker.service.ts',
+      'src/app/services/document-generation.service.ts',
+      'src/app/services/job.service.ts',
+      'src/app/services/payment.service.ts',
+      'src/app/utils/ai-credit.ts',
+    ],
   },
   {
     files: ['**/*.ts'],
