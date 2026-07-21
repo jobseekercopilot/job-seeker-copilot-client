@@ -31,3 +31,17 @@ test('rejects a contract whose content does not match its checksum', async () =>
     /user-management-gateway checksum mismatch/,
   );
 });
+
+test('rejects an unpinned generator artifact', async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'jsc-generator-'));
+  const lock = JSON.parse(await readFile(resolve(rootDir, 'contracts/contracts.lock.json'), 'utf8'));
+  lock.generator.artifactSha256 = 'not-a-sha256';
+
+  await mkdir(resolve(fixtureRoot, 'contracts'), {recursive: true});
+  await writeFile(resolve(fixtureRoot, 'contracts/contracts.lock.json'), JSON.stringify(lock));
+
+  await assert.rejects(
+    verifyContractManifest(fixtureRoot),
+    /must pin a Maven generator URL, version, and SHA-256/,
+  );
+});

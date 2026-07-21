@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "generator": {
-    "package": "@openapitools/openapi-generator-cli",
-    "version": "2.39.0",
     "engineVersion": "7.23.0",
+    "artifactUrl": "https://repo1.maven.org/maven2/org/openapitools/openapi-generator-cli/7.23.0/openapi-generator-cli-7.23.0.jar",
+    "artifactSha256": "cb087e40001e31eb08ef6140dd5de10938dbeb89016a1fe0481eaa25cd569026",
     "generatorName": "typescript-angular",
     "additionalProperties": "ngVersion=21.0.0,stringEnums=true,providedInRoot=true"
   },

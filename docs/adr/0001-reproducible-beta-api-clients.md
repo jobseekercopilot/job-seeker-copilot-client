@@ -17,8 +17,10 @@ currently imported job-finder, document-generation, or reporting contracts.
 Version the owning backends' tested OpenAPI documents under `contracts/`, recording
 their repository, source commit, semantic version, SHA-256 checksum, required paths,
 and output path in `contracts/contracts.lock.json`. Generate ignored Angular sources
-with OpenAPI Generator 7.23.0 before lint, test, and build. Missing, changed, or
-incomplete inputs fail before generation.
+with OpenAPI Generator 7.23.0 before lint, test, and build. The official Maven JAR is
+cached outside version control and its SHA-256 is verified before execution, avoiding
+an unnecessary JavaScript wrapper dependency. Missing, changed, or incomplete inputs
+fail before generation.
 
 The User Management beta build exposes only user-management and location. Job
 finder, document generation, and reporting remain in the repository but are disabled
