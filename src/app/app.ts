@@ -14,6 +14,7 @@ import { PaymentService } from './services/payment.service';
 import type { GatewayResponse, UserProfile } from './api';
 import { normaliseProfile, profileToSearchText } from './models/user-profile.model';
 import { FALLBACK_PENCE_PER_TOKEN, pencePerTokenFromPlans } from './utils/ai-credit';
+import {removeLegacySessionData} from './services/browser-storage';
 
 type WorkspaceTab = 'search' | 'applications' | 'documents';
 
@@ -50,10 +51,7 @@ export class App implements OnInit {
   paymentReturnStatus = signal<'success' | 'cancel' | null>(null);
   currentRoute = signal<'dashboard' | 'payment' | 'history'>('dashboard');
 
-  // JWT token retrieved from login/register - exposed publicly for template binding
-  authToken = '';
-
-  // Claimant profile inputs (legacy free-text format for backward compat with localStorage)
+  // Claimant profile inputs retained by the non-beta shell in memory only.
   profileSkills = signal('');
   profileExperience = signal('');
   profileAspirations = signal('');
@@ -91,7 +89,11 @@ export class App implements OnInit {
       window.addEventListener('popstate', () => {
         this.syncRouteState(window.location.pathname);
       });
-      this.loadProfileFromStorage();
+      try {
+        removeLegacySessionData(localStorage, sessionStorage);
+      } catch {
+        console.warn('Unable to remove legacy browser session data.');
+      }
     }
   }
 
@@ -122,77 +124,6 @@ export class App implements OnInit {
     }, 4500);
   }
 
-  // Core Storage persistent helpers (safe for SSR checks)
-  private loadProfileFromStorage() {
-    if (isPlatformBrowser(this.platformId)) {
-      try {
-        const skills = localStorage.getItem('jc_skills');
-        const exp = localStorage.getItem('jc_experience');
-        const asp = localStorage.getItem('jc_aspirations');
-        const prefs = localStorage.getItem('jc_prefs');
-        const loggedIn = localStorage.getItem('jc_logged_in');
-        const name = localStorage.getItem('jc_name');
-        const email = localStorage.getItem('jc_email');
-        const token = localStorage.getItem('jc_token');
-        const userId = localStorage.getItem('jc_user_id');
-        const storedProfile = localStorage.getItem('jc_profile');
-
-        if (skills) this.profileSkills.set(skills);
-        if (exp) this.profileExperience.set(exp);
-        if (asp) this.profileAspirations.set(asp);
-        if (prefs) this.profileWorkPrefs.set(prefs);
-        if (loggedIn === 'true') this.isLoggedIn.set(true);
-        if (name) this.profileName.set(name);
-        if (email) this.profileEmail.set(email);
-        if (token) this.authToken = token;
-        if (userId) this.userAccountId.set(userId);
-        if (storedProfile) this.structuredProfile.set(normaliseProfile(JSON.parse(storedProfile) as UserProfile));
-        if (loggedIn === 'true') {
-          this.refreshAiTokenBalance();
-          this.refreshAiCreditPricing();
-        }
-        if (loggedIn === 'true' && token && !userId) {
-          void this.restoreAccountFromToken(token, email ?? '');
-        }
-      } catch (e: unknown) {
-        console.error('Localstorage load profile failed', e);
-      }
-    }
-  }
-
-  private async restoreAccountFromToken(token: string, email: string): Promise<void> {
-    try {
-      const params = new URLSearchParams();
-      if (email) params.set('email', email);
-      const response = await fetch(`/api/auth/profile?${params.toString()}`, {
-        headers: {
-          Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}`,
-        },
-      });
-      if (!response.ok) return;
-
-      const result = await response.json() as GatewayResponse;
-      if (!result.success || !result.user?.id) return;
-
-      this.userAccountId.set(result.user.id);
-      if (result.user.name) this.profileName.set(result.user.name);
-      if (result.user.email) this.profileEmail.set(result.user.email);
-      if (result.user.profile) {
-        const profile = normaliseProfile(result.user.profile);
-        this.structuredProfile.set(profile);
-        const searchText = profileToSearchText(profile);
-        this.profileSkills.set(searchText.skills);
-        this.profileExperience.set(searchText.experience);
-        this.profileAspirations.set(searchText.aspirations);
-        this.profileWorkPrefs.set(searchText.workPrefs);
-      }
-      this.saveProfile(false);
-      this.refreshAiTokenBalance();
-    } catch (error: unknown) {
-      console.warn('Unable to restore account id from saved token:', error);
-    }
-  }
-
   private detectPaymentReturnStatus(pathname: string): 'success' | 'cancel' | null {
     if (pathname === '/payment/success') return 'success';
     if (pathname === '/payment/cancel') return 'cancel';
@@ -216,28 +147,7 @@ export class App implements OnInit {
   }
 
   saveProfile(showConfirmation = true) {
-    if (isPlatformBrowser(this.platformId)) {
-      try {
-        localStorage.setItem('jc_skills', this.profileSkills());
-        localStorage.setItem('jc_experience', this.profileExperience());
-        localStorage.setItem('jc_aspirations', this.profileAspirations());
-        localStorage.setItem('jc_prefs', this.profileWorkPrefs());
-        localStorage.setItem('jc_logged_in', this.isLoggedIn() ? 'true' : 'false');
-        localStorage.setItem('jc_name', this.profileName());
-        localStorage.setItem('jc_email', this.profileEmail());
-        localStorage.setItem('jc_token', this.authToken);
-        localStorage.setItem('jc_user_id', this.userAccountId());
-        if (this.structuredProfile()) {
-          localStorage.setItem('jc_profile', JSON.stringify(this.structuredProfile()));
-        }
-
-        if (showConfirmation) {
-          this.showToast('Claimant Profile saved securely!', 'success');
-        }
-      } catch (e: unknown) {
-        console.error('Localstorage save profile failed', e);
-      }
-    }
+    if (showConfirmation) this.showToast('Claimant profile saved for this session.', 'success');
   }
 
   /**
@@ -248,7 +158,7 @@ export class App implements OnInit {
     const profile = event.profile;
     this.structuredProfile.set(profile);
 
-    // Update legacy free-text signals for backward compatibility with localStorage
+    // Update the retained non-beta shell's in-memory free-text signals.
     const searchText = profileToSearchText(profile);
     this.profileSkills.set(searchText.skills);
     this.profileExperience.set(searchText.experience);
@@ -291,7 +201,7 @@ export class App implements OnInit {
     return fallback;
   }
 
-  handleOnboarded(data: { profile: UserProfile; name: string; email: string; token?: string; userId?: string }) {
+  handleOnboarded(data: { profile: UserProfile; name: string; email: string }) {
     this.profileName.set(data.name);
     this.profileEmail.set(data.email);
     this.structuredProfile.set(data.profile);
@@ -303,12 +213,6 @@ export class App implements OnInit {
     this.profileAspirations.set(searchText.aspirations);
     this.profileWorkPrefs.set(searchText.workPrefs);
 
-    if (data.token) {
-      this.authToken = data.token;
-    }
-    if (data.userId) {
-      this.userAccountId.set(data.userId);
-    }
     this.isLoggedIn.set(true);
     this.saveProfile();
     this.refreshAiTokenBalance();
@@ -318,17 +222,7 @@ export class App implements OnInit {
 
   logout() {
     this.isLoggedIn.set(false);
-    this.authToken = '';
     this.userAccountId.set('');
-    if (isPlatformBrowser(this.platformId)) {
-      try {
-        localStorage.setItem('jc_logged_in', 'false');
-        localStorage.setItem('jc_token', '');
-        localStorage.setItem('jc_user_id', '');
-      } catch (e: unknown) {
-        console.error('Logout save failed', e);
-      }
-    }
     this.showToast('Logged out of claimant session securely.', 'info');
   }
 
@@ -366,7 +260,7 @@ export class App implements OnInit {
   refreshAiTokenBalance() {
     if (!this.isLoggedIn()) return;
     this.refreshAiCreditPricing();
-    this.paymentService.wallet(this.userAccountId(), this.authToken).subscribe({
+    this.paymentService.wallet(this.userAccountId(), '').subscribe({
       next: (wallet) => this.updateAiTokenBalance(wallet.balanceTokens ?? 0),
       error: (error) => console.warn('Unable to refresh AI token balance:', error),
     });

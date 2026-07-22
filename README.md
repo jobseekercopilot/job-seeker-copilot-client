@@ -4,8 +4,8 @@ Angular 21 browser application with an Express SSR/BFF layer. In the selected
 beta path it proxies authentication/profile requests to user-management-gateway
 and postcode requests to location-gateway.
 
-> Beta status: not beta-ready. The reproducible client build foundation is in
-> place, while session, lifecycle, and end-to-end readiness work remains. See
+> Beta status: not beta-ready. Reproducible builds and browser token custody are
+> in place, while session lifecycle and end-to-end readiness work remains. See
 > [the audit](docs/BETA_READINESS_AUDIT.md).
 
 ## Prerequisites
@@ -50,7 +50,33 @@ current residual findings.
 The selected User Management beta enables authentication, profile, and location
 lookup only. Job finder, document generation, reporting, and payment UI source is
 retained but disabled pending authoritative contracts and separate approval. See
-[ADR 0001](docs/adr/0001-reproducible-beta-api-clients.md).
+[ADR 0001](docs/adr/0001-reproducible-beta-api-clients.md) and the
+[browser-session ADR](docs/adr/0002-browser-session-client.md).
+
+## Browser session security
+
+The browser calls only same-origin `/api/auth/*` routes. Express forwards the
+opaque browser cookies and `X-CSRF-Token` value to user-management-gateway and
+relays each `Set-Cookie` response independently. It deliberately ignores
+browser-supplied `Authorization`, `X-User-Id`, and profile identity selectors.
+Access and refresh tokens remain in UMG-owned HttpOnly cookies and never enter
+Angular state, browser storage, response models, logs, or generated source.
+
+Registration, login, profile update, and logout first bootstrap CSRF through
+`GET /api/auth/csrf`. Angular validates the fixed header name and holds the
+random value only in application memory. Local HTTP cookie names and production
+Secure `__Host-` names are owned by UMG; the client must not read them. On first
+load the beta shell deletes all obsolete `jc_*` session/profile values from both
+`localStorage` and `sessionStorage`.
+
+UMG/Spring Security can replace the CSRF cookie when an authenticated security
+context is established. After authentication, profile writes, and logout, the
+client therefore discards its in-memory copy and bootstraps again before the next
+write. It never retries a state-changing request automatically.
+
+CLIENT-03 still owns startup session validation, one coordinated refresh,
+authenticated route guards, and expiry/reload UX. Until it is complete, a page
+reload returns to sign-in even if UMG still holds a valid cookie session.
 
 ## Local and Docker startup
 
@@ -75,8 +101,8 @@ Use `feature/* → develop`. Do not push feature work directly to `develop`.
   mismatch means the reviewed snapshot or lock was changed and generation stops.
 - `503` from `/api/auth/*` or `/api/postcodes/*`: confirm SSR gateway URLs and
   dependency health.
-- Session errors: clear local beta data and sign in again; token lifecycle
-  hardening remains open.
+- Session errors: retry sign-in. Do not inspect or copy cookie values. Startup
+  validation, refresh, and expiry UX remain tracked by CLIENT-03.
 
 ## Licence
 

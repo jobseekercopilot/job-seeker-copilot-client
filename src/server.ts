@@ -7,6 +7,7 @@ import {
 import express from 'express';
 import { join } from 'node:path';
 import { LocationGateway } from './app/gateways/location-gateway';
+import {upstreamSetCookies, userManagementHeaders} from './server/user-management-proxy';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
@@ -36,9 +37,10 @@ const allowedHosts = (process.env['NG_ALLOWED_HOSTS'] || 'localhost,127.0.0.1,jo
 
 const angularApp = new AngularNodeAppEngine({ allowedHosts });
 
-/**
- * API Route: Register/Onboard Claimant (User Management Gateway)
- */
+app.get('/api/auth/csrf', async (req, res) => {
+  await proxyUserManagementRequest('/api/auth/csrf', 'GET', req, res);
+});
+
 app.post('/api/auth/register', async (req, res) => {
   await proxyUserManagementRequest('/api/auth/register', 'POST', req, res);
 });
@@ -54,19 +56,23 @@ app.post('/api/auth/login', async (req, res) => {
  * API Route: Get Claimant Profile (User Management Gateway)
  */
 app.get('/api/auth/profile', async (req, res) => {
-  const email = req.query['email'] as string;
-  const searchParams = new URLSearchParams({ email });
-  await proxyUserManagementRequest(`/api/auth/profile?${searchParams.toString()}`, 'GET', req, res);
+  await proxyUserManagementRequest('/api/auth/profile', 'GET', req, res);
 });
 
 /**
  * API Route: Update Claimant Profile (User Management Gateway)
- * Proxies the PUT request to the Java backend, forwarding the Authorization header if present.
+ * Ownership is derived only from the HttpOnly session cookie.
  */
 app.put('/api/auth/profile', async (req, res) => {
-  const email = req.query['email'] as string;
-  const searchParams = new URLSearchParams({ email });
-  await proxyUserManagementRequest(`/api/auth/profile?${searchParams.toString()}`, 'PUT', req, res);
+  await proxyUserManagementRequest('/api/auth/profile', 'PUT', req, res);
+});
+
+app.post('/api/auth/refresh', async (req, res) => {
+  await proxyUserManagementRequest('/api/auth/refresh', 'POST', req, res);
+});
+
+app.post('/api/auth/logout', async (req, res) => {
+  await proxyUserManagementRequest('/api/auth/logout', 'POST', req, res);
 });
 
 async function proxyUserManagementRequest(
@@ -76,20 +82,18 @@ async function proxyUserManagementRequest(
   res: express.Response
 ): Promise<void> {
   try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-    const authorization = req.headers['authorization'];
-    if (typeof authorization === 'string') {
-      headers['Authorization'] = authorization;
-    }
+    const hasBody = method !== 'GET';
+    const headers = userManagementHeaders(req.headers, hasBody);
 
     const response = await fetch(`${USER_MANAGEMENT_GATEWAY_URL}${path}`, {
       method,
       headers,
-      body: method === 'GET' ? undefined : JSON.stringify(req.body)
+      body: hasBody ? JSON.stringify(req.body ?? {}) : undefined
     });
 
+    const setCookies = upstreamSetCookies(response.headers);
+    if (setCookies.length) res.setHeader('Set-Cookie', setCookies);
+    res.setHeader('Cache-Control', response.headers.get('cache-control') || 'no-store');
     const data = await response.text();
     const contentType = response.headers.get('content-type') || 'application/json';
     res.status(response.status).type(contentType).send(data);

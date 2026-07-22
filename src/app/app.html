@@ -32,7 +32,6 @@
 
       @if (isLoggedIn() && paymentReturnStatus() === 'success') {
         <app-payment-panel [userId]="userAccountId()"
-                           [authToken]="authToken"
                            mode="purchase"
                            (balanceChanged)="updateAiTokenBalance($event)"></app-payment-panel>
       }
@@ -61,7 +60,6 @@
             </div>
           </div>
           <app-payment-panel [userId]="userAccountId()"
-                             [authToken]="authToken"
                              mode="purchase"
                              (balanceChanged)="updateAiTokenBalance($event)"></app-payment-panel>
         </section>
@@ -75,7 +73,6 @@
             </div>
           </div>
           <app-payment-panel [userId]="userAccountId()"
-                             [authToken]="authToken"
                              mode="history"
                              (balanceChanged)="updateAiTokenBalance($event)"></app-payment-panel>
         </section>
@@ -93,7 +90,6 @@
                                 [experience]="profileExperience()"
                                 [aspirations]="profileAspirations()"
                                 [workPrefs]="profileWorkPrefs()"
-                                [authToken]="authToken"
                                 (profileSaved)="handleSaveProfile($event)"
                                 (logoutRequested)="logout()"
                                 (findJobsRequested)="triggerJobSearch()">
@@ -145,7 +141,6 @@
               [experience]="profileExperience()"
               [aspirations]="profileAspirations()"
               [workPrefs]="profileWorkPrefs()"
-              [authToken]="authToken"
               [userId]="userAccountId()"
               (notify)="showToast($event.message, $event.type)"
               (applicationChanged)="refreshAfterAiGeneration()">
@@ -154,7 +149,6 @@
 
           <div data-testid="workspace-panel-applications" [hidden]="activeWorkspaceTab() !== 'applications'">
             <app-my-applications #myApplications
-              [authToken]="authToken"
               [userId]="userAccountId()"
               [selectedApplicationId]="selectedApplicationId()"
               (notify)="showToast($event.message, $event.type)"
@@ -164,7 +158,6 @@
 
           <div data-testid="workspace-panel-documents" [hidden]="activeWorkspaceTab() !== 'documents'">
             <app-documents-workspace #documentsWorkspace
-              [authToken]="authToken"
               [userId]="userAccountId()"
               [selectedApplicationId]="selectedApplicationId()"
               (notify)="showToast($event.message, $event.type)"
@@ -176,13 +169,11 @@
 
         <aside id="right-sidebar" class="dashboard-right flex flex-col gap-5">
           <app-payment-panel [userId]="userAccountId()"
-                             [authToken]="authToken"
                              mode="summary"
                              (balanceChanged)="updateAiTokenBalance($event)"></app-payment-panel>
 
           <app-reporting-panel #reportingPanel
-                               [userId]="userAccountId()"
-                               [authToken]="authToken"></app-reporting-panel>
+                               [userId]="userAccountId()"></app-reporting-panel>
         </aside>
 
       </div>

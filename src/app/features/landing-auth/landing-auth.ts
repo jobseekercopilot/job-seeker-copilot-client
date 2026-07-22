@@ -20,6 +20,7 @@ import type {
   Role
 } from '../../api';
 import { AspirationsTargetWeeklyHoursEnum, AuthenticationService } from '../../api';
+import {BrowserSessionService} from '../../services/browser-session.service';
 import {
   normaliseProfile,
   serialiseProfile,
@@ -41,6 +42,7 @@ type TargetWeeklyHours = AspirationsTargetWeeklyHoursEnum;
 })
 export class LandingAuthComponent {
   private userManagementApi = inject(AuthenticationService);
+  private browserSession = inject(BrowserSessionService);
   private locationService = inject(LocationService);
 
   locationSuggestions = signal<UKLocation[]>([]);
@@ -50,8 +52,6 @@ export class LandingAuthComponent {
     profile: UserProfile;
     name: string;
     email: string;
-    token?: string;
-    userId?: string;
   }>();
 
   mode = signal<'create' | 'signin'>('create');
@@ -247,6 +247,7 @@ export class LandingAuthComponent {
     });
 
     try {
+      await firstValueFrom(this.browserSession.ensureCsrf());
       const res = await firstValueFrom(this.userManagementApi.register({
         name: this.formName().trim(),
         email: this.formEmail().trim().toLowerCase(),
@@ -255,6 +256,7 @@ export class LandingAuthComponent {
       }));
 
       if (res.success && res.user) {
+        this.browserSession.invalidateCsrf();
         this.emitProfileFromResponse(res);
       } else {
         this.errorMessage.set(res.message || 'Registration failed at gateway level.');
@@ -279,12 +281,14 @@ export class LandingAuthComponent {
     this.errorMessage.set(null);
 
     try {
+      await firstValueFrom(this.browserSession.ensureCsrf());
       const res = await firstValueFrom(this.userManagementApi.login({
         email: email.toLowerCase(),
         password
       }));
 
       if (res.success && res.user) {
+        this.browserSession.invalidateCsrf();
         this.emitProfileFromResponse(res);
       } else {
         this.errorMessage.set(res.message || 'Verification failed.');
@@ -313,9 +317,7 @@ export class LandingAuthComponent {
     this.onboarded.emit({
       profile,
       name: res.user.name || '',
-      email: res.user.email || '',
-      token: res.user.token,
-      userId: res.user.id
+      email: res.user.email || ''
     });
   }
 
