@@ -7,6 +7,7 @@ import {
 import express from 'express';
 import { join } from 'node:path';
 import { LocationGateway } from './app/gateways/location-gateway';
+import {BETA_DISABLED_API_PREFIXES, rejectBetaDisabledCapability} from './server/beta-disabled-capabilities';
 import {
   downstreamFailureResponse,
   jsonBodyErrorHandler,
@@ -147,18 +148,7 @@ app.get('/api/postcodes/:postcode', async (req, res) => {
 // These capabilities have no authoritative private contract in the selected
 // User Management beta. Register the fail-closed boundary before their retained
 // legacy proxy handlers so they cannot be reached accidentally.
-app.use([
-  '/api/jobs',
-  '/api/v1/applications',
-  '/api/v1/document-generation',
-  '/api/v1/documents',
-  '/api/v1/reports',
-], (_req, res) => {
-  res.status(404).json({
-    error: 'FEATURE_NOT_AVAILABLE',
-    message: 'This capability is not available in the User Management beta',
-  });
-});
+app.use(BETA_DISABLED_API_PREFIXES, rejectBetaDisabledCapability);
 
 /**
  * API Route: Search Jobs via Job Finder Gateway

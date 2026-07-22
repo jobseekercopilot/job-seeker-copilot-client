@@ -64,6 +64,12 @@ retained but disabled pending authoritative contracts and separate approval. See
 [ADR 0001](docs/adr/0001-reproducible-beta-api-clients.md) and the
 [browser-session ADR](docs/adr/0002-browser-session-client.md).
 
+Express also fails closed before every retained legacy handler for `/api/jobs`,
+`/api/v1/applications`, `/api/v1/document-generation`, `/api/v1/documents`,
+`/api/v1/reports` and `/api/v1/payment`. These prefixes and all child paths return
+the stable `404 FEATURE_NOT_AVAILABLE` beta response, regardless of method or
+browser-supplied identity headers; no downstream request is made.
+
 ## Browser session security
 
 The browser calls only same-origin `/api/auth/*` routes. Express forwards the
