@@ -7,17 +7,27 @@ import {
 import express from 'express';
 import { join } from 'node:path';
 import { LocationGateway } from './app/gateways/location-gateway';
-import {upstreamSetCookies, userManagementHeaders} from './server/user-management-proxy';
+import {
+  downstreamFailureResponse,
+  jsonBodyErrorHandler,
+  loadBffConfig,
+  securityHeaders,
+} from './server/bff-boundary';
+import {callUserManagement} from './server/user-management-proxy';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
+const bffConfig = loadBffConfig();
 
 const app = express();
-app.use(express.json());
+app.disable('x-powered-by');
+app.use(securityHeaders);
+app.use(express.json({limit: bffConfig.jsonBodyLimitBytes}));
+app.use(jsonBodyErrorHandler);
 
 const locationGateway = new LocationGateway();
 
 // User management gateway URL - configurable via environment variable
-const USER_MANAGEMENT_GATEWAY_URL = process.env['USER_MANAGEMENT_GATEWAY_URL'] || 'http://localhost:8083';
+const USER_MANAGEMENT_GATEWAY_URL = bffConfig.userManagementGatewayOrigin;
 
 // Job finder gateway URL - configurable via environment variable
 const JOB_FINDER_GATEWAY_URL = process.env['JOB_FINDER_GATEWAY_URL'] || 'http://localhost:8080';
@@ -30,12 +40,7 @@ const REPORTING_GATEWAY_URL = process.env['REPORTING_GATEWAY_URL'] || 'http://lo
 
 const PAYMENT_GATEWAY_URL = process.env['PAYMENT_GATEWAY_URL'] || 'http://localhost:8098';
 
-const allowedHosts = (process.env['NG_ALLOWED_HOSTS'] || 'localhost,127.0.0.1,job-seeker-copilot-client')
-  .split(',')
-  .map(host => host.trim())
-  .filter(Boolean);
-
-const angularApp = new AngularNodeAppEngine({ allowedHosts });
+const angularApp = new AngularNodeAppEngine({ allowedHosts: bffConfig.allowedHosts });
 
 app.get('/api/auth/csrf', async (req, res) => {
   await proxyUserManagementRequest('/api/auth/csrf', 'GET', req, res);
@@ -82,27 +87,25 @@ async function proxyUserManagementRequest(
   res: express.Response
 ): Promise<void> {
   try {
-    const hasBody = method !== 'GET';
-    const headers = userManagementHeaders(req.headers, hasBody);
-
-    const response = await fetch(`${USER_MANAGEMENT_GATEWAY_URL}${path}`, {
+    const result = await callUserManagement(
+      USER_MANAGEMENT_GATEWAY_URL,
+      path,
       method,
-      headers,
-      body: hasBody ? JSON.stringify(req.body ?? {}) : undefined
-    });
+      req.headers,
+      req.body,
+      bffConfig.downstreamTimeoutMs,
+    );
 
-    const setCookies = upstreamSetCookies(response.headers);
-    if (setCookies.length) res.setHeader('Set-Cookie', setCookies);
-    res.setHeader('Cache-Control', response.headers.get('cache-control') || 'no-store');
-    const data = await response.text();
-    const contentType = response.headers.get('content-type') || 'application/json';
-    res.status(response.status).type(contentType).send(data);
+    if (result.setCookies.length) res.setHeader('Set-Cookie', result.setCookies);
+    res.setHeader('Cache-Control', result.cacheControl);
+    res.status(result.status).type(result.contentType).send(result.body);
   } catch (error: unknown) {
-    console.error('User management proxy error:', error);
-    res.status(503).json({
-      statusCode: 503,
+    const failure = downstreamFailureResponse(error);
+    console.error('BFF downstream request failed', {service: 'user-management', category: failure.category});
+    res.status(failure.statusCode).json({
+      statusCode: failure.statusCode,
       success: false,
-      message: 'User management service is currently unavailable'
+      message: failure.message,
     });
   }
 }
@@ -561,18 +564,15 @@ app.use((req, res, next) => {
 
 /**
  * Start the server if this module is the main entry point, or it is ran via PM2.
- * The server listens on the port defined by the `PORT` environment variable, or defaults to 4000.
+ * The server listens on the port defined by the `PORT` environment variable, or defaults to 3000.
  */
 if (isMainModule(import.meta.url) || process.env['pm_id']) {
-  const port = Number(process.env['PORT'] || 3000);
-  const host = process.env['HOST'] || '0.0.0.0';
-  app.listen(port, host, (error) => {
-    if (error) {
-      throw error;
-    }
-
-    console.log(`Node Express server listening on http://${host}:${port}`);
+  const server = app.listen(bffConfig.port, bffConfig.host, () => {
+    console.log(`Node Express server listening on ${bffConfig.host}:${bffConfig.port}`);
   });
+  server.requestTimeout = bffConfig.requestTimeoutMs;
+  server.headersTimeout = bffConfig.headersTimeoutMs;
+  server.keepAliveTimeout = bffConfig.keepAliveTimeoutMs;
 }
 
 /**

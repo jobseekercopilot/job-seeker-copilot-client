@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from './bff-boundary';
+
 const CSRF_HEADER = 'x-csrf-token';
 
 type BrowserHeaders = Record<string, string | string[] | undefined>;
@@ -24,4 +26,37 @@ export function upstreamSetCookies(headers: Headers): string[] {
 
   const singleValue = headers.get('set-cookie');
   return singleValue ? [singleValue] : [];
+}
+
+export interface UserManagementProxyResult {
+  body: string;
+  cacheControl: string;
+  contentType: string;
+  setCookies: string[];
+  status: number;
+}
+
+export async function callUserManagement(
+  origin: string,
+  path: string,
+  method: 'GET' | 'POST' | 'PUT',
+  browserHeaders: BrowserHeaders,
+  body: unknown,
+  timeoutMs: number,
+  fetchImplementation: typeof fetch = fetch,
+): Promise<UserManagementProxyResult> {
+  const hasBody = method !== 'GET';
+  const response = await fetchWithTimeout(`${origin}${path}`, {
+    method,
+    headers: userManagementHeaders(browserHeaders, hasBody),
+    body: hasBody ? JSON.stringify(body ?? {}) : undefined,
+  }, timeoutMs, fetchImplementation);
+
+  return {
+    body: await response.text(),
+    cacheControl: response.headers.get('cache-control') || 'no-store',
+    contentType: response.headers.get('content-type') || 'application/json',
+    setCookies: upstreamSetCookies(response.headers),
+    status: response.status,
+  };
 }

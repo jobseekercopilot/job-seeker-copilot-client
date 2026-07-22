@@ -24,9 +24,20 @@ Runtime configuration is supplied to the SSR process, not committed:
 | `USER_MANAGEMENT_GATEWAY_URL` | `http://localhost:8083` | Auth/profile gateway |
 | `LOCATION_GATEWAY_URL` | `http://location-gateway:8081` | Location gateway |
 | `NG_ALLOWED_HOSTS` | local/container hosts | Comma-separated SSR hosts |
+| `BFF_JSON_BODY_LIMIT_BYTES` | `65536` | Maximum parsed JSON request body (max 1 MiB) |
+| `BFF_DOWNSTREAM_TIMEOUT_MS` | `5000` | UMG proxy deadline (max 60 seconds) |
+| `BFF_REQUEST_TIMEOUT_MS` | `15000` | Node request timeout (max 120 seconds) |
+| `BFF_HEADERS_TIMEOUT_MS` | `10000` | Node header timeout; cannot exceed request timeout |
+| `BFF_KEEP_ALIVE_TIMEOUT_MS` | `5000` | Node idle keep-alive timeout (max 60 seconds) |
 
 Never place provider or production credentials in Angular environment files;
 browser bundles cannot keep a secret.
+
+The SSR process validates these values before listening. The UMG setting must be
+an HTTP(S) origin without credentials, a path, query or fragment. Hosts must be
+explicit IP addresses or DNS names; wildcard host allowlists are rejected. All
+numeric limits are positive bounded integers. Invalid configuration terminates
+startup without printing the rejected value.
 
 ## Build and test
 
@@ -86,6 +97,26 @@ The beta route table is intentionally empty: the root shell's session-state gate
 is the current authenticated boundary. Any future protected route must consume
 the same central session decision and add guard coverage.
 
+## SSR/BFF security boundary
+
+Express accepts at most 64 KiB of JSON by default. Oversized and malformed input
+returns stable `413` or `400` JSON without echoing input or parser details. Every
+selected UMG request has a five-second default deadline: expiry aborts the fetch
+and returns `504`; other network failure returns `503`. Logs contain only the
+service name and stable `timeout`/`unavailable` category. They do not contain the
+upstream URL, exception text, request body, cookies or tokens.
+
+API, static and SSR responses receive CSP, clickjacking, MIME-sniffing, referrer,
+permissions and cross-origin opener protections. The CSP permits scripts and
+connections only from the same origin; styles/fonts allow only same-origin data,
+inline Angular SSR styles and the existing Google Fonts origins. `X-Powered-By`
+is disabled. Production critical-CSS inlining is disabled because its generated
+inline `onload` handler is intentionally incompatible with the script policy;
+the hashed same-origin stylesheet remains render-blocking. Node request,
+header and keep-alive timeouts are explicitly bounded. UMG continues to own its
+downstream resilience, cookie flags and cache policy; the BFF preserves upstream
+status, content type, cache policy and each `Set-Cookie` header.
+
 ## Local and Docker startup
 
 ```bash
@@ -107,8 +138,9 @@ Use `feature/* → develop`. Do not push feature work directly to `develop`.
 
 - Missing imports below `src/app/api`: run `npm run api:generate`. A checksum
   mismatch means the reviewed snapshot or lock was changed and generation stops.
-- `503` from `/api/auth/*` or `/api/postcodes/*`: confirm SSR gateway URLs and
-  dependency health.
+- `503` from `/api/auth/*`: confirm SSR gateway URL and dependency health. `504`
+  means the validated BFF downstream deadline elapsed.
+- `503` from `/api/postcodes/*`: confirm location dependency health.
 - Session service unavailable: use **Try again** after dependency health is
   restored. Do not inspect, copy, or manually edit cookie values.
 
