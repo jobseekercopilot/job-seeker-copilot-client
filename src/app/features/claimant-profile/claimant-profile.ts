@@ -2,8 +2,14 @@ import { ChangeDetectionStrategy, Component, input, output, signal, inject, effe
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { FormsModule } from '@angular/forms';
-import { firstValueFrom } from 'rxjs';
-import { LocationService, UKLocation } from '../../services/location.service';
+import {firstValueFrom, Subject, switchMap} from 'rxjs';
+import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
+import {
+  idleLocationLookup,
+  LocationService,
+  type LocationLookupState,
+  type UKLocation,
+} from '../../services/location.service';
 import { TagInputComponent } from '../../shared/tag-input/tag-input';
 import { QualificationFormComponent } from '../../shared/qualification-form/qualification-form';
 import { RoleFormComponent } from '../../shared/role-form/role-form';
@@ -80,10 +86,21 @@ export class ClaimantProfileComponent {
 
   locationSuggestions = signal<UKLocation[]>([]);
   showLocationDropdown = signal<boolean>(false);
+  locationLookup = signal<LocationLookupState>(idleLocationLookup);
+  private locationQueries = new Subject<string>();
 
   commuteDistanceOptions = [5, 10, 15, 25, 50];
 
   constructor() {
+    this.locationQueries.pipe(
+      switchMap(query => this.locationService.lookup(query)),
+      takeUntilDestroyed(),
+    ).subscribe(state => {
+      this.locationLookup.set(state);
+      this.locationSuggestions.set(state.locations);
+      this.showLocationDropdown.set(state.status === 'results');
+    });
+
     effect(() => {
       const profile = this.profile() || normaliseProfile({
         skills: this.skills(),
@@ -166,48 +183,15 @@ export class ClaimantProfileComponent {
 
   onLocationInputChange(query: string) {
     this.localPostcode.set(query);
-    if (!query || query.trim().length < 2) {
-      this.locationSuggestions.set([]);
-      this.showLocationDropdown.set(false);
-      return;
-    }
+    this.clearDerivedLocation();
+    this.locationQueries.next((query || '').trim());
+  }
 
-    const cleanQuery = query.trim();
-    const isPostcodeOrOutcode = /^[A-Z]{1,2}[0-9]/i.test(cleanQuery);
-
-    if (isPostcodeOrOutcode) {
-      this.locationService.getByPostcode(cleanQuery).subscribe({
-        next: (res) => {
-          if (res.success && res.locations && res.locations.length > 0) {
-            this.locationSuggestions.set(res.locations);
-            this.showLocationDropdown.set(true);
-          } else {
-            this.locationSuggestions.set([]);
-            this.showLocationDropdown.set(false);
-          }
-        },
-        error: () => {
-          this.locationSuggestions.set([]);
-          this.showLocationDropdown.set(false);
-        }
-      });
-    } else {
-      this.locationService.search(cleanQuery).subscribe({
-        next: (res) => {
-          if (res.success && res.locations) {
-            this.locationSuggestions.set(res.locations);
-            this.showLocationDropdown.set(true);
-          } else {
-            this.locationSuggestions.set([]);
-            this.showLocationDropdown.set(false);
-          }
-        },
-        error: () => {
-          this.locationSuggestions.set([]);
-          this.showLocationDropdown.set(false);
-        }
-      });
-    }
+  private clearDerivedLocation(): void {
+    this.localRegion.set('');
+    this.localAdminDistrict.set('');
+    this.localLatitude.set(undefined);
+    this.localLongitude.set(undefined);
   }
 
   private safeSplitName(name: unknown): string {
@@ -220,19 +204,13 @@ export class ClaimantProfileComponent {
     this.localPostcode.set(postcode);
     this.localRegion.set(loc.region ?? '');
     this.localAdminDistrict.set(this.safeSplitName(loc.name));
-
-    this.locationService.getByPostcode(postcode).subscribe({
-      next: (res) => {
-        if (res.success && res.locations && res.locations.length > 0) {
-          const l = res.locations[0];
-          this.localRegion.set(l.region ?? '');
-          this.localAdminDistrict.set(this.safeSplitName(l.name));
-        }
-      }
-    });
+    this.localLatitude.set(loc.latitude);
+    this.localLongitude.set(loc.longitude);
 
     this.locationSuggestions.set([]);
     this.showLocationDropdown.set(false);
+    this.locationLookup.set(idleLocationLookup);
+    this.locationQueries.next('');
   }
 
   hideLocationDropdownWithDelay() {

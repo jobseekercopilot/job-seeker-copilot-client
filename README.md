@@ -128,6 +128,18 @@ configured location gateway. Client transaction logs record the fixed action and
 bounded result count only. Failure logs use a fixed category and never include
 the query, postcode, upstream URL or raw exception.
 
+Registration and profile location inputs expose the same stable lookup states:
+loading, results, no matches, invalid input, rate limiting and temporary provider
+failure. Only the latest request may update suggestions. Editing a selected
+location clears its derived region, district and coordinates before searching,
+and selecting a canonical result restores those fields. Public messages never
+render raw downstream response details.
+
+Focused service and component tests own deterministic state, routing and race
+coverage. Browser regression evidence reuses the root Playwright/Cucumber suite;
+CLIENT-07 owns its durable beta tags, isolated test-data cleanup, traces and CI
+profile, while CLIENT-08 owns the broader WCAG 2.2 AA journey review.
+
 ## Local and Docker startup
 
 ```bash
