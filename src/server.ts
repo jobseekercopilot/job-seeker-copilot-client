@@ -15,6 +15,7 @@ import {
   securityHeaders,
 } from './server/bff-boundary';
 import {callUserManagement} from './server/user-management-proxy';
+import {installGracefulShutdown} from './server/graceful-shutdown';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 const bffConfig = loadBffConfig();
@@ -563,6 +564,7 @@ if (isMainModule(import.meta.url) || process.env['pm_id']) {
   server.requestTimeout = bffConfig.requestTimeoutMs;
   server.headersTimeout = bffConfig.headersTimeoutMs;
   server.keepAliveTimeout = bffConfig.keepAliveTimeoutMs;
+  installGracefulShutdown(server);
 }
 
 /**
