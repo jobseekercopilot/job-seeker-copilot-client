@@ -44,6 +44,15 @@ and is not described as remote revocation. The beta shell removes all obsolete
 `jc_*` token, identity, login, free-text, and structured-profile values from both
 browser storage mechanisms on startup.
 
+The root beta shell starts in a checking state and renders no claimant PII until
+subject-bound `GET /api/auth/profile` succeeds. A 401 on that safe read can start
+one shared refresh request for all concurrent startup callers, followed by one
+profile-read retry. No mutating request is replayed. Final 401 expiry clears the
+token-free in-memory user; dependency/network failure clears rendered PII but
+retains a distinct retryable unavailable outcome without claiming remote logout.
+The selected route table is empty, so this root render-state gate is the current
+authenticated boundary rather than an unused router guard.
+
 UMG owns cookie names and flags. Its explicit local HTTP profile uses unprefixed
 non-Secure cookies; production requires Secure host-only `__Host-` cookies. Access
 and refresh cookies are HttpOnly and Angular does not inspect either form.
@@ -62,10 +71,10 @@ and refresh cookies are HttpOnly and Angular does not inspect either form.
 
 ## Consequences and residual work
 
-Browser reload no longer restores identity from unsafe storage. CLIENT-03 must add
-startup profile validation, one coordinated refresh attempt, authenticated route
-guards, and stable expiry/reload UX. The existing workspace Playwright/Cucumber
-framework must be extended under CLIENT-07/UMG-07 for repeatable Compose browser
+Browser reload restores identity only from a successful server validation, never
+from browser storage. The existing workspace Playwright/Cucumber framework must
+still be extended under CLIENT-07/UMG-07 with separate beta/demo profiles,
+isolated test data and cleanup, traces, CI, and complete negative-path Compose
 evidence; this decision does not create a second E2E framework.
 
 TLS termination, proxy-trust configuration, multi-instance refresh coordination,

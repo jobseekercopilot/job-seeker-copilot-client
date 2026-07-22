@@ -1,5 +1,5 @@
 import {isPlatformBrowser} from '@angular/common';
-import {ChangeDetectionStrategy, Component, inject, OnInit, PLATFORM_ID, signal} from '@angular/core';
+import {ChangeDetectionStrategy, Component, computed, inject, OnInit, PLATFORM_ID, signal} from '@angular/core';
 import {firstValueFrom} from 'rxjs';
 import type {GatewayResponse, UserProfile} from './api';
 import {ClaimantProfileComponent} from './features/claimant-profile/claimant-profile';
@@ -24,10 +24,10 @@ interface OnboardedUser {
 export class BetaApp implements OnInit {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly browserSession = inject(BrowserSessionService);
-  protected readonly authenticated = signal(false);
-  protected readonly name = signal('');
-  protected readonly email = signal('');
-  protected readonly profile = signal<UserProfile | null>(null);
+  protected readonly sessionStatus = this.browserSession.status;
+  protected readonly name = computed(() => this.browserSession.user()?.name ?? '');
+  protected readonly email = computed(() => this.browserSession.user()?.email ?? '');
+  protected readonly profile = computed(() => this.browserSession.user()?.profile ?? null);
   protected readonly message = signal<string | null>(null);
 
   ngOnInit(): void {
@@ -37,13 +37,20 @@ export class BetaApp implements OnInit {
     } catch {
       console.warn('Unable to remove legacy browser session data.');
     }
+    void this.retrySession();
+  }
+
+  protected async retrySession(): Promise<void> {
+    this.message.set(null);
+    await firstValueFrom(this.browserSession.restore());
   }
 
   protected handleOnboarded(user: OnboardedUser): void {
-    this.name.set(user.name);
-    this.email.set(user.email);
-    this.profile.set(normaliseProfile(user.profile));
-    this.authenticated.set(true);
+    this.browserSession.acceptAuthenticatedUser({
+      name: user.name,
+      email: user.email,
+      profile: normaliseProfile(user.profile),
+    });
     this.message.set(null);
   }
 
@@ -53,8 +60,13 @@ export class BetaApp implements OnInit {
     apiError?: unknown;
   }): void {
     if (event.apiResult?.success) {
-      this.profile.set(normaliseProfile(event.profile));
+      this.browserSession.updateCurrentProfile(normaliseProfile(event.profile));
       this.message.set('Profile updated.');
+      return;
+    }
+    this.browserSession.handleAuthenticatedError(event.apiError);
+    if (this.sessionStatus() === 'anonymous') {
+      this.message.set('Your session has expired. Please sign in again.');
       return;
     }
     this.message.set('The profile could not be updated. Please try again.');
@@ -69,14 +81,14 @@ export class BetaApp implements OnInit {
         return;
       }
     } catch {
+      if (this.sessionStatus() === 'anonymous') {
+        this.message.set('Your session has expired. Please sign in again.');
+        return;
+      }
       this.message.set('The session could not be ended. Please try again.');
       return;
     }
 
-    this.authenticated.set(false);
-    this.name.set('');
-    this.email.set('');
-    this.profile.set(null);
     this.message.set('Signed out.');
   }
 }

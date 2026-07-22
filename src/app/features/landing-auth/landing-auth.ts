@@ -313,6 +313,7 @@ export class LandingAuthComponent {
   private emitProfileFromResponse(res: GatewayResponse): void {
     if (!res.user) return;
     const profile = normaliseProfile(res.user.profile);
+    this.browserSession.acceptAuthenticatedUser({...res.user, profile});
 
     this.onboarded.emit({
       profile,

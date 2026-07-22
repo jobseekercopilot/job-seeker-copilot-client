@@ -156,6 +156,7 @@ export class ClaimantProfileComponent {
       this.profileSaved.emit({ profile, apiResult });
       this.isEditing.set(false);
     } catch (apiError) {
+      this.browserSession.handleAuthenticatedError(apiError);
       this.profileSaved.emit({ profile, apiError });
     } finally {
       this.browserSession.invalidateCsrf();
