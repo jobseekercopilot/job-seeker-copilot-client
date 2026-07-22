@@ -66,8 +66,12 @@ and refresh cookies are HttpOnly and Angular does not inspect either form.
 - Forged bearer or user-ID headers are discarded at the BFF and UMG also rejects
   them as identity.
 - Cross-user profile selection is absent from both browser and proxy contracts.
-- Cookies and CSRF values are never logged. Proxy failures return a stable 503
-  without upstream bodies or credential material.
+- Cookies and CSRF values are never logged. Proxy network failures return a
+  stable 503 and deadline expiry returns 504; logs contain only the service and
+  failure category, without exception text, upstream URLs, bodies or credentials.
+- The BFF bounds JSON bodies and Node/downstream timeouts, validates its selected
+  runtime configuration before listening, and applies an Angular-compatible CSP
+  plus baseline browser security headers to SSR, static and API responses.
 
 ## Consequences and residual work
 
@@ -78,5 +82,7 @@ isolated test data and cleanup, traces, CI, and complete negative-path Compose
 evidence; this decision does not create a second E2E framework.
 
 TLS termination, proxy-trust configuration, multi-instance refresh coordination,
-and production deployment remain outside this client change and require separate
-platform evidence before beta readiness can be claimed.
+legacy beta-disabled proxy removal, and production deployment remain outside
+this client change and require separate platform evidence before beta readiness
+can be claimed. Inline style execution remains allowed for Angular/Material SSR;
+scripts and network connections remain same-origin only.
