@@ -1,5 +1,21 @@
 <main class="app-shell min-h-screen font-sans antialiased">
-  @if (!authenticated()) {
+  @if (sessionStatus() === 'checking') {
+    <section class="dashboard-main mx-auto px-4 sm:px-6 lg:px-8 py-8" aria-live="polite">
+      <p class="eyebrow">Private beta</p>
+      <h1>Checking your session</h1>
+      <p role="status">Please wait while your secure session is validated.</p>
+    </section>
+  } @else if (sessionStatus() === 'unavailable') {
+    <section class="dashboard-main mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <p class="eyebrow">Private beta</p>
+      <h1>Session service unavailable</h1>
+      <p role="alert">We could not validate your session. No profile information has been displayed or cleared remotely.</p>
+      <button type="button" (click)="retrySession()">Try again</button>
+    </section>
+  } @else if (sessionStatus() === 'anonymous') {
+    @if (message()) {
+      <p role="status">{{ message() }}</p>
+    }
     <app-landing-auth (onboarded)="handleOnboarded($event)" />
   } @else {
     <section class="dashboard-main mx-auto px-4 sm:px-6 lg:px-8 py-8">

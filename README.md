@@ -4,9 +4,9 @@ Angular 21 browser application with an Express SSR/BFF layer. In the selected
 beta path it proxies authentication/profile requests to user-management-gateway
 and postcode requests to location-gateway.
 
-> Beta status: not beta-ready. Reproducible builds and browser token custody are
-> in place, while session lifecycle and end-to-end readiness work remains. See
-> [the audit](docs/BETA_READINESS_AUDIT.md).
+> Beta status: not beta-ready. Reproducible builds, browser token custody, and
+> client session lifecycle are in place, while end-to-end readiness work
+> remains. See [the audit](docs/BETA_READINESS_AUDIT.md).
 
 ## Prerequisites
 
@@ -74,9 +74,17 @@ context is established. After authentication, profile writes, and logout, the
 client therefore discards its in-memory copy and bootstraps again before the next
 write. It never retries a state-changing request automatically.
 
-CLIENT-03 still owns startup session validation, one coordinated refresh,
-authenticated route guards, and expiry/reload UX. Until it is complete, a page
-reload returns to sign-in even if UMG still holds a valid cookie session.
+On startup the root beta shell displays no claimant PII until a subject-bound
+profile read validates the cookie session. One shared refresh may run after a
+401, followed by exactly one safe profile-read retry. Successful validation
+restores the token-free user/profile state after reload. Final expiry clears all
+in-memory PII and returns to sign-in; a network or 5xx failure instead displays a
+retryable unavailable state without claiming logout or clearing remote cookies.
+State-changing requests are never replayed automatically.
+
+The beta route table is intentionally empty: the root shell's session-state gate
+is the current authenticated boundary. Any future protected route must consume
+the same central session decision and add guard coverage.
 
 ## Local and Docker startup
 
@@ -101,8 +109,8 @@ Use `feature/* → develop`. Do not push feature work directly to `develop`.
   mismatch means the reviewed snapshot or lock was changed and generation stops.
 - `503` from `/api/auth/*` or `/api/postcodes/*`: confirm SSR gateway URLs and
   dependency health.
-- Session errors: retry sign-in. Do not inspect or copy cookie values. Startup
-  validation, refresh, and expiry UX remain tracked by CLIENT-03.
+- Session service unavailable: use **Try again** after dependency health is
+  restored. Do not inspect, copy, or manually edit cookie values.
 
 ## Licence
 

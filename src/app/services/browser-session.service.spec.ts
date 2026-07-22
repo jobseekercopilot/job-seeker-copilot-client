@@ -66,4 +66,121 @@ describe('browser session security', () => {
     expect(request.request.headers.has('X-CSRF-Token')).toBe(false);
     request.flush({success: true});
   });
+
+  it('restores a valid cookie session from the subject-bound profile', () => {
+    const service = TestBed.inject(BrowserSessionService);
+    let result: string | undefined;
+    service.restore().subscribe(status => result = status);
+
+    const profile = TestBed.inject(HttpTestingController).expectOne('/api/auth/profile');
+    expect(profile.request.method).toBe('GET');
+    expect(profile.request.withCredentials).toBe(true);
+    profile.flush({
+      statusCode: 200,
+      success: true,
+      user: {id: 'account-id', name: 'Beta User', email: 'beta@example.test', profile: {skills: ['TypeScript']}},
+    });
+
+    expect(result).toBe('authenticated');
+    expect(service.status()).toBe('authenticated');
+    expect(service.user()).toEqual(expect.objectContaining({email: 'beta@example.test'}));
+  });
+
+  it('coordinates concurrent startup callers through one refresh and one safe read retry', () => {
+    const service = TestBed.inject(BrowserSessionService);
+    const http = TestBed.inject(HttpTestingController);
+    const results: string[] = [];
+    const first = service.restore();
+    const second = service.restore();
+    expect(second).toBe(first);
+    first.subscribe(status => results.push(status));
+    second.subscribe(status => results.push(status));
+
+    http.expectOne('/api/auth/profile').flush({}, {status: 401, statusText: 'Unauthorized'});
+    http.expectOne('/api/auth/csrf').flush({
+      headerName: 'X-CSRF-Token',
+      token: '0123456789-secure-csrf-value',
+    });
+    const refresh = http.expectOne('/api/auth/refresh');
+    expect(refresh.request.headers.get('X-CSRF-Token')).toBe('0123456789-secure-csrf-value');
+    refresh.flush({statusCode: 200, success: true, message: 'Session rotated'});
+    http.expectOne('/api/auth/profile').flush({
+      statusCode: 200,
+      success: true,
+      user: {id: 'account-id', email: 'beta@example.test', profile: {skills: ['TypeScript']}},
+    });
+
+    expect(results).toEqual(['authenticated', 'authenticated']);
+    expect(service.status()).toBe('authenticated');
+  });
+
+  it('becomes anonymous when refresh is rejected and does not retry again', () => {
+    const service = TestBed.inject(BrowserSessionService);
+    const http = TestBed.inject(HttpTestingController);
+    let result: string | undefined;
+    service.restore().subscribe(status => result = status);
+
+    http.expectOne('/api/auth/profile').flush({}, {status: 401, statusText: 'Unauthorized'});
+    http.expectOne('/api/auth/csrf').flush({
+      headerName: 'X-CSRF-Token',
+      token: '0123456789-secure-csrf-value',
+    });
+    http.expectOne('/api/auth/refresh').flush({}, {status: 401, statusText: 'Unauthorized'});
+
+    expect(result).toBe('anonymous');
+    expect(service.status()).toBe('anonymous');
+    expect(service.user()).toBeNull();
+    http.expectNone('/api/auth/profile');
+  });
+
+  it('retries the safe read only once after a successful refresh', () => {
+    const service = TestBed.inject(BrowserSessionService);
+    const http = TestBed.inject(HttpTestingController);
+    let result: string | undefined;
+    service.restore().subscribe(status => result = status);
+
+    http.expectOne('/api/auth/profile').flush({}, {status: 401, statusText: 'Unauthorized'});
+    http.expectOne('/api/auth/csrf').flush({
+      headerName: 'X-CSRF-Token',
+      token: '0123456789-secure-csrf-value',
+    });
+    http.expectOne('/api/auth/refresh').flush({statusCode: 200, success: true});
+    http.expectOne('/api/auth/profile').flush({}, {status: 401, statusText: 'Still unauthorized'});
+
+    expect(result).toBe('anonymous');
+    expect(service.status()).toBe('anonymous');
+    http.expectNone('/api/auth/csrf');
+    http.expectNone('/api/auth/refresh');
+  });
+
+  it('shows an unavailable outcome without PII and permits a later retry', () => {
+    const service = TestBed.inject(BrowserSessionService);
+    const http = TestBed.inject(HttpTestingController);
+    service.acceptAuthenticatedUser({email: 'stale@example.test', profile: {skills: ['stale']}});
+
+    let firstResult: string | undefined;
+    service.restore().subscribe(status => firstResult = status);
+    http.expectOne('/api/auth/profile').flush({}, {status: 503, statusText: 'Unavailable'});
+    expect(firstResult).toBe('unavailable');
+    expect(service.user()).toBeNull();
+
+    let retryResult: string | undefined;
+    service.restore().subscribe(status => retryResult = status);
+    http.expectOne('/api/auth/profile').flush({
+      statusCode: 200,
+      success: true,
+      user: {email: 'restored@example.test', profile: {}},
+    });
+    expect(retryResult).toBe('authenticated');
+    expect(service.user()?.email).toBe('restored@example.test');
+  });
+
+  it('never automatically replays a state-changing request', () => {
+    const state = TestBed.inject(BrowserSessionState);
+    state.acceptBootstrap({headerName: 'X-CSRF-Token', token: '0123456789-secure-csrf-value'});
+    TestBed.inject(HttpClient).put('/api/auth/profile', {skills: ['TypeScript']}).subscribe({error: () => undefined});
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('/api/auth/profile').flush({}, {status: 401, statusText: 'Expired'});
+    http.expectNone('/api/auth/refresh');
+  });
 });
