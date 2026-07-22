@@ -194,15 +194,28 @@
         <div class="flex flex-col gap-1.5 relative">
           <label for="profile-postcode-input" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Postcode / Location</label>
           <input id="profile-postcode-input"
+                 data-testid="profile-home-location-input"
                  type="text"
                  class="text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-slate-900"
                  [ngModel]="localPostcode()"
+                 [attr.aria-busy]="locationLookup().status === 'loading'"
+                 [attr.aria-describedby]="locationLookup().message ? 'profile-location-status' : null"
                  (ngModelChange)="onLocationInputChange($event)"
                  (blur)="hideLocationDropdownWithDelay()" />
+
+          @if (locationLookup().message) {
+            <p id="profile-location-status"
+               data-testid="profile-location-status"
+               [attr.role]="locationLookup().status === 'invalid' || locationLookup().status === 'rate-limited' || locationLookup().status === 'unavailable' ? 'alert' : 'status'"
+               aria-live="polite"
+               class="text-[10px] font-semibold text-slate-600">
+              {{ locationLookup().message }}
+            </p>
+          }
           
           <!-- Suggestions Dropdown -->
           @if (showLocationDropdown() && locationSuggestions().length > 0) {
-            <div class="absolute top-[100%] left-0 right-0 z-50 mt-1 max-h-40 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg flex flex-col p-1.5 gap-1">
+            <div data-testid="profile-location-suggestions" class="absolute top-[100%] left-0 right-0 z-50 mt-1 max-h-40 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg flex flex-col p-1.5 gap-1">
               @for (loc of locationSuggestions(); track loc.id) {
                 <button type="button"
                         (click)="selectLocation(loc)"

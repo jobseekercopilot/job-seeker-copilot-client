@@ -183,17 +183,30 @@
                   <label for="reg-postcode" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Home Location</label>
                   <div class="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white pl-3.5 pr-2">
                     <input id="reg-postcode"
+                           data-testid="registration-home-location-input"
                            type="text"
                            placeholder="Leeds, G1, etc."
                            class="text-xs py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
                            [value]="localPostcode()"
+                           [attr.aria-busy]="locationLookup().status === 'loading'"
+                           [attr.aria-describedby]="locationLookup().message ? 'registration-location-status' : null"
                            (input)="onLocationInputChange($any($event.target).value)"
                            (focus)="showLocationDropdown.set(locationSuggestions().length > 0)"
                            (blur)="hideLocationDropdownWithDelay()" />
                   </div>
+
+                  @if (locationLookup().message) {
+                    <p id="registration-location-status"
+                       data-testid="registration-location-status"
+                       [attr.role]="locationLookup().status === 'invalid' || locationLookup().status === 'rate-limited' || locationLookup().status === 'unavailable' ? 'alert' : 'status'"
+                       aria-live="polite"
+                       class="text-[10px] font-semibold text-slate-600 mt-1">
+                      {{ locationLookup().message }}
+                    </p>
+                  }
                   
                   @if (showLocationDropdown() && locationSuggestions().length > 0) {
-                    <div class="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-250 rounded-xl shadow-lg max-h-48 overflow-y-auto divide-y divide-slate-100">
+                    <div data-testid="registration-location-suggestions" class="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-250 rounded-xl shadow-lg max-h-48 overflow-y-auto divide-y divide-slate-100">
                       @for (loc of locationSuggestions(); track loc.id) {
                         <button type="button"
                                 (click)="selectLocation(loc)"
