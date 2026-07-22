@@ -13,7 +13,8 @@ import type {
   Qualification,
   Role
 } from '../../api';
-import { AspirationsTargetWeeklyHoursEnum, Configuration, ProfileService } from '../../api';
+import { AspirationsTargetWeeklyHoursEnum, ProfileService } from '../../api';
+import {BrowserSessionService} from '../../services/browser-session.service';
 import {
   normaliseProfile,
   serialiseProfile
@@ -41,13 +42,12 @@ type TargetWeeklyHours = AspirationsTargetWeeklyHoursEnum;
 })
 export class ClaimantProfileComponent {
   private userManagementApi = inject(ProfileService);
-  private userManagementConfig = inject(Configuration);
+  private browserSession = inject(BrowserSessionService);
   private locationService = inject(LocationService);
 
-  // Inputs remain as free-text strings for backward compatibility with app.ts and localStorage
+  // Free-text inputs remain for compatibility with the retained non-beta shell.
   claimantName = input<string>('');
   claimantEmail = input<string>('');
-  authToken = input<string>('');
   profile = input<UserProfile | null>(null);
   skills = input<string>('');
   experience = input<string>('');
@@ -149,10 +149,7 @@ export class ClaimantProfileComponent {
 
     this.isSaving.set(true);
     try {
-      this.userManagementConfig.credentials['bearerAuth'] = () => {
-        const header = this.authorizationHeader();
-        return header?.replace(/^Bearer\s+/i, '');
-      };
+      await firstValueFrom(this.browserSession.ensureCsrf());
       const apiResult = await firstValueFrom(
         this.userManagementApi.updateProfile(profile)
       );
@@ -161,14 +158,9 @@ export class ClaimantProfileComponent {
     } catch (apiError) {
       this.profileSaved.emit({ profile, apiError });
     } finally {
+      this.browserSession.invalidateCsrf();
       this.isSaving.set(false);
     }
-  }
-
-  private authorizationHeader(): string | undefined {
-    const token = this.authToken().trim();
-    if (!token) return undefined;
-    return token.startsWith('Bearer ') ? token : `Bearer ${token}`;
   }
 
   onLocationInputChange(query: string) {

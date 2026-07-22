@@ -16,13 +16,34 @@ test('accepts the pinned contract manifest', async () => {
   ]);
 });
 
+test('pins the token-free UMG browser-session contract', async () => {
+  const lock = await verifyContractManifest(rootDir);
+  const umg = lock.contracts.find(({id}) => id === 'user-management-gateway');
+  const contract = JSON.parse(await readFile(resolve(rootDir, umg.path), 'utf8'));
+
+  assert.equal(umg.version, '2.0.0');
+  assert.equal(contract.info.version, '2.0.0');
+  assert.equal(contract.components.schemas.User.properties.token, undefined);
+  assert.equal(contract.components.securitySchemes.browserSession.in, 'cookie');
+  assert.equal(contract.components.securitySchemes.browserRefresh.in, 'cookie');
+  assert.equal(contract.paths['/api/auth/profile'].get.parameters, undefined);
+  assert.deepEqual(umg.requiredPaths, [
+    '/api/auth/csrf',
+    '/api/auth/login',
+    '/api/auth/logout',
+    '/api/auth/profile',
+    '/api/auth/refresh',
+    '/api/auth/register',
+  ]);
+});
+
 test('rejects a contract whose content does not match its checksum', async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), 'jsc-contracts-'));
-  const fixtureContract = 'contracts/user-management-gateway/1.0.0/openapi.json';
   const lock = JSON.parse(await readFile(resolve(rootDir, 'contracts/contracts.lock.json'), 'utf8'));
   lock.contracts = [lock.contracts[0]];
+  const fixtureContract = lock.contracts[0].path;
 
-  await mkdir(resolve(fixtureRoot, 'contracts/user-management-gateway/1.0.0'), {recursive: true});
+  await mkdir(dirname(resolve(fixtureRoot, fixtureContract)), {recursive: true});
   await writeFile(resolve(fixtureRoot, 'contracts/contracts.lock.json'), JSON.stringify(lock));
   await writeFile(resolve(fixtureRoot, fixtureContract), '{"tampered":true}');
 

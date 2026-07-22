@@ -7,8 +7,15 @@
     </h2>
     
     <div class="flex items-center gap-1.5">
+      <button id="btn-logout"
+              type="button"
+              (click)="triggerLogout()"
+              class="text-2xs font-bold uppercase tracking-wide text-slate-700 bg-white hover:bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200 transition-colors cursor-pointer">
+        Sign out
+      </button>
       @if (!isEditing()) {
         <button id="btn-edit-profile"
+                type="button"
                 (click)="startEditing()"
                 class="text-2xs font-bold uppercase tracking-wide text-slate-700 bg-slate-50 hover:bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200 transition-colors cursor-pointer flex items-center gap-1">
           <mat-icon class="text-xs">edit</mat-icon>

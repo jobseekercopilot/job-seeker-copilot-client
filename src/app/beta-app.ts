@@ -1,14 +1,17 @@
-import {ChangeDetectionStrategy, Component, signal} from '@angular/core';
+import {isPlatformBrowser} from '@angular/common';
+import {ChangeDetectionStrategy, Component, inject, OnInit, PLATFORM_ID, signal} from '@angular/core';
+import {firstValueFrom} from 'rxjs';
 import type {GatewayResponse, UserProfile} from './api';
 import {ClaimantProfileComponent} from './features/claimant-profile/claimant-profile';
 import {LandingAuthComponent} from './features/landing-auth/landing-auth';
 import {normaliseProfile} from './models/user-profile.model';
+import {BrowserSessionService} from './services/browser-session.service';
+import {removeLegacySessionData} from './services/browser-storage';
 
 interface OnboardedUser {
   profile: UserProfile;
   name: string;
   email: string;
-  token?: string;
 }
 
 @Component({
@@ -18,19 +21,28 @@ interface OnboardedUser {
   styleUrl: './app.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class BetaApp {
+export class BetaApp implements OnInit {
+  private readonly platformId = inject(PLATFORM_ID);
+  private readonly browserSession = inject(BrowserSessionService);
   protected readonly authenticated = signal(false);
   protected readonly name = signal('');
   protected readonly email = signal('');
   protected readonly profile = signal<UserProfile | null>(null);
-  protected authToken = '';
   protected readonly message = signal<string | null>(null);
+
+  ngOnInit(): void {
+    if (!isPlatformBrowser(this.platformId)) return;
+    try {
+      removeLegacySessionData(localStorage, sessionStorage);
+    } catch {
+      console.warn('Unable to remove legacy browser session data.');
+    }
+  }
 
   protected handleOnboarded(user: OnboardedUser): void {
     this.name.set(user.name);
     this.email.set(user.email);
     this.profile.set(normaliseProfile(user.profile));
-    this.authToken = user.token ?? '';
     this.authenticated.set(true);
     this.message.set(null);
   }
@@ -48,12 +60,23 @@ export class BetaApp {
     this.message.set('The profile could not be updated. Please try again.');
   }
 
-  protected logout(): void {
+  protected async logout(): Promise<void> {
+    this.message.set(null);
+    try {
+      const response = await firstValueFrom(this.browserSession.logout());
+      if (!response.success) {
+        this.message.set('The session could not be ended. Please try again.');
+        return;
+      }
+    } catch {
+      this.message.set('The session could not be ended. Please try again.');
+      return;
+    }
+
     this.authenticated.set(false);
     this.name.set('');
     this.email.set('');
     this.profile.set(null);
-    this.authToken = '';
-    this.message.set(null);
+    this.message.set('Signed out.');
   }
 }
