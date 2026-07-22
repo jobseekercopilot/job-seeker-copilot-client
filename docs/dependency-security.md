@@ -37,4 +37,15 @@ npm test -- --watch=false
 npm run build
 npm audit --omit=dev --audit-level=moderate
 npm audit --audit-level=high
+./scripts/verify-container.sh job-seeker-copilot-client:verify
 ```
+
+## Runtime image policy
+
+The Node 24 Alpine build and runtime inputs are pinned to a reviewed manifest
+digest. The build stage alone contains npm, Angular tooling and the checksum-
+verified OpenAPI generator prerequisites. Angular's server output is bundled,
+so the final image copies only `dist`, invokes Node directly and removes npm,
+Corepack and Yarn. CI runs the image read-only as a non-root user, proves health
+and bounded graceful shutdown, then blocks fixed Critical/High OS or library
+findings with Trivy 0.72.0.

@@ -37,3 +37,21 @@ jobs:
         uses: docker://zricethezav/gitleaks:v8.30.1
         with:
           args: git --no-banner --redact --exit-code 1 /github/workspace
+
+  container:
+    runs-on: ubuntu-latest
+    needs: [verify, secrets]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and verify hardened runtime image
+        run: ./scripts/verify-container.sh job-seeker-copilot-client:ci
+      - name: Scan runtime image for Critical and High vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: job-seeker-copilot-client:ci
+          format: table
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+          scanners: vuln
+          vuln-type: os,library
+          version: v0.72.0

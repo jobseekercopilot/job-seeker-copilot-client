@@ -146,11 +146,16 @@ profile, while CLIENT-08 owns the broader WCAG 2.2 AA journey review.
 npm run dev
 docker build -t job-seeker-copilot-client .
 docker run --rm -p 3000:3000 job-seeker-copilot-client
+./scripts/verify-container.sh job-seeker-copilot-client:verify
 ```
 
-The SSR route itself is the current smoke/health target. Java dependency health
-is not yet aggregated. Generated API documentation is contract-derived; do not
-edit generated source manually.
+The final image is digest-pinned, runs as UID/GID `1000:1000`, contains only the
+bundled SSR output (no npm, build dependencies or application `node_modules`),
+and has a loopback SSR health check. PID 1 is Node itself; `SIGTERM` stops new
+work, drains the HTTP server for up to ten seconds and then exits. The verifier
+also proves the image starts read-only and shuts down cleanly. Java dependency
+health is not aggregated. Generated API documentation is contract-derived; do
+not edit generated source manually.
 
 ## Branch workflow
 
