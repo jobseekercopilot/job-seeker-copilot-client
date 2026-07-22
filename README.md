@@ -123,6 +123,11 @@ header and keep-alive timeouts are explicitly bounded. UMG continues to own its
 downstream resilience, cookie flags and cache policy; the BFF preserves upstream
 status, content type, cache policy and each `Set-Cookie` header.
 
+Place-search terms and postcodes are sent only in URI-encoded requests to the
+configured location gateway. Client transaction logs record the fixed action and
+bounded result count only. Failure logs use a fixed category and never include
+the query, postcode, upstream URL or raw exception.
+
 ## Local and Docker startup
 
 ```bash

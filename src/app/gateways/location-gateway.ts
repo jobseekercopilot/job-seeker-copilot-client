@@ -18,9 +18,9 @@ export class LocationGateway {
   /**
    * Gateway transaction logger simulating enterprise audit security logs
    */
-  private logTransaction(action: string, query: string, matchesCount: number) {
+  private logTransaction(action: string, matchesCount: number) {
     const timestamp = new Date().toISOString();
-    console.log(`[LocationGateway API ${timestamp}] ACTION: ${action} | QUERY: "${query}" | MATCHES: ${matchesCount}`);
+    console.log(`[LocationGateway API ${timestamp}] ACTION: ${action} | MATCHES: ${matchesCount}`);
   }
 
   /**
@@ -42,10 +42,10 @@ export class LocationGateway {
       const response = await fetch(`${this.gatewayUrl}/api/locations?q=${encodeURIComponent(cleanQuery)}`);
       const data = await response.json() as LocationGatewayResponse;
       
-      this.logTransaction('SEARCH_LOCATIONS', cleanQuery, data.locations?.length || 0);
+      this.logTransaction('SEARCH_LOCATIONS', data.locations?.length || 0);
       return data;
-    } catch (error) {
-      console.error('[LocationGateway] Error calling location gateway service:', error);
+    } catch {
+      console.error('[LocationGateway] Error calling location gateway service');
       return {
         statusCode: 500,
         success: false,
@@ -74,10 +74,10 @@ export class LocationGateway {
       const response = await fetch(`${this.gatewayUrl}/api/postcodes/${encodeURIComponent(cleanPostcode)}`);
       const data = await response.json() as LocationGatewayResponse;
       
-      this.logTransaction('GET_BY_POSTCODE', cleanPostcode, data.locations?.length || 0);
+      this.logTransaction('GET_BY_POSTCODE', data.locations?.length || 0);
       return data;
-    } catch (error) {
-      console.error('[LocationGateway] Error calling postcode gateway service:', error);
+    } catch {
+      console.error('[LocationGateway] Error calling postcode gateway service');
       return {
         statusCode: 500,
         success: false,

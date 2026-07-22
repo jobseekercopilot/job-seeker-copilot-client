@@ -89,6 +89,7 @@
               "src/app/config/**/*.spec.ts",
               "src/app/features/claimant-profile/claimant-profile.spec.ts",
               "src/app/features/landing-auth/landing-auth.spec.ts",
+              "src/app/gateways/**/*.spec.ts",
               "src/app/services/**/*.spec.ts",
               "src/server/**/*.spec.ts",
               "src/app/shared/**/*.spec.ts"
