@@ -11,3 +11,12 @@ arrange rotation with the owner.
 
 The current code is a beta-readiness baseline, not a security certification.
 Known risks and beta blockers are tracked in `docs/BETA_READINESS_AUDIT.md`.
+
+CI scans the complete Git history with the pinned Gitleaks image through
+`scripts/verify-secret-history.sh`. The scan fails closed when Git discovery
+fails, the repository has no commits, Gitleaks rejects the history, or the
+scanner does not report a non-zero commit count. Only the read-only checkout is
+marked as a safe Git directory inside the disposable scanner container.
+`scripts/test-secret-history.sh` verifies those controls with disposable
+repositories, including a synthetic credential that is never added to this
+repository.
