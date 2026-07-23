@@ -9,6 +9,7 @@
       <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-semibold border border-indigo-100">
         {{ tag }}
         <button type="button"
+                [attr.aria-label]="'Remove ' + tag"
                 (click)="removeTag(i); $event.stopPropagation()"
                 class="text-indigo-400 hover:text-indigo-700 cursor-pointer leading-none text-sm border-none bg-transparent p-0">
           &times;
@@ -17,6 +18,8 @@
     }
     <input #inputRef
            [id]="inputId()"
+           [attr.aria-describedby]="error() ? inputId() + '-error' : null"
+           [attr.aria-invalid]="error() ? 'true' : null"
            [placeholder]="tags().length === 0 ? placeholder() : ''"
            [ngModel]="inputValue()"
            (ngModelChange)="inputValue.set($event)"
@@ -25,6 +28,6 @@
            class="flex-1 min-w-[80px] text-xs font-medium text-slate-800 outline-none border-none bg-transparent p-0" />
   </div>
   @if (error()) {
-    <p class="text-[10px] font-semibold text-rose-500">{{ error() }}</p>
+    <p [id]="inputId() + '-error'" class="text-[10px] font-semibold text-rose-500">{{ error() }}</p>
   }
 </div>

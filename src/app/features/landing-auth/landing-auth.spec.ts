@@ -1,4 +1,5 @@
 import {TestBed} from '@angular/core/testing';
+import axe from 'axe-core';
 import {of, Subject, throwError} from 'rxjs';
 import type {UserProfile} from '../../api';
 import {AuthenticationService} from '../../api';
@@ -195,4 +196,135 @@ describe('LandingAuthComponent browser session', () => {
     expect(lookup).toHaveBeenCalledOnce();
     expect(lookup).toHaveBeenCalledWith('');
   });
+
+  it('exposes keyboard-operable account tabs and semantic form relationships', () => {
+    vi.useFakeTimers();
+    try {
+      const fixture = TestBed.createComponent(LandingAuthComponent);
+      fixture.detectChanges();
+      const createTab = fixture.nativeElement.querySelector('#tab-btn-create') as HTMLButtonElement;
+
+      expect(createTab.type).toBe('button');
+      expect(createTab.getAttribute('role')).toBe('tab');
+      expect(createTab.getAttribute('aria-selected')).toBe('true');
+      expect(createTab.tabIndex).toBe(0);
+      createTab.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
+      fixture.detectChanges();
+      vi.runAllTimers();
+
+      const signInTab = fixture.nativeElement.querySelector('#tab-btn-signin') as HTMLButtonElement;
+      const signInPanel = fixture.nativeElement.querySelector('#mode-signin-segment') as HTMLElement;
+      const signInForm = signInPanel.querySelector('form') as HTMLFormElement;
+      expect(componentMode(fixture)).toBe('signin');
+      expect(signInTab.getAttribute('aria-selected')).toBe('true');
+      expect(signInTab.tabIndex).toBe(0);
+      expect(createTab.tabIndex).toBe(-1);
+      expect(document.activeElement).toBe(signInTab);
+      expect(signInForm.tagName).toBe('FORM');
+      expect(signInPanel.getAttribute('role')).toBe('tabpanel');
+      expect(signInPanel.getAttribute('aria-labelledby')).toBe('tab-btn-signin');
+      expect(fixture.nativeElement.querySelector('#login-email').getAttribute('autocomplete')).toBe('email');
+      expect(fixture.nativeElement.querySelector('#login-password').getAttribute('autocomplete')).toBe('current-password');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('renders and focuses an error summary linked to invalid registration fields', () => {
+    vi.useFakeTimers();
+    try {
+      const fixture = TestBed.createComponent(LandingAuthComponent);
+      fixture.detectChanges();
+
+      fixture.componentInstance.nextStep();
+      fixture.detectChanges();
+      vi.runAllTimers();
+
+      const alert = fixture.nativeElement.querySelector('#auth-error-alert') as HTMLElement;
+      const name = fixture.nativeElement.querySelector('#reg-name') as HTMLInputElement;
+      expect(alert.getAttribute('role')).toBe('alert');
+      expect(document.activeElement).toBe(alert);
+      expect(name.getAttribute('aria-invalid')).toBe('true');
+      expect(name.getAttribute('aria-describedby')).toBe('reg-name-help');
+      expect(fixture.componentInstance.currentStep()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('routes Enter submission through each step and exposes final-step errors', () => {
+    vi.useFakeTimers();
+    try {
+      const fixture = TestBed.createComponent(LandingAuthComponent);
+      const component = fixture.componentInstance;
+      component.formName.set('Beta User');
+      component.formEmail.set('beta@example.test');
+      component.formPassword.set('safe-password');
+
+      component.submitRegistrationStep();
+      expect(component.currentStep()).toBe(2);
+      expect(register).not.toHaveBeenCalled();
+
+      component.currentStep.set(3);
+      fixture.detectChanges();
+      const submit = fixture.nativeElement.querySelector('#btn-submit-signup') as HTMLButtonElement;
+      expect(submit.disabled).toBe(false);
+      component.submitRegistrationStep();
+      fixture.detectChanges();
+      vi.runAllTimers();
+
+      expect(register).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('#auth-error-alert'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('prevents duplicate login requests while CSRF bootstrap is pending', async () => {
+    const csrf = new Subject<void>();
+    ensureCsrf.mockReturnValue(csrf);
+    const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
+    component.loginEmail.set('beta@example.test');
+    component.loginPassword.set('safe-password');
+
+    const first = component.submitLogin();
+    await component.submitLogin();
+    csrf.next();
+    csrf.complete();
+    await first;
+
+    expect(ensureCsrf).toHaveBeenCalledOnce();
+    expect(login).toHaveBeenCalledOnce();
+  });
+
+  it('has no detectable axe violations across registration steps and sign-in', async () => {
+    const fixture = TestBed.createComponent(LandingAuthComponent);
+    fixture.detectChanges();
+    await expectNoAxeViolations(fixture.nativeElement);
+
+    for (const step of [2, 3]) {
+      fixture.componentInstance.currentStep.set(step);
+      fixture.detectChanges();
+      await expectNoAxeViolations(fixture.nativeElement);
+    }
+
+    fixture.componentInstance.setMode('signin');
+    fixture.detectChanges();
+    await expectNoAxeViolations(fixture.nativeElement);
+  });
 });
+
+function componentMode(fixture: {componentInstance: LandingAuthComponent}): string {
+  return fixture.componentInstance.mode();
+}
+
+async function expectNoAxeViolations(element: HTMLElement): Promise<void> {
+  const result = await axe.run(element, {
+    // jsdom has no layout engine, so contrast remains a browser/manual check.
+    rules: {'color-contrast': {enabled: false}},
+  });
+  expect(result.violations.map(violation => ({
+    id: violation.id,
+    targets: violation.nodes.map(node => node.target),
+  }))).toEqual([]);
+}

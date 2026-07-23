@@ -12,6 +12,7 @@ import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   output,
   signal,
   inject
@@ -50,6 +51,7 @@ export class LandingAuthComponent {
   private userManagementApi = inject(AuthenticationService);
   private browserSession = inject(BrowserSessionService);
   private locationService = inject(LocationService);
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   locationSuggestions = signal<UKLocation[]>([]);
   showLocationDropdown = signal<boolean>(false);
@@ -66,6 +68,7 @@ export class LandingAuthComponent {
   currentStep = signal<number>(1);
   errorMessage = signal<string | null>(null);
   isLoading = signal<boolean>(false);
+  validationAttempted = signal<boolean>(false);
 
   // Auth Field Signals
   formName = signal('');
@@ -149,10 +152,22 @@ export class LandingAuthComponent {
 
   setMode(newMode: 'create' | 'signin') {
     this.mode.set(newMode);
+    this.errorMessage.set(null);
+    this.validationAttempted.set(false);
     if (newMode === 'create') {
       this.currentStep.set(1);
       this.resetForm();
     }
+  }
+
+  onModeTabKeydown(event: KeyboardEvent): void {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const newMode = event.key === 'ArrowRight' || event.key === 'End' ? 'signin' : 'create';
+    this.setMode(newMode);
+    setTimeout(() => this.host.nativeElement.querySelector<HTMLElement>(
+      newMode === 'create' ? '#tab-btn-create' : '#tab-btn-signin'
+    )?.focus());
   }
 
   private resetForm() {
@@ -191,18 +206,40 @@ export class LandingAuthComponent {
 
   nextStep() {
     if (this.isStepValid() && this.currentStep() < 3) {
+      this.errorMessage.set(null);
+      this.validationAttempted.set(false);
       this.currentStep.update(s => s + 1);
+      this.focusCurrentStep();
+      return;
     }
+    this.validationAttempted.set(true);
+    this.showError(this.validationMessage());
+  }
+
+  submitRegistrationStep(): void {
+    if (this.currentStep() < 3) {
+      this.nextStep();
+      return;
+    }
+    void this.completeRegistration();
   }
 
   prevStep() {
     if (this.currentStep() > 1) {
+      this.errorMessage.set(null);
+      this.validationAttempted.set(false);
       this.currentStep.update(s => s - 1);
+      this.focusCurrentStep();
     }
   }
 
   async completeRegistration() {
-    if (!this.isStepValid()) return;
+    if (this.isLoading()) return;
+    if (!this.isStepValid()) {
+      this.validationAttempted.set(true);
+      this.showError(this.validationMessage());
+      return;
+    }
     this.isLoading.set(true);
     this.errorMessage.set(null);
 
@@ -239,24 +276,27 @@ export class LandingAuthComponent {
         this.browserSession.invalidateCsrf();
         this.emitProfileFromResponse(res);
       } else {
-        this.errorMessage.set(res.message || 'Registration failed at gateway level.');
+        this.showError(res.message || 'Registration failed at gateway level.');
       }
     } catch (error: unknown) {
-      this.errorMessage.set(this.httpErrorMessage(error, 'Unable to contact the registration service.'));
+      this.showError(this.httpErrorMessage(error, 'Unable to contact the registration service.'));
     } finally {
       this.isLoading.set(false);
     }
   }
 
   async submitLogin() {
+    if (this.isLoading()) return;
     const email = this.loginEmail().trim();
     const password = this.loginPassword().trim();
 
     if (!email || !password) {
-      this.errorMessage.set('Please fill out both email and password.');
+      this.validationAttempted.set(true);
+      this.showError('Enter both your email address and password.');
       return;
     }
 
+    this.validationAttempted.set(false);
     this.isLoading.set(true);
     this.errorMessage.set(null);
 
@@ -271,13 +311,42 @@ export class LandingAuthComponent {
         this.browserSession.invalidateCsrf();
         this.emitProfileFromResponse(res);
       } else {
-        this.errorMessage.set(res.message || 'Verification failed.');
+        this.showError(res.message || 'Verification failed.');
       }
     } catch (error: unknown) {
-      this.errorMessage.set(this.httpErrorMessage(error, 'Unable to contact the authentication service.'));
+      this.showError(this.httpErrorMessage(error, 'Unable to contact the authentication service.'));
     } finally {
       this.isLoading.set(false);
     }
+  }
+
+  isRegistrationFieldInvalid(field: 'name' | 'email' | 'password' | 'postcode'): boolean {
+    if (!this.validationAttempted()) return false;
+    if (field === 'name') return this.formName().trim().length < 2;
+    if (field === 'email') return !this.formEmail().includes('@');
+    if (field === 'password') return this.formPassword().trim().length < 6;
+    return this.localPostcode().trim().length < 4;
+  }
+
+  isLoginFieldInvalid(field: 'email' | 'password'): boolean {
+    if (!this.validationAttempted()) return false;
+    return field === 'email' ? !this.loginEmail().trim() : !this.loginPassword().trim();
+  }
+
+  private validationMessage(): string {
+    const step = this.currentStep();
+    if (step === 1) return 'Check your name, email address and password before continuing.';
+    if (step === 2) return 'Add at least one core skill before continuing.';
+    return 'Add at least one target role and a valid home location before creating your profile.';
+  }
+
+  private showError(message: string): void {
+    this.errorMessage.set(message);
+    setTimeout(() => this.host.nativeElement.querySelector<HTMLElement>('#auth-error-alert')?.focus());
+  }
+
+  private focusCurrentStep(): void {
+    setTimeout(() => this.host.nativeElement.querySelector<HTMLElement>(`#step-${this.currentStep()} h3`)?.focus());
   }
 
   private httpErrorMessage(error: unknown, fallback: string): string {

@@ -25,8 +25,16 @@
     <!-- MAIN FORM WINDOW CARD -->
     <div id="auth-panel-card" class="bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 sm:p-8 space-y-6">
       <!-- Top switcher tabs: Create Account vs Sign In -->
-      <div class="flex p-1 bg-slate-100 border border-slate-200/50 rounded-2xl select-none">
+      <div class="flex p-1 bg-slate-100 border border-slate-200/50 rounded-2xl select-none"
+           role="tablist"
+           aria-label="Account access">
         <button id="tab-btn-create"
+                type="button"
+                role="tab"
+                [attr.aria-selected]="mode() === 'create'"
+                [attr.tabindex]="mode() === 'create' ? 0 : -1"
+                aria-controls="mode-create-segment"
+                (keydown)="onModeTabKeydown($event)"
                 (click)="setMode('create')"
                 class="flex-1 py-2.5 text-2xs font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 [class.bg-white]="mode() === 'create'"
@@ -37,6 +45,12 @@
           Create Profile
         </button>
         <button id="tab-btn-signin"
+                type="button"
+                role="tab"
+                [attr.aria-selected]="mode() === 'signin'"
+                [attr.tabindex]="mode() === 'signin' ? 0 : -1"
+                aria-controls="mode-signin-segment"
+                (keydown)="onModeTabKeydown($event)"
                 (click)="setMode('signin')"
                 class="flex-1 py-2.5 text-2xs font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 [class.bg-white]="mode() === 'signin'"
@@ -50,7 +64,11 @@
 
       <!-- Error Feedback Panel -->
       @if (errorMessage()) {
-        <div id="auth-error-alert" class="flex gap-2.5 items-start bg-rose-50 border border-rose-150 text-rose-800 px-4 py-3.5 rounded-2xl text-2xs font-semibold animate-fade-in text-left shadow-sm">
+        <div id="auth-error-alert"
+             role="alert"
+             aria-live="assertive"
+             tabindex="-1"
+             class="flex gap-2.5 items-start bg-rose-50 border border-rose-150 text-rose-800 px-4 py-3.5 rounded-2xl text-2xs font-semibold animate-fade-in text-left shadow-sm">
           <mat-icon class="text-sm shrink-0 leading-none text-rose-600 mt-0.5">error_outline</mat-icon>
           <div>
             <span class="block text-slate-900 font-extrabold text-3xs uppercase tracking-wider mb-0.5">Something needs attention</span>
@@ -61,7 +79,14 @@
 
       <!-- ================= CREATE ACCOUNT WORDING & STEP COMPONENT ================= -->
       @if (mode() === 'create') {
-        <div id="mode-create-segment" class="space-y-4 animate-fade-in">
+        <div id="mode-create-segment"
+             role="tabpanel"
+             aria-labelledby="tab-btn-create"
+             [attr.aria-busy]="isLoading()">
+          <form ngNoForm
+                novalidate
+                class="space-y-4 animate-fade-in"
+                (submit)="submitRegistrationStep(); $event.preventDefault()">
           
           <!-- Onboarding step indicators -->
           <div class="flex items-center justify-between px-1.5 pb-2 text-slate-400 border-b border-slate-100 select-none">
@@ -77,7 +102,7 @@
           @if (currentStep() === 1) {
             <div id="step-1" class="space-y-4 animate-fade-in text-left">
               <div>
-                <h3 class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Your account details</h3>
+                <h3 tabindex="-1" class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Your account details</h3>
                 <p class="text-2xs text-slate-400 mt-0.5">Add the details you will use to sign in.</p>
               </div>
 
@@ -87,11 +112,16 @@
                   <mat-icon class="absolute left-3 text-slate-400 text-sm">person</mat-icon>
                   <input id="reg-name"
                          type="text"
+                         autocomplete="name"
+                         required
+                         aria-describedby="reg-name-help"
+                         [attr.aria-invalid]="isRegistrationFieldInvalid('name')"
                          placeholder="Alex Taylor"
                          class="text-xs pl-10 pr-3 py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
                          [value]="formName()"
                          (input)="formName.set($any($event.target).value)" />
                 </div>
+                <p id="reg-name-help" class="text-[10px] text-slate-500">Enter at least two characters.</p>
               </div>
 
               <div class="flex flex-col gap-1">
@@ -100,11 +130,16 @@
                   <mat-icon class="absolute left-3 text-slate-400 text-sm">email</mat-icon>
                   <input id="reg-email"
                          type="email"
+                         autocomplete="email"
+                         required
+                         aria-describedby="reg-email-help"
+                         [attr.aria-invalid]="isRegistrationFieldInvalid('email')"
                          placeholder="alex.taylor@example.com"
                          class="text-xs pl-10 pr-3 py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
                          [value]="formEmail()"
                          (input)="formEmail.set($any($event.target).value)" />
                 </div>
+                <p id="reg-email-help" class="text-[10px] text-slate-500">Enter a valid email address.</p>
               </div>
 
               <div class="flex flex-col gap-1">
@@ -113,11 +148,17 @@
                   <mat-icon class="absolute left-3 text-slate-400 text-sm">lock</mat-icon>
                   <input id="reg-password"
                          type="password"
+                         autocomplete="new-password"
+                         required
+                         minlength="6"
+                         aria-describedby="reg-password-help"
+                         [attr.aria-invalid]="isRegistrationFieldInvalid('password')"
                          placeholder="••••••••"
                          class="text-xs pl-10 pr-3 py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
                          [value]="formPassword()"
                          (input)="formPassword.set($any($event.target).value)" />
                 </div>
+                <p id="reg-password-help" class="text-[10px] text-slate-500">Use at least six characters.</p>
               </div>
             </div>
           }
@@ -126,13 +167,14 @@
           @if (currentStep() === 2) {
             <div id="step-2" class="space-y-4 animate-fade-in text-left">
               <div>
-                <h3 class="text-xs font-extrabold text-slate-900 uppercase tracking-wider px-1">Professional History & Skills</h3>
+                <h3 tabindex="-1" class="text-xs font-extrabold text-slate-900 uppercase tracking-wider px-1">Professional History & Skills</h3>
                 <p class="text-2xs text-slate-400 mt-0.5 px-1">Describe your strengths so the copilot can find more relevant roles.</p>
               </div>
 
               <!-- Skills Tag Input (using [(tags)] two-way binding to signal) -->
               <app-tag-input label="Core Skills"
                              placeholder="Type a skill and press Enter"
+                             [error]="validationAttempted() && localSkills().length === 0 ? 'Add at least one core skill.' : ''"
                              [(tags)]="localSkills">
               </app-tag-input>
 
@@ -173,7 +215,7 @@
           @if (currentStep() === 3) {
             <div id="step-3" class="space-y-4 animate-fade-in text-left">
               <div>
-                <h3 class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Job search preferences</h3>
+                <h3 tabindex="-1" class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Job search preferences</h3>
                 <p class="text-2xs text-slate-400 mt-0.5 font-medium">Set your location and commute preferences.</p>
               </div>
 
@@ -185,6 +227,13 @@
                     <input id="reg-postcode"
                            data-testid="registration-home-location-input"
                            type="text"
+                           autocomplete="postal-code"
+                           role="combobox"
+                           aria-autocomplete="list"
+                           required
+                           [attr.aria-controls]="showLocationDropdown() && locationSuggestions().length > 0 ? 'registration-location-suggestions' : null"
+                           [attr.aria-expanded]="showLocationDropdown() && locationSuggestions().length > 0"
+                           [attr.aria-invalid]="isRegistrationFieldInvalid('postcode')"
                            placeholder="Leeds, G1, etc."
                            class="text-xs py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
                            [value]="localPostcode()"
@@ -206,7 +255,11 @@
                   }
                   
                   @if (showLocationDropdown() && locationSuggestions().length > 0) {
-                    <div data-testid="registration-location-suggestions" class="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-250 rounded-xl shadow-lg max-h-48 overflow-y-auto divide-y divide-slate-100">
+                    <div id="registration-location-suggestions"
+                         role="region"
+                         aria-label="Location suggestions"
+                         data-testid="registration-location-suggestions"
+                         class="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-250 rounded-xl shadow-lg max-h-48 overflow-y-auto divide-y divide-slate-100">
                       @for (loc of locationSuggestions(); track loc.id) {
                         <button type="button"
                                 (click)="selectLocation(loc)"
@@ -242,6 +295,7 @@
           <div class="flex gap-2.5 pt-2">
             @if (currentStep() > 1) {
               <button id="btn-back-step"
+                      type="button"
                       (click)="prevStep()"
                       class="flex-1 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 py-3 rounded-xl cursor-pointer transition-colors">
                 Back
@@ -250,15 +304,15 @@
             
             @if (currentStep() < 3) {
               <button id="btn-next-step"
-                      [disabled]="!isStepValid()"
+                      type="button"
                       (click)="nextStep()"
                       class="flex-1 text-xs font-bold uppercase tracking-wide text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-45 disabled:pointer-events-none py-3 rounded-xl cursor-pointer transition-colors shadow-sm">
                 Next Step
               </button>
             } @else {
               <button id="btn-submit-signup"
-                      [disabled]="!isStepValid() || isLoading()"
-                      (click)="completeRegistration()"
+                      type="submit"
+                      [disabled]="isLoading()"
                       class="flex-1 text-xs font-extrabold uppercase tracking-wide text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-45 disabled:pointer-events-none py-3 rounded-xl cursor-pointer transition-colors shadow-md shadow-indigo-100 flex items-center justify-center gap-1.5 duration-200">
                 @if (isLoading()) {
                   <mat-icon class="animate-spin text-sm">hourglass_empty</mat-icon>
@@ -271,12 +325,23 @@
             }
           </div>
 
+          <p class="sr-only" role="status" aria-live="polite">
+            @if (isLoading()) { Creating your profile. Please wait. }
+          </p>
+          </form>
         </div>
       }
 
       <!-- ================= SIGN IN MODE ================= -->
       @if (mode() === 'signin') {
-        <div id="mode-signin-segment" class="space-y-4 animate-fade-in text-left">
+        <div id="mode-signin-segment"
+             role="tabpanel"
+             aria-labelledby="tab-btn-signin"
+             [attr.aria-busy]="isLoading()">
+          <form ngNoForm
+                novalidate
+                class="space-y-4 animate-fade-in text-left"
+                (submit)="submitLogin(); $event.preventDefault()">
           
           <div class="flex flex-col gap-1">
             <label for="login-email" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Email Address</label>
@@ -284,6 +349,9 @@
               <mat-icon class="absolute left-3 text-slate-400 text-sm">email</mat-icon>
               <input id="login-email"
                      type="email"
+                     autocomplete="email"
+                     required
+                     [attr.aria-invalid]="isLoginFieldInvalid('email')"
                      placeholder="clara.oswald@gmail.com"
                      class="text-xs pl-10 pr-3 py-3.5 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
                      [value]="loginEmail()"
@@ -297,6 +365,9 @@
               <mat-icon class="absolute left-3 text-slate-400 text-sm">lock</mat-icon>
               <input id="login-password"
                      type="password"
+                     autocomplete="current-password"
+                     required
+                     [attr.aria-invalid]="isLoginFieldInvalid('password')"
                      placeholder="••••••••"
                      class="text-xs pl-10 pr-3 py-3.5 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
                      [value]="loginPassword()"
@@ -305,8 +376,8 @@
           </div>
 
           <button id="btn-submit-signin"
+                  type="submit"
                   [disabled]="isLoading()"
-                  (click)="submitLogin()"
                   class="w-full text-xs font-extrabold uppercase tracking-widest text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-45 disabled:pointer-events-none py-3.5 rounded-xl shadow-md transition-all cursor-pointer text-center flex items-center justify-center gap-2">
             @if (isLoading()) {
               <mat-icon class="animate-spin text-sm">hourglass_empty</mat-icon>
@@ -316,6 +387,10 @@
             }
           </button>
 
+          <p class="sr-only" role="status" aria-live="polite">
+            @if (isLoading()) { Signing in. Please wait. }
+          </p>
+          </form>
         </div>
       }
 

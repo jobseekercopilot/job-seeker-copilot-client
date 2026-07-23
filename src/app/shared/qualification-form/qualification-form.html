@@ -51,11 +51,11 @@
         </div>
       </div>
       <div class="flex items-center gap-2 mt-3">
-        <button (click)="cancelEdit()"
+        <button type="button" (click)="cancelEdit()"
                 class="text-xs font-semibold text-slate-600 bg-white hover:bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-300 transition-colors cursor-pointer">
           Cancel
         </button>
-        <button (click)="saveEdit()"
+        <button type="button" (click)="saveEdit()"
                 class="text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 px-3 py-1.5 rounded-lg transition-colors cursor-pointer">
           {{ isNew() ? 'Add' : 'Save' }}
         </button>
@@ -79,10 +79,10 @@
           </p>
         </div>
         <div class="flex items-center gap-1 ml-2 shrink-0">
-          <button (click)="startEdit(i)" class="text-slate-400 hover:text-slate-700 p-1 cursor-pointer border-none bg-transparent" title="Edit">
+          <button type="button" (click)="startEdit(i)" class="text-slate-400 hover:text-slate-700 p-1 cursor-pointer border-none bg-transparent" title="Edit">
             <mat-icon class="text-sm">edit</mat-icon>
           </button>
-          <button (click)="deleteItem(i)" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer border-none bg-transparent" title="Delete">
+          <button type="button" (click)="deleteItem(i)" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer border-none bg-transparent" title="Delete">
             <mat-icon class="text-sm">delete</mat-icon>
           </button>
         </div>
@@ -93,7 +93,7 @@
   </div>
 
   @if (editingIndex() === null) {
-    <button (click)="startNew()"
+    <button type="button" (click)="startNew()"
             class="w-full text-xs font-bold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50 py-2.5 border-t border-slate-100 transition-colors cursor-pointer flex items-center justify-center gap-1 border-none bg-transparent">
       <mat-icon class="text-sm">add</mat-icon>
       Add Qualification
