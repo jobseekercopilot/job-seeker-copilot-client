@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input, output, signal, inject, effect } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, input, output, signal, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { FormsModule } from '@angular/forms';
@@ -50,6 +50,7 @@ export class ClaimantProfileComponent {
   private userManagementApi = inject(ProfileService);
   private browserSession = inject(BrowserSessionService);
   private locationService = inject(LocationService);
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   // Free-text inputs remain for compatibility with the retained non-beta shell.
   claimantName = input<string>('');
@@ -67,6 +68,7 @@ export class ClaimantProfileComponent {
 
   isEditing = signal(false);
   isSaving = signal(false);
+  saveError = signal<string | null>(null);
 
   // ===== Structured Form State =====
   // These are initialised from the free-text inputs when editing begins.
@@ -122,6 +124,7 @@ export class ClaimantProfileComponent {
     });
 
     this.populateForm(profile);
+    this.saveError.set(null);
     this.isEditing.set(true);
   }
 
@@ -140,10 +143,13 @@ export class ClaimantProfileComponent {
   }
 
   cancelEditing() {
+    if (this.isSaving()) return;
+    this.saveError.set(null);
     this.isEditing.set(false);
   }
 
   async save(): Promise<void> {
+    if (this.isSaving()) return;
     const profile: UserProfile = serialiseProfile({
       skills: this.localSkills(),
       qualifications: this.localQualifications(),
@@ -164,6 +170,7 @@ export class ClaimantProfileComponent {
       }
     });
 
+    this.saveError.set(null);
     this.isSaving.set(true);
     try {
       await firstValueFrom(this.browserSession.ensureCsrf());
@@ -175,6 +182,8 @@ export class ClaimantProfileComponent {
     } catch (apiError) {
       this.browserSession.handleAuthenticatedError(apiError);
       this.profileSaved.emit({ profile, apiError });
+      this.saveError.set('Your profile could not be saved. Check your connection and try again.');
+      setTimeout(() => this.host.nativeElement.querySelector<HTMLElement>('#profile-save-error')?.focus());
     } finally {
       this.browserSession.invalidateCsrf();
       this.isSaving.set(false);

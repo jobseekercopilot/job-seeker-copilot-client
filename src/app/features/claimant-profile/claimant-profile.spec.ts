@@ -1,5 +1,6 @@
 import {TestBed} from '@angular/core/testing';
-import {of, throwError} from 'rxjs';
+import axe from 'axe-core';
+import {of, Subject, throwError} from 'rxjs';
 import type {GatewayResponse, UserProfile} from '../../api';
 import {ProfileService} from '../../api';
 import {BrowserSessionService} from '../../services/browser-session.service';
@@ -136,4 +137,104 @@ describe('ClaimantProfileComponent browser session', () => {
     expect(component.locationLookup()).toEqual(idleLocationLookup);
     expect(lookup).toHaveBeenCalledWith('');
   });
+
+  it('prevents duplicate profile updates and exposes progress while CSRF is pending', async () => {
+    const csrf = new Subject<void>();
+    const updateProfile = vi.fn((profile: UserProfile) =>
+      of<GatewayResponse>({statusCode: 200, success: true, user: {profile}})
+    );
+    await TestBed.configureTestingModule({
+      imports: [ClaimantProfileComponent],
+      providers: [
+        {provide: ProfileService, useValue: {updateProfile}},
+        {provide: BrowserSessionService, useValue: {
+          ensureCsrf: () => csrf,
+          invalidateCsrf: vi.fn(),
+          handleAuthenticatedError: vi.fn(),
+        }},
+        {provide: LocationService, useValue: {lookup: () => of(idleLocationLookup)}},
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ClaimantProfileComponent);
+    const component = fixture.componentInstance;
+    component.startEditing();
+    fixture.detectChanges();
+
+    const first = component.save();
+    await component.save();
+    fixture.detectChanges();
+    const saveButton = fixture.nativeElement.querySelector('#btn-save-inline') as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('Saving your profile. Please wait.');
+
+    csrf.next();
+    csrf.complete();
+    await first;
+    expect(updateProfile).toHaveBeenCalledOnce();
+  });
+
+  it('renders and focuses a safe profile-save failure alert', async () => {
+    vi.useFakeTimers();
+    try {
+      await TestBed.configureTestingModule({
+        imports: [ClaimantProfileComponent],
+        providers: [
+          {provide: ProfileService, useValue: {updateProfile: () => throwError(() => new Error('private upstream detail'))}},
+          {provide: BrowserSessionService, useValue: {
+            ensureCsrf: () => of(undefined),
+            invalidateCsrf: vi.fn(),
+            handleAuthenticatedError: vi.fn(),
+          }},
+          {provide: LocationService, useValue: {lookup: () => of(idleLocationLookup)}},
+        ],
+      }).compileComponents();
+      const fixture = TestBed.createComponent(ClaimantProfileComponent);
+      fixture.componentInstance.startEditing();
+
+      await fixture.componentInstance.save();
+      fixture.detectChanges();
+      vi.runAllTimers();
+
+      const alert = fixture.nativeElement.querySelector('#profile-save-error') as HTMLElement;
+      expect(alert.getAttribute('role')).toBe('alert');
+      expect(alert.textContent).toContain('could not be saved');
+      expect(alert.textContent).not.toContain('private upstream detail');
+      expect(document.activeElement).toBe(alert);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('has no detectable axe violations in profile read and edit modes', async () => {
+    await TestBed.configureTestingModule({
+      imports: [ClaimantProfileComponent],
+      providers: [
+        {provide: ProfileService, useValue: {updateProfile: vi.fn()}},
+        {provide: BrowserSessionService, useValue: {
+          ensureCsrf: () => of(undefined),
+          invalidateCsrf: vi.fn(),
+          handleAuthenticatedError: vi.fn(),
+        }},
+        {provide: LocationService, useValue: {lookup: () => of(idleLocationLookup)}},
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ClaimantProfileComponent);
+    fixture.detectChanges();
+    await expectNoAxeViolations(fixture.nativeElement);
+
+    fixture.componentInstance.startEditing();
+    fixture.detectChanges();
+    await expectNoAxeViolations(fixture.nativeElement);
+  });
 });
+
+async function expectNoAxeViolations(element: HTMLElement): Promise<void> {
+  const result = await axe.run(element, {
+    // jsdom has no layout engine, so contrast remains a browser/manual check.
+    rules: {'color-contrast': {enabled: false}},
+  });
+  expect(result.violations.map(violation => ({
+    id: violation.id,
+    targets: violation.nodes.map(node => node.target),
+  }))).toEqual([]);
+}

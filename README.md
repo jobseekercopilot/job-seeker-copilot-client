@@ -62,7 +62,9 @@ The selected User Management beta enables authentication, profile, and location
 lookup only. Job finder, document generation, reporting, and payment UI source is
 retained but disabled pending authoritative contracts and separate approval. See
 [ADR 0001](docs/adr/0001-reproducible-beta-api-clients.md) and the
-[browser-session ADR](docs/adr/0002-browser-session-client.md).
+[browser-session ADR](docs/adr/0002-browser-session-client.md). The
+[accessibility baseline](docs/accessibility.md) documents the WCAG interaction
+contract, automated evidence and release checklist.
 
 Express also fails closed before every retained legacy handler for `/api/jobs`,
 `/api/v1/applications`, `/api/v1/document-generation`, `/api/v1/documents`,
@@ -138,7 +140,9 @@ render raw downstream response details.
 Focused service and component tests own deterministic state, routing and race
 coverage. Browser regression evidence reuses the root Playwright/Cucumber suite;
 CLIENT-07 owns its durable beta tags, isolated test-data cleanup, traces and CI
-profile, while CLIENT-08 owns the broader WCAG 2.2 AA journey review.
+profile. Accessibility browser checks use that suite's dedicated profile; this
+repository owns component-level axe, keyboard, focus and resilience regression
+tests.
 
 ## Local and Docker startup
 
