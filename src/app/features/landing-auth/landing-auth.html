@@ -114,14 +114,17 @@
                          type="text"
                          autocomplete="name"
                          required
-                         aria-describedby="reg-name-help"
+                         [attr.aria-describedby]="isRegistrationFieldInvalid('name') ? 'reg-name-help reg-name-error' : 'reg-name-help'"
                          [attr.aria-invalid]="isRegistrationFieldInvalid('name')"
                          placeholder="Alex Taylor"
                          class="text-xs pl-10 pr-3 py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
                          [value]="formName()"
                          (input)="formName.set($any($event.target).value)" />
                 </div>
-                <p id="reg-name-help" class="text-[10px] text-slate-500">Enter at least two characters.</p>
+                <p id="reg-name-help" class="text-[10px] text-slate-500">Use between 1 and 100 characters.</p>
+                @if (isRegistrationFieldInvalid('name')) {
+                  <p id="reg-name-error" class="text-[10px] font-semibold text-rose-700">{{ registrationFieldError('name') }}</p>
+                }
               </div>
 
               <div class="flex flex-col gap-1">
@@ -132,7 +135,7 @@
                          type="email"
                          autocomplete="email"
                          required
-                         aria-describedby="reg-email-help"
+                         [attr.aria-describedby]="isRegistrationFieldInvalid('email') ? 'reg-email-help reg-email-error' : 'reg-email-help'"
                          [attr.aria-invalid]="isRegistrationFieldInvalid('email')"
                          placeholder="alex.taylor@example.com"
                          class="text-xs pl-10 pr-3 py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
@@ -140,6 +143,9 @@
                          (input)="formEmail.set($any($event.target).value)" />
                 </div>
                 <p id="reg-email-help" class="text-[10px] text-slate-500">Enter a valid email address.</p>
+                @if (isRegistrationFieldInvalid('email')) {
+                  <p id="reg-email-error" class="text-[10px] font-semibold text-rose-700">{{ registrationFieldError('email') }}</p>
+                }
               </div>
 
               <div class="flex flex-col gap-1">
@@ -150,15 +156,17 @@
                          type="password"
                          autocomplete="new-password"
                          required
-                         minlength="6"
-                         aria-describedby="reg-password-help"
+                         [attr.aria-describedby]="isRegistrationFieldInvalid('password') ? 'reg-password-help reg-password-error' : 'reg-password-help'"
                          [attr.aria-invalid]="isRegistrationFieldInvalid('password')"
                          placeholder="••••••••"
                          class="text-xs pl-10 pr-3 py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
                          [value]="formPassword()"
                          (input)="formPassword.set($any($event.target).value)" />
                 </div>
-                <p id="reg-password-help" class="text-[10px] text-slate-500">Use at least six characters.</p>
+                <p id="reg-password-help" class="text-[10px] text-slate-600">Use 15 to 128 characters. Spaces are kept exactly as entered.</p>
+                @if (isRegistrationFieldInvalid('password')) {
+                  <p id="reg-password-error" class="text-[10px] font-semibold text-rose-700">{{ registrationFieldError('password') }}</p>
+                }
               </div>
             </div>
           }
@@ -350,12 +358,16 @@
                      type="email"
                      autocomplete="email"
                      required
+                     [attr.aria-describedby]="isLoginFieldInvalid('email') ? 'login-email-error' : null"
                      [attr.aria-invalid]="isLoginFieldInvalid('email')"
                      placeholder="clara.oswald@gmail.com"
                      class="text-xs pl-10 pr-3 py-3.5 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
                      [value]="loginEmail()"
                      (input)="loginEmail.set($any($event.target).value)" />
             </div>
+            @if (isLoginFieldInvalid('email')) {
+              <p id="login-email-error" class="text-[10px] font-semibold text-rose-700">{{ loginFieldError('email') }}</p>
+            }
           </div>
 
           <div class="flex flex-col gap-1">
@@ -366,12 +378,16 @@
                      type="password"
                      autocomplete="current-password"
                      required
+                     [attr.aria-describedby]="isLoginFieldInvalid('password') ? 'login-password-error' : null"
                      [attr.aria-invalid]="isLoginFieldInvalid('password')"
                      placeholder="••••••••"
                      class="text-xs pl-10 pr-3 py-3.5 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
                      [value]="loginPassword()"
                      (input)="loginPassword.set($any($event.target).value)" />
             </div>
+            @if (isLoginFieldInvalid('password')) {
+              <p id="login-password-error" class="text-[10px] font-semibold text-rose-700">{{ loginFieldError('password') }}</p>
+            }
           </div>
 
           <button id="btn-submit-signin"

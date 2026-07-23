@@ -33,6 +33,12 @@ import {
   serialiseProfile,
   emptyUserProfile
 } from '../../models/user-profile.model';
+import {
+  accountEmailError,
+  loginPasswordError,
+  registrationNameError,
+  registrationPasswordError,
+} from './credential-policy';
 
 type TargetWeeklyHours = AspirationsTargetWeeklyHoursEnum;
 
@@ -193,7 +199,9 @@ export class LandingAuthComponent {
 
     const step = this.currentStep();
     if (step === 1) {
-      return this.formName().trim().length >= 2 && this.formEmail().includes('@') && this.formPassword().trim().length >= 6;
+      return this.registrationFieldError('name') === null
+        && this.registrationFieldError('email') === null
+        && this.registrationFieldError('password') === null;
     }
     if (step === 2) {
       return this.localSkills().length > 0;
@@ -235,6 +243,16 @@ export class LandingAuthComponent {
 
   async completeRegistration() {
     if (this.isLoading()) return;
+    if (
+      this.registrationFieldError('name')
+      || this.registrationFieldError('email')
+      || this.registrationFieldError('password')
+    ) {
+      this.currentStep.set(1);
+      this.validationAttempted.set(true);
+      this.showError(this.validationMessage());
+      return;
+    }
     if (!this.isStepValid()) {
       this.validationAttempted.set(true);
       this.showError(this.validationMessage());
@@ -268,7 +286,7 @@ export class LandingAuthComponent {
       const res = await firstValueFrom(this.userManagementApi.register({
         name: this.formName().trim(),
         email: this.formEmail().trim().toLowerCase(),
-        password: this.formPassword().trim(),
+        password: this.formPassword(),
         profile: structuredProfile
       }));
 
@@ -288,11 +306,11 @@ export class LandingAuthComponent {
   async submitLogin() {
     if (this.isLoading()) return;
     const email = this.loginEmail().trim();
-    const password = this.loginPassword().trim();
+    const password = this.loginPassword();
 
-    if (!email || !password) {
+    if (accountEmailError(email) || loginPasswordError(password)) {
       this.validationAttempted.set(true);
-      this.showError('Enter both your email address and password.');
+      this.showError('Check your email address and password.');
       return;
     }
 
@@ -322,15 +340,25 @@ export class LandingAuthComponent {
 
   isRegistrationFieldInvalid(field: 'name' | 'email' | 'password' | 'postcode'): boolean {
     if (!this.validationAttempted()) return false;
-    if (field === 'name') return this.formName().trim().length < 2;
-    if (field === 'email') return !this.formEmail().includes('@');
-    if (field === 'password') return this.formPassword().trim().length < 6;
+    if (field !== 'postcode') return this.registrationFieldError(field) !== null;
     return this.localPostcode().trim().length < 4;
+  }
+
+  registrationFieldError(field: 'name' | 'email' | 'password'): string | null {
+    if (field === 'name') return registrationNameError(this.formName());
+    if (field === 'email') return accountEmailError(this.formEmail());
+    return registrationPasswordError(this.formPassword());
   }
 
   isLoginFieldInvalid(field: 'email' | 'password'): boolean {
     if (!this.validationAttempted()) return false;
-    return field === 'email' ? !this.loginEmail().trim() : !this.loginPassword().trim();
+    return this.loginFieldError(field) !== null;
+  }
+
+  loginFieldError(field: 'email' | 'password'): string | null {
+    return field === 'email'
+      ? accountEmailError(this.loginEmail())
+      : loginPasswordError(this.loginPassword());
   }
 
   private validationMessage(): string {
