@@ -36,6 +36,10 @@ The jsdom runner cannot calculate rendered colour contrast, zoom/reflow or
 screen-reader speech. Those checks belong to the existing
 `jobseekercopilot/e2e` Playwright/Cucumber accessibility profile and the release
 review; no second browser framework should be added to this repository.
+That browser profile runs axe-core against the built application and guards the
+anonymous page heading hierarchy and rendered contrast. The inactive account
+tab and small instructional text intentionally use Slate 600 or darker on their
+light backgrounds.
 
 ## Manual release checklist
 

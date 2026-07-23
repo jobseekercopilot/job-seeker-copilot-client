@@ -203,8 +203,10 @@ describe('LandingAuthComponent browser session', () => {
       const fixture = TestBed.createComponent(LandingAuthComponent);
       fixture.detectChanges();
       const createTab = fixture.nativeElement.querySelector('#tab-btn-create') as HTMLButtonElement;
+      const nextStep = fixture.nativeElement.querySelector('#btn-next-step') as HTMLButtonElement;
 
       expect(createTab.type).toBe('button');
+      expect(nextStep.type).toBe('submit');
       expect(createTab.getAttribute('role')).toBe('tab');
       expect(createTab.getAttribute('aria-selected')).toBe('true');
       expect(createTab.tabIndex).toBe(0);
@@ -228,6 +230,24 @@ describe('LandingAuthComponent browser session', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('keeps a level-one heading and contrast-safe text classes in both account modes', () => {
+    const fixture = TestBed.createComponent(LandingAuthComponent);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelectorAll('h1')).toHaveLength(1);
+    expect(fixture.nativeElement.querySelector('h1').textContent).toContain('Jobseeker Copilot');
+    expect(fixture.nativeElement.querySelector('#tab-btn-signin').classList).toContain('text-slate-700');
+    expect(fixture.nativeElement.querySelector('.font-black').classList).toContain('text-slate-600');
+    expect(fixture.nativeElement.querySelector('#step-1 .mt-0\\.5').classList).toContain('text-slate-600');
+    expect(fixture.nativeElement.querySelector('.leading-relaxed').classList).toContain('text-slate-600');
+
+    fixture.componentInstance.setMode('signin');
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#tab-btn-create').classList).toContain('text-slate-700');
+    expect(fixture.nativeElement.querySelectorAll('h1')).toHaveLength(1);
   });
 
   it('renders and focuses an error summary linked to invalid registration fields', () => {
@@ -260,9 +280,14 @@ describe('LandingAuthComponent browser session', () => {
       component.formName.set('Beta User');
       component.formEmail.set('beta@example.test');
       component.formPassword.set('safe-password');
+      fixture.detectChanges();
 
-      component.submitRegistrationStep();
+      const form = fixture.nativeElement.querySelector('#mode-create-segment form') as HTMLFormElement;
+      form.requestSubmit();
+      fixture.detectChanges();
+      vi.runAllTimers();
       expect(component.currentStep()).toBe(2);
+      expect(document.activeElement?.textContent).toContain('Professional History');
       expect(register).not.toHaveBeenCalled();
 
       component.currentStep.set(3);

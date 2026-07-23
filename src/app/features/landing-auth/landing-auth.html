@@ -10,9 +10,9 @@
         alt="Job Seeker Copilot logo"
         width="52"
         height="52" />
-      <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 font-display">
+      <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 font-display">
         Jobseeker Copilot
-      </h2>
+      </h1>
       <p class="text-xs sm:text-sm text-slate-500 mt-1.5 font-medium uppercase tracking-wider">
         Job search planning and application support
       </p>
@@ -40,7 +40,7 @@
                 [class.bg-white]="mode() === 'create'"
                 [class.text-slate-900]="mode() === 'create'"
                 [class.shadow-2xs]="mode() === 'create'"
-                [class.text-slate-500]="mode() !== 'create'">
+                [class.text-slate-700]="mode() !== 'create'">
           <mat-icon class="text-sm">person_add</mat-icon>
           Create Profile
         </button>
@@ -56,7 +56,7 @@
                 [class.bg-white]="mode() === 'signin'"
                 [class.text-slate-900]="mode() === 'signin'"
                 [class.shadow-2xs]="mode() === 'signin'"
-                [class.text-slate-500]="mode() !== 'signin'">
+                [class.text-slate-700]="mode() !== 'signin'">
           <mat-icon class="text-sm">login</mat-icon>
           Sign In
         </button>
@@ -89,8 +89,8 @@
                 (submit)="submitRegistrationStep(); $event.preventDefault()">
           
           <!-- Onboarding step indicators -->
-          <div class="flex items-center justify-between px-1.5 pb-2 text-slate-400 border-b border-slate-100 select-none">
-            <span class="text-2xs font-black uppercase tracking-widest text-slate-400">Step {{ currentStep() }} of 3</span>
+          <div class="flex items-center justify-between px-1.5 pb-2 text-slate-600 border-b border-slate-100 select-none">
+            <span class="text-2xs font-black uppercase tracking-widest text-slate-600">Step {{ currentStep() }} of 3</span>
             <div class="flex gap-1.5">
               <span class="h-1.5 w-6 rounded-full transition-colors" [class.bg-indigo-600]="currentStep() >= 1" [class.bg-slate-200]="currentStep() < 1"></span>
               <span class="h-1.5 w-6 rounded-full transition-colors" [class.bg-indigo-600]="currentStep() >= 2" [class.bg-slate-200]="currentStep() < 2"></span>
@@ -102,8 +102,8 @@
           @if (currentStep() === 1) {
             <div id="step-1" class="space-y-4 animate-fade-in text-left">
               <div>
-                <h3 tabindex="-1" class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Your account details</h3>
-                <p class="text-2xs text-slate-400 mt-0.5">Add the details you will use to sign in.</p>
+                <h2 tabindex="-1" class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Your account details</h2>
+                <p class="text-2xs text-slate-600 mt-0.5">Add the details you will use to sign in.</p>
               </div>
 
               <div class="flex flex-col gap-1">
@@ -167,8 +167,8 @@
           @if (currentStep() === 2) {
             <div id="step-2" class="space-y-4 animate-fade-in text-left">
               <div>
-                <h3 tabindex="-1" class="text-xs font-extrabold text-slate-900 uppercase tracking-wider px-1">Professional History & Skills</h3>
-                <p class="text-2xs text-slate-400 mt-0.5 px-1">Describe your strengths so the copilot can find more relevant roles.</p>
+                <h2 tabindex="-1" class="text-xs font-extrabold text-slate-900 uppercase tracking-wider px-1">Professional History & Skills</h2>
+                <p class="text-2xs text-slate-600 mt-0.5 px-1">Describe your strengths so the copilot can find more relevant roles.</p>
               </div>
 
               <!-- Skills Tag Input (using [(tags)] two-way binding to signal) -->
@@ -215,8 +215,8 @@
           @if (currentStep() === 3) {
             <div id="step-3" class="space-y-4 animate-fade-in text-left">
               <div>
-                <h3 tabindex="-1" class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Job search preferences</h3>
-                <p class="text-2xs text-slate-400 mt-0.5 font-medium">Set your location and commute preferences.</p>
+                <h2 tabindex="-1" class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Job search preferences</h2>
+                <p class="text-2xs text-slate-600 mt-0.5 font-medium">Set your location and commute preferences.</p>
               </div>
 
               <!-- Postcode & Commute bounds radius selection -->
@@ -265,7 +265,7 @@
                                 (click)="selectLocation(loc)"
                                 class="w-full text-left px-3 py-2 hover:bg-slate-50 flex flex-col transition-colors cursor-pointer text-slate-700">
                           <span class="text-xs font-bold">{{ loc.name }}</span>
-                          <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">{{ loc.region }} ({{ loc.postcode }})</span>
+                          <span class="text-[9px] font-black text-slate-600 uppercase tracking-wider">{{ loc.region }} ({{ loc.postcode }})</span>
                         </button>
                       }
                     </div>
@@ -304,8 +304,7 @@
             
             @if (currentStep() < 3) {
               <button id="btn-next-step"
-                      type="button"
-                      (click)="nextStep()"
+                      type="submit"
                       class="flex-1 text-xs font-bold uppercase tracking-wide text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-45 disabled:pointer-events-none py-3 rounded-xl cursor-pointer transition-colors shadow-sm">
                 Next Step
               </button>
@@ -398,7 +397,7 @@
 
     <!-- UK digital standards guidelines citation -->
     <div class="text-center select-none">
-      <p class="text-[10px] text-slate-400 leading-relaxed max-w-[340px] mx-auto">
+      <p class="text-[10px] text-slate-600 leading-relaxed max-w-[340px] mx-auto">
         Jobseeker Copilot helps organise your job search. You stay in control of every application and message.
       </p>
     </div>
