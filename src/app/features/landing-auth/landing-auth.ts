@@ -346,7 +346,7 @@ export class LandingAuthComponent {
   }
 
   private focusCurrentStep(): void {
-    setTimeout(() => this.host.nativeElement.querySelector<HTMLElement>(`#step-${this.currentStep()} h3`)?.focus());
+    setTimeout(() => this.host.nativeElement.querySelector<HTMLElement>(`#step-${this.currentStep()} h2`)?.focus());
   }
 
   private httpErrorMessage(error: unknown, fallback: string): string {
