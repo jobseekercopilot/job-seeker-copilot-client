@@ -9,6 +9,10 @@ import {
   LocationService,
   type LocationLookupState,
 } from '../../services/location.service';
+import {
+  registrationPasswordError,
+  unicodeCodePointLength,
+} from './credential-policy';
 import {LandingAuthComponent} from './landing-auth';
 
 describe('LandingAuthComponent browser session', () => {
@@ -77,6 +81,19 @@ describe('LandingAuthComponent browser session', () => {
     expect(onboarded).not.toHaveProperty('userId');
   });
 
+  it('preserves leading and trailing password spaces during login', async () => {
+    const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
+    component.loginEmail.set('beta@example.test');
+    component.loginPassword.set('  legacy password  ');
+
+    await component.submitLogin();
+
+    expect(login).toHaveBeenCalledWith({
+      email: 'beta@example.test',
+      password: '  legacy password  ',
+    });
+  });
+
   it('fails closed without CSRF and never sends credentials to login', async () => {
     ensureCsrf.mockReturnValue(throwError(() => new Error('invalid CSRF bootstrap')));
     const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
@@ -102,7 +119,7 @@ describe('LandingAuthComponent browser session', () => {
     const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
     component.formName.set('New User');
     component.formEmail.set('new@example.test');
-    component.formPassword.set('safe-password');
+    component.formPassword.set('safe-password-value');
     component.localSkills.set(['TypeScript']);
     component.localTargetRoles.set(['Software Developer']);
     component.localPostcode.set('SW1A 1AA');
@@ -116,6 +133,41 @@ describe('LandingAuthComponent browser session', () => {
       email: 'new@example.test',
       profile: expect.objectContaining({skills: ['TypeScript']}),
     }));
+  });
+
+  it('uses Unicode code-point registration bounds and preserves the submitted password', async () => {
+    register.mockReturnValue(of({
+      statusCode: 201,
+      success: true,
+      user: {id: 'new-account', name: 'New User', email: 'new@example.test', profile: {skills: ['TypeScript']}},
+    }));
+    const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
+    component.formName.set('New User');
+    component.formEmail.set('new@example.test');
+    component.localSkills.set(['TypeScript']);
+    component.localTargetRoles.set(['Software Developer']);
+    component.localPostcode.set('SW1A 1AA');
+    component.currentStep.set(3);
+
+    component.formPassword.set('🌱'.repeat(14));
+    await component.completeRegistration();
+    expect(register).not.toHaveBeenCalled();
+    expect(component.currentStep()).toBe(1);
+
+    const exactPassword = ` ${'🌱'.repeat(15)} `;
+    component.formPassword.set(exactPassword);
+    component.currentStep.set(3);
+    await component.completeRegistration();
+
+    expect(unicodeCodePointLength(exactPassword)).toBe(17);
+    expect(register).toHaveBeenCalledWith(expect.objectContaining({password: exactPassword}));
+  });
+
+  it('rejects registration password boundaries outside 15 to 128 code points', () => {
+    expect(registrationPasswordError('🌱'.repeat(14))).not.toBeNull();
+    expect(registrationPasswordError('🌱'.repeat(15))).toBeNull();
+    expect(registrationPasswordError('🌱'.repeat(128))).toBeNull();
+    expect(registrationPasswordError('🌱'.repeat(129))).not.toBeNull();
   });
 
   it('ignores a stale location response and renders the latest result', () => {
@@ -265,7 +317,9 @@ describe('LandingAuthComponent browser session', () => {
       expect(alert.getAttribute('role')).toBe('alert');
       expect(document.activeElement).toBe(alert);
       expect(name.getAttribute('aria-invalid')).toBe('true');
-      expect(name.getAttribute('aria-describedby')).toBe('reg-name-help');
+      expect(name.getAttribute('aria-describedby')).toBe('reg-name-help reg-name-error');
+      expect(fixture.nativeElement.querySelector('#reg-name-error').textContent)
+        .toContain('between 1 and 100 characters');
       expect(fixture.componentInstance.currentStep()).toBe(1);
     } finally {
       vi.useRealTimers();
@@ -279,7 +333,7 @@ describe('LandingAuthComponent browser session', () => {
       const component = fixture.componentInstance;
       component.formName.set('Beta User');
       component.formEmail.set('beta@example.test');
-      component.formPassword.set('safe-password');
+      component.formPassword.set('safe-password-value');
       fixture.detectChanges();
 
       const form = fixture.nativeElement.querySelector('#mode-create-segment form') as HTMLFormElement;
@@ -320,6 +374,23 @@ describe('LandingAuthComponent browser session', () => {
 
     expect(ensureCsrf).toHaveBeenCalledOnce();
     expect(login).toHaveBeenCalledOnce();
+  });
+
+  it('rejects malformed login credentials without making a request', async () => {
+    const fixture = TestBed.createComponent(LandingAuthComponent);
+    const component = fixture.componentInstance;
+    component.setMode('signin');
+    component.loginEmail.set('not-an-email');
+    component.loginPassword.set('safe-password');
+
+    await component.submitLogin();
+    fixture.detectChanges();
+
+    expect(ensureCsrf).not.toHaveBeenCalled();
+    expect(login).not.toHaveBeenCalled();
+    expect(component.errorMessage()).toBe('Check your email address and password.');
+    expect(fixture.nativeElement.querySelector('#login-email-error').textContent)
+      .toContain('valid email address');
   });
 
   it('has no detectable axe violations across registration steps and sign-in', async () => {

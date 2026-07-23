@@ -27,6 +27,40 @@ test('pins the token-free UMG browser-session contract', async () => {
   assert.equal(contract.components.securitySchemes.browserSession.in, 'cookie');
   assert.equal(contract.components.securitySchemes.browserRefresh.in, 'cookie');
   assert.equal(contract.paths['/api/auth/profile'].get.parameters, undefined);
+  assert.deepEqual(contract.components.schemas.RegisterRequest.properties.name, {
+    type: 'string',
+    description: 'Display name after trimming, measured in Unicode code points.',
+    maxLength: 100,
+    minLength: 1,
+  });
+  assert.deepEqual(contract.components.schemas.RegisterRequest.properties.email, {
+    type: 'string',
+    format: 'email',
+    description: 'Email identity after trimming, measured in Unicode code points.',
+    maxLength: 254,
+    minLength: 1,
+  });
+  assert.deepEqual(contract.components.schemas.RegisterRequest.properties.password, {
+    type: 'string',
+    format: 'password',
+    description: 'New password measured in Unicode code points and forwarded exactly as supplied.',
+    maxLength: 128,
+    minLength: 15,
+  });
+  assert.deepEqual(contract.components.schemas.LoginRequest.properties.email, {
+    type: 'string',
+    format: 'email',
+    description: 'Email identity after trimming, measured in Unicode code points.',
+    maxLength: 254,
+    minLength: 1,
+  });
+  assert.deepEqual(contract.components.schemas.LoginRequest.properties.password, {
+    type: 'string',
+    format: 'password',
+    description: 'Current password measured in Unicode code points and forwarded exactly as supplied.',
+    maxLength: 128,
+    minLength: 1,
+  });
   assert.deepEqual(umg.requiredPaths, [
     '/api/auth/csrf',
     '/api/auth/login',

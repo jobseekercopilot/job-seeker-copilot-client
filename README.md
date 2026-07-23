@@ -64,7 +64,9 @@ retained but disabled pending authoritative contracts and separate approval. See
 [ADR 0001](docs/adr/0001-reproducible-beta-api-clients.md) and the
 [browser-session ADR](docs/adr/0002-browser-session-client.md). The
 [accessibility baseline](docs/accessibility.md) documents the WCAG interaction
-contract, automated evidence and release checklist.
+contract, automated evidence and release checklist. The
+[credential-validation guide](docs/credential-validation.md) records the
+registration and sign-in boundaries and password handling rules.
 
 Express also fails closed before every retained legacy handler for `/api/jobs`,
 `/api/v1/applications`, `/api/v1/document-generation`, `/api/v1/documents`,
