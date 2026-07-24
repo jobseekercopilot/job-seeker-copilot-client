@@ -8,6 +8,10 @@ and postcode requests to location-gateway.
 > client session lifecycle are in place, while end-to-end readiness work
 > remains. See [the audit](docs/BETA_READINESS_AUDIT.md).
 
+The client/BFF responsibility and the canonical `src/app/api` generated-client
+root are defined in the Infrastructure
+[Job Search architecture ADR](https://github.com/jobseekercopilot/infrastructure/blob/develop/docs/adr/0001-job-search-architecture-and-ownership.md).
+
 ## Prerequisites
 
 - Node.js 24 (CI baseline)
