@@ -20,6 +20,21 @@ had High advisory chains. Generation now uses the official OpenAPI Generator 7.2
 Maven artifact and verifies its locked SHA-256 before execution. The unused direct
 `@google/genai` production dependency was also removed.
 
+### 26 July 2026 advisory refresh
+
+Newly published `brace-expansion` and PostCSS advisories caused the required
+`npm audit --audit-level=high` gate to fail again with 20 High findings. CLIENT-10
+was reopened as a direct blocker of the PAY-03 client delivery.
+
+The supported lint and CSS toolchains were updated and pinned to
+`angular-eslint` 21.4.0, `typescript-eslint` 8.65.0, ESLint 10.8.0,
+its directly imported `@eslint/js` 10.0.1 configuration, `@tailwindcss/postcss`
+and Tailwind CSS 4.3.3, and PostCSS 8.5.18. The
+non-forced lockfile remediation selects `minimatch` 10.2.5 and
+`brace-expansion` 5.0.8. The refreshed complete tree has 0 Critical, 0 High and
+the same 3 Moderate development-tool findings documented below. No audit
+exclusion, forced install or unsupported transitive override was used.
+
 The three remaining Moderate findings are one development-only chain from
 `@angular/cli` through `@modelcontextprotocol/sdk` to `@hono/node-server`. The affected
 Hono Windows static-file adapter is not imported by application source, is absent
