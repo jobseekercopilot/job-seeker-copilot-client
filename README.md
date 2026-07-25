@@ -33,6 +33,7 @@ Runtime configuration is supplied to the SSR process, not committed:
 | `BFF_REQUEST_TIMEOUT_MS` | `15000` | Node request timeout (max 120 seconds) |
 | `BFF_HEADERS_TIMEOUT_MS` | `10000` | Node header timeout; cannot exceed request timeout |
 | `BFF_KEEP_ALIVE_TIMEOUT_MS` | `5000` | Node idle keep-alive timeout (max 60 seconds) |
+| `BFF_TO_PAYMENT_GATEWAY_TOKEN` | none | Server-only payment service identity; required if the disabled payment route is deliberately enabled |
 
 Never place provider or production credentials in Angular environment files;
 browser bundles cannot keep a secret.
@@ -77,6 +78,13 @@ Express also fails closed before every retained legacy handler for `/api/jobs`,
 `/api/v1/reports` and `/api/v1/payment`. These prefixes and all child paths return
 the stable `404 FEATURE_NOT_AVAILABLE` beta response, regardless of method or
 browser-supplied identity headers; no downstream request is made.
+
+The retained payment proxy is hardened for its future enablement: it resolves
+the stable owner through UMG's HttpOnly browser session profile, ignores browser
+`Authorization` and `X-User-Id`, and sends only the dedicated service token plus
+`X-Payment-Owner` to Payment Gateway. Missing configuration or an unvalidated
+session fails closed. This preparation does not enable the route. See the
+[payment identity boundary](docs/payment-identity-boundary.md).
 
 ## Browser session security
 

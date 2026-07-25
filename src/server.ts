@@ -16,6 +16,7 @@ import {
 } from './server/bff-boundary';
 import {callUserManagement} from './server/user-management-proxy';
 import {installGracefulShutdown} from './server/graceful-shutdown';
+import {callTrustedPaymentGateway, paymentProxyFailure} from './server/payment-proxy';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 const bffConfig = loadBffConfig();
@@ -491,26 +492,24 @@ async function proxyPaymentGatewayRequest(
   res: express.Response
 ): Promise<void> {
   try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const authorization = req.headers['authorization'];
-    if (typeof authorization === 'string') headers['Authorization'] = authorization;
-    const userId = req.headers['x-user-id'];
-    if (typeof userId === 'string') headers['X-User-Id'] = userId;
-
-    const response = await fetch(`${PAYMENT_GATEWAY_URL}${path}`, {
+    const result = await callTrustedPaymentGateway({
+      browserHeaders: req.headers,
+      body: req.body,
       method,
-      headers,
-      body: method === 'GET' ? undefined : JSON.stringify(req.body ?? {}),
+      path,
+      paymentGatewayOrigin: PAYMENT_GATEWAY_URL,
+      serviceToken: process.env['BFF_TO_PAYMENT_GATEWAY_TOKEN'],
+      timeoutMs: bffConfig.downstreamTimeoutMs,
+      userManagementOrigin: USER_MANAGEMENT_GATEWAY_URL,
     });
 
-    const data = await response.text();
-    res.status(response.status).type(response.headers.get('content-type') || 'application/json').send(data);
+    res.status(result.status).type(result.contentType).send(result.body);
   } catch (error: unknown) {
-    console.error('Payment gateway proxy error:', error);
-    res.status(503).json({
-      error: 'SERVICE_UNAVAILABLE',
-      message: 'Payment service is currently unavailable',
+    const failure = paymentProxyFailure(error);
+    console.error('Payment gateway proxy failed', {
+      category: failure.status === 401 ? 'authentication' : 'dependency',
     });
+    res.status(failure.status).json(failure.body);
   }
 }
 
