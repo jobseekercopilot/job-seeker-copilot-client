@@ -201,7 +201,7 @@ export class MyApplicationsComponent implements OnInit {
   }
 
   canUploadDocuments(application: TrackedApplication): boolean {
-    return application.status === 'DOCUMENTS_GENERATED';
+    return false;
   }
 
   downloadGroup(application: TrackedApplication, kind: DocumentKind): DocumentDownloadsResponse | undefined {
@@ -211,7 +211,7 @@ export class MyApplicationsComponent implements OnInit {
 
   downloadFile(file: DownloadFileResponse | undefined): void {
     if (!file) return;
-    this.documentGenerationService.download(file, this.authToken()).catch(err => {
+    this.documentGenerationService.download(file).catch(err => {
       this.notify.emit({ message: 'Download failed. Please try again.', type: 'error' });
       console.error('Application document download failed:', err);
     });
@@ -238,8 +238,6 @@ export class MyApplicationsComponent implements OnInit {
       applicationId,
       file,
       kind,
-      this.authToken(),
-      this.userId(),
     ).then(response => {
       const existing = this.downloads()[applicationId] ?? {};
       this.downloads.update(downloads => ({

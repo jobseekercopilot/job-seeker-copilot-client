@@ -15,6 +15,10 @@ import {
   BASE_PATH as JOB_FINDER_BASE_PATH,
   Configuration as JobFinderConfiguration,
 } from './api/job-finder';
+import {
+  BASE_PATH as DOCUMENT_GENERATION_BASE_PATH,
+  Configuration as DocumentGenerationConfiguration,
+} from './api/document-generation-gateway';
 import {browserSessionInterceptor} from './services/browser-session.service';
 
 class JsonApiConfiguration extends Configuration {
@@ -38,6 +42,13 @@ class JsonJobFinderConfiguration extends JobFinderConfiguration {
   }
 }
 
+class JsonDocumentGenerationConfiguration extends DocumentGenerationConfiguration {
+  override selectHeaderAccept(accepts: string[]): string | undefined {
+    const selected = super.selectHeaderAccept(accepts);
+    return selected === '*/*' ? 'application/json' : selected;
+  }
+}
+
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
@@ -46,6 +57,7 @@ export const appConfig: ApplicationConfig = {
     {provide: BASE_PATH, useValue: ''},
     {provide: LOCATION_BASE_PATH, useValue: ''},
     {provide: JOB_FINDER_BASE_PATH, useValue: ''},
+    {provide: DOCUMENT_GENERATION_BASE_PATH, useValue: ''},
     {
       provide: Configuration,
       useFactory: () => new JsonApiConfiguration({basePath: '', withCredentials: true}),
@@ -57,6 +69,13 @@ export const appConfig: ApplicationConfig = {
     {
       provide: JobFinderConfiguration,
       useFactory: () => new JsonJobFinderConfiguration({basePath: '', withCredentials: true}),
+    },
+    {
+      provide: DocumentGenerationConfiguration,
+      useFactory: () => new JsonDocumentGenerationConfiguration({
+        basePath: '',
+        withCredentials: true,
+      }),
     },
   ],
 };

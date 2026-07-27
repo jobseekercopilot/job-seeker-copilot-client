@@ -11,6 +11,14 @@ interface JobSearchModeResponse {
   mode: JobSearchProviderMode;
 }
 
+export type DocumentGenerationMode =
+  | 'FIXTURE_LLM'
+  | 'REQUIRED_VALIDATION';
+
+interface DocumentGenerationModeResponse {
+  mode: DocumentGenerationMode;
+}
+
 @Injectable({providedIn: 'root'})
 export class RuntimeConfigurationService {
   private readonly http = inject(HttpClient);
@@ -18,6 +26,13 @@ export class RuntimeConfigurationService {
   jobSearchMode(): Observable<JobSearchModeResponse> {
     return this.http.get<JobSearchModeResponse>(
       '/api/runtime/job-search-mode',
+      {withCredentials: true},
+    );
+  }
+
+  documentGenerationMode(): Observable<DocumentGenerationModeResponse> {
+    return this.http.get<DocumentGenerationModeResponse>(
+      '/api/runtime/document-generation-mode',
       {withCredentials: true},
     );
   }

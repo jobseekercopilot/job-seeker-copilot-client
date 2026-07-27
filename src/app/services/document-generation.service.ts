@@ -1,13 +1,19 @@
+import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { from, Observable } from 'rxjs';
+import { firstValueFrom, from, map, Observable, switchMap } from 'rxjs';
 import { Job } from '../models/job-search.model';
 import {
   DocumentDownloadsResponse,
   DocumentGenerationResponse,
   DocumentGenerationControllerService,
   DownloadFileResponse,
-  Job as GenerationJob,
+  GenerationOperationResponse,
 } from '../api/document-generation-gateway';
+import {
+  Job as SavedJob,
+  SavedJobsService,
+} from '../api/job-finder';
+import { BrowserSessionService } from './browser-session.service';
 
 export type DocumentKind = 'CV' | 'COVER_LETTER';
 export type UploadFormat = 'DOCX' | 'PDF';
@@ -41,18 +47,56 @@ export interface DocumentFileMetadata {
 @Injectable({ providedIn: 'root' })
 export class DocumentGenerationService {
   private readonly api = inject(DocumentGenerationControllerService);
+  private readonly savedJobs = inject(SavedJobsService);
+  private readonly browserSession = inject(BrowserSessionService);
+  private readonly http = inject(HttpClient);
 
-  generate(job: Job, token: string, userId: string): Observable<DocumentGenerationResponse> {
+  generate(job: Job): Observable<DocumentGenerationResponse> {
     if (!job.id || !job.title || !job.company || !job.description) {
       throw new Error('The selected job does not contain the data required for generation.');
     }
 
-    return this.api.generate(
-      job.id,
-      {job: job as GenerationJob},
-      'body',
-      false,
-      {transferCache: false},
+    const idempotencyKey = `browser-${crypto.randomUUID()}`;
+    return this.browserSession.ensureCsrf().pipe(
+      switchMap(() => this.savedJobs.save(
+        job as SavedJob,
+        'body',
+        false,
+        {transferCache: false},
+      )),
+      switchMap(savedJob => {
+        if (!savedJob.savedJobId) {
+          throw new Error('The selected job could not be saved for document generation.');
+        }
+        return this.api.startOperation(
+          savedJob.savedJobId,
+          idempotencyKey,
+          'body',
+          false,
+          {transferCache: false},
+        );
+      }),
+      switchMap(operation => {
+        if (
+          operation.state !== 'AWAITING_APPROVAL'
+          || !operation.operationId
+          || !operation.cvDocumentId
+          || !operation.coverLetterDocumentId
+        ) {
+          throw new Error(this.operationFailure(operation));
+        }
+        return this.api.approveOperation(
+          operation.operationId,
+          {
+            cvDocumentId: operation.cvDocumentId,
+            coverLetterDocumentId: operation.coverLetterDocumentId,
+          },
+          'body',
+          false,
+          {transferCache: false},
+        );
+      }),
+      map(operation => this.completedGeneration(operation)),
     );
   }
 
@@ -104,49 +148,38 @@ export class DocumentGenerationService {
     );
   }
 
-  async deleteGeneratedDocument(generatedDocumentId: string, token: string): Promise<void> {
+  async deleteGeneratedDocument(generatedDocumentId: string): Promise<void> {
     if (!generatedDocumentId) {
       throw new Error('Generated document id is missing.');
     }
 
-    const response = await fetch(`/api/v1/documents/${encodeURIComponent(generatedDocumentId)}`, {
-      method: 'DELETE',
-      headers: this.authorizationHeader(token),
-    });
-
-    if (!response.ok) {
-      throw new Error(await this.errorMessage(response, 'Delete failed.'));
-    }
+    await firstValueFrom(this.browserSession.ensureCsrf().pipe(
+      switchMap(() => this.http.delete<void>(
+        `/api/v1/documents/${encodeURIComponent(generatedDocumentId)}`,
+      )),
+    ));
   }
 
-  async withdrawGeneratedApplication(applicationId: string, token: string, userId: string): Promise<void> {
+  async withdrawGeneratedApplication(applicationId: string): Promise<void> {
     if (!applicationId) {
       throw new Error('Application id is missing.');
     }
 
-    const response = await fetch(`/api/jobs/applications/${encodeURIComponent(applicationId)}/withdraw-generated`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.authorizationHeader(token),
-        ...(userId ? { 'X-User-Id': userId } : {}),
-      },
-      body: JSON.stringify({}),
-    });
-
-    if (!response.ok) {
-      throw new Error(await this.errorMessage(response, 'Delete failed.'));
-    }
+    await firstValueFrom(this.browserSession.ensureCsrf().pipe(
+      switchMap(() => this.http.post<void>(
+        `/api/jobs/applications/${encodeURIComponent(applicationId)}/withdraw-generated`,
+        {},
+      )),
+    ));
   }
 
-  async download(file: DownloadFileResponse, token: string): Promise<void> {
+  async download(file: DownloadFileResponse): Promise<void> {
     if (!file.fileId) {
       throw new Error('Download file id is missing.');
     }
 
     const response = await fetch(`/api/v1/document-generation/files/${encodeURIComponent(file.fileId)}/download`, {
       method: 'GET',
-      headers: this.authorizationHeader(token),
     });
 
     if (!response.ok) {
@@ -168,9 +201,7 @@ export class DocumentGenerationService {
   async uploadReplacement(
     applicationId: string,
     file: File,
-    documentKind: DocumentKind,
-    token: string,
-    userId: string
+    documentKind: DocumentKind
   ): Promise<DocumentUploadResponse> {
     if (!applicationId) {
       throw new Error('Application id is missing.');
@@ -183,20 +214,12 @@ export class DocumentGenerationService {
     formData.append('file', file);
     formData.append('documentType', documentKind);
 
-    const response = await fetch(`/api/v1/document-generation/applications/${encodeURIComponent(applicationId)}/replace`, {
-      method: 'POST',
-      headers: {
-        ...this.authorizationHeader(token),
-        ...(userId ? { 'X-User-Id': userId } : {}),
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw new Error(await this.errorMessage(response, 'Upload failed.'));
-    }
-
-    return response.json();
+    return firstValueFrom(this.browserSession.ensureCsrf().pipe(
+      switchMap(() => this.http.post<DocumentUploadResponse>(
+        `/api/v1/document-generation/applications/${encodeURIComponent(applicationId)}/replace`,
+        formData,
+      )),
+    ));
   }
 
   isDocx(file: File): boolean {
@@ -215,10 +238,56 @@ export class DocumentGenerationService {
     return asciiMatch?.[1] ?? null;
   }
 
-  private authorizationHeader(token: string): Record<string, string> {
-    const trimmed = token.trim();
-    if (!trimmed) return {};
-    return { Authorization: trimmed.startsWith('Bearer ') ? trimmed : `Bearer ${trimmed}` };
+  private completedGeneration(operation: GenerationOperationResponse): DocumentGenerationResponse {
+    if (
+      operation.state !== 'COMPLETED'
+      || !operation.applicationId
+      || !operation.cvDocumentId
+      || !operation.coverLetterDocumentId
+    ) {
+      throw new Error(this.operationFailure(operation));
+    }
+    return {
+      applicationId: operation.applicationId,
+      cvDocumentId: operation.cvDocumentId,
+      coverLetterDocumentId: operation.coverLetterDocumentId,
+      downloads: {
+        cv: this.exportDownloads(operation.downloads?.['cv']),
+        coverLetter: this.exportDownloads(operation.downloads?.['coverLetter']),
+      },
+    };
+  }
+
+  private exportDownloads(value: object | undefined): DocumentDownloadsResponse {
+    const exports = value && 'exports' in value
+      ? (value as {exports?: unknown}).exports
+      : undefined;
+    if (!Array.isArray(exports)) return {};
+
+    const downloads: DocumentDownloadsResponse = {};
+    for (const item of exports) {
+      if (!item || typeof item !== 'object') continue;
+      const exported = item as {
+        fileId?: unknown;
+        fileName?: unknown;
+        format?: unknown;
+      };
+      if (typeof exported.fileId !== 'string') continue;
+      const file: DownloadFileResponse = {
+        fileId: exported.fileId,
+        fileName: typeof exported.fileName === 'string' ? exported.fileName : undefined,
+        downloadUrl: `/api/v1/document-generation/files/${encodeURIComponent(exported.fileId)}/download`,
+      };
+      if (exported.format === 'DOCX') downloads.docx = file;
+      if (exported.format === 'PDF') downloads.pdf = file;
+    }
+    return downloads;
+  }
+
+  private operationFailure(operation: GenerationOperationResponse): string {
+    if (operation.failureMessage) return operation.failureMessage;
+    if (operation.failureCode) return `Document generation failed (${operation.failureCode}).`;
+    return `Document generation did not complete safely (state: ${operation.state ?? 'unknown'}).`;
   }
 
   private async errorMessage(response: Response, fallback: string): Promise<string> {

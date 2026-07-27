@@ -19,6 +19,7 @@ import {removeLegacySessionData} from './services/browser-storage';
 import {BrowserSessionService} from './services/browser-session.service';
 import {
   JobSearchProviderMode,
+  DocumentGenerationMode,
   RuntimeConfigurationService,
 } from './services/runtime-configuration.service';
 
@@ -35,6 +36,7 @@ type WorkspaceTab = 'search' | 'applications' | 'documents';
     LandingAuthComponent,
     JobResultsComponent,
     MyApplicationsComponent,
+    DocumentsWorkspaceComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.css',
@@ -72,6 +74,7 @@ export class App implements OnInit {
   searchSector = signal('');
   isSearching = signal(false);
   jobSearchProviderMode = signal<JobSearchProviderMode>('REQUIRED_VALIDATION');
+  documentGenerationMode = signal<DocumentGenerationMode>('REQUIRED_VALIDATION');
   jobSearchProviderModeLabel = computed(() => {
     switch (this.jobSearchProviderMode()) {
       case 'FIXTURE': return 'Fixture-backed';
@@ -79,6 +82,11 @@ export class App implements OnInit {
       default: return 'Required validation';
     }
   });
+  documentGenerationModeLabel = computed(() =>
+    this.documentGenerationMode() === 'FIXTURE_LLM'
+      ? 'Fixture-generated'
+      : 'Temporarily unavailable',
+  );
   activeWorkspaceTab = signal<WorkspaceTab>('search');
   selectedApplicationId = signal<string | null>(null);
 
@@ -131,6 +139,7 @@ export class App implements OnInit {
       }
       void this.retrySession();
       void this.loadJobSearchProviderMode();
+      void this.loadDocumentGenerationMode();
     }
   }
 
@@ -142,6 +151,17 @@ export class App implements OnInit {
       this.jobSearchProviderMode.set(response.mode);
     } catch {
       this.jobSearchProviderMode.set('REQUIRED_VALIDATION');
+    }
+  }
+
+  private async loadDocumentGenerationMode(): Promise<void> {
+    try {
+      const response = await firstValueFrom(
+        this.runtimeConfiguration.documentGenerationMode(),
+      );
+      this.documentGenerationMode.set(response.mode);
+    } catch {
+      this.documentGenerationMode.set('REQUIRED_VALIDATION');
     }
   }
 
@@ -317,6 +337,7 @@ export class App implements OnInit {
 
   refreshApplicationTracking(): void {
     this.myApplications?.refresh();
+    this.documentsWorkspace?.refresh();
   }
 
   openApplicationFromDocument(applicationId: string): void {

@@ -14,3 +14,18 @@ export function jobSearchProviderMode(
   }
   return 'REQUIRED_VALIDATION';
 }
+
+export type DocumentGenerationMode =
+  | 'FIXTURE_LLM'
+  | 'REQUIRED_VALIDATION';
+
+export function documentGenerationMode(
+  environment: NodeJS.ProcessEnv = process.env,
+): DocumentGenerationMode {
+  const configured = environment['DOCUMENT_GENERATION_MODE']
+    ?.trim()
+    .toUpperCase();
+  return configured === 'FIXTURE' || configured === 'FIXTURE_LLM'
+    ? 'FIXTURE_LLM'
+    : 'REQUIRED_VALIDATION';
+}

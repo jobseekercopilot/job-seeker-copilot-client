@@ -414,7 +414,7 @@ export class JobResultsComponent implements OnInit {
     this.generationMessages.update(messages => ({ ...messages, [jobId]: 'Generating CV & Cover Letter...' }));
     this.generationErrors.update(errors => ({ ...errors, [jobId]: undefined }));
 
-    this.documentGenerationService.generate(job, this.authToken(), this.userId()).subscribe({
+    this.documentGenerationService.generate(job).subscribe({
       next: (response) => {
         this.generationDownloads.update(downloads => ({ ...downloads, [jobId]: response.downloads }));
         this.generatedDocumentIds.update(documentIds => ({
@@ -568,9 +568,7 @@ export class JobResultsComponent implements OnInit {
     this.documentGenerationService.uploadReplacement(
       request.applicationId,
       request.file,
-      request.documentKind,
-      this.authToken(),
-      this.userId()
+      request.documentKind
     ).then((response) => {
       this.generationDownloads.update(downloads => {
         const existing = downloads[jobId] ?? {};
@@ -609,7 +607,7 @@ export class JobResultsComponent implements OnInit {
   }
 
   downloadFile(file: DownloadFileResponse): void {
-    this.documentGenerationService.download(file, this.authToken()).catch(() => {
+    this.documentGenerationService.download(file).catch(() => {
       this.notify.emit({ message: 'Download failed. Please try again.', type: 'error' });
       console.error('[JobResults] Document download failed');
     });
