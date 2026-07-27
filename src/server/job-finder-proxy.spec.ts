@@ -436,6 +436,91 @@ describe('Job Finder route allowlist', () => {
     expect(init?.body).toBeUndefined();
   });
 
+  it('creates, lists and updates an application using only the cookie session', async () => {
+    const upstream = vi.fn<FetchLike>(async (input, init) => {
+      const path = new URL(input.toString()).pathname;
+      if (init?.method === 'GET') {
+        return new Response('[]', {
+          headers: {'Content-Type': 'application/json'},
+          status: 200,
+        });
+      }
+      return new Response(`{"id":"${SAVED_JOB_ID}","status":"APPLIED"}`, {
+        headers: {'Content-Type': 'application/json'},
+        status: path.endsWith('/status') ? 200 : 201,
+      });
+    });
+    const origin = await startApp(upstream as typeof fetch);
+    const browserPayload = {
+      jobId: 'canonical-1',
+      canonicalJobId: 'canonical-1',
+      provider: 'REED',
+      externalJobId: 'reed-1',
+      jobTitle: 'Platform Engineer',
+      companyName: 'Example Ltd',
+      location: 'London',
+    };
+
+    const created = await fetch(`${origin}/api/jobs/applications`, {
+      method: 'POST',
+      headers: {...sessionHeaders(), 'Content-Type': 'application/json'},
+      body: JSON.stringify(browserPayload),
+    });
+    const listed = await fetch(`${origin}/api/jobs/applications`, {
+      headers: sessionHeaders(false),
+    });
+    const updated = await fetch(
+      `${origin}/api/jobs/applications/${SAVED_JOB_ID.toUpperCase()}/status`,
+      {
+        method: 'PATCH',
+        headers: {...sessionHeaders(), 'Content-Type': 'application/json'},
+        body: '{"status":"INTERVIEW"}',
+      },
+    );
+
+    expect(created.status).toBe(201);
+    expect(listed.status).toBe(200);
+    expect(updated.status).toBe(200);
+    expect(upstream).toHaveBeenCalledTimes(3);
+    expect(upstream.mock.calls.map(([url]) => url)).toEqual([
+      'https://job-finder.example.test/api/jobs/applications',
+      'https://job-finder.example.test/api/jobs/applications',
+      `https://job-finder.example.test/api/jobs/applications/${SAVED_JOB_ID}/status`,
+    ]);
+    for (const [, init] of upstream.mock.calls) {
+      expect(init?.headers).not.toHaveProperty('X-User-Id');
+      expect(init?.headers).toHaveProperty(
+        'Authorization',
+        `Bearer ${ACCESS_TOKEN}`,
+      );
+    }
+    expect(upstream.mock.calls[0][1]?.body).toBe(JSON.stringify(browserPayload));
+    expect(upstream.mock.calls[2][1]?.body).toBe('{"status":"INTERVIEW"}');
+  });
+
+  it('requires CSRF for application creation and status changes', async () => {
+    const upstream = vi.fn() as unknown as typeof fetch;
+    const origin = await startApp(upstream);
+
+    const create = await fetch(`${origin}/api/jobs/applications`, {
+      method: 'POST',
+      headers: {...sessionHeaders(false), 'Content-Type': 'application/json'},
+      body: '{}',
+    });
+    const update = await fetch(
+      `${origin}/api/jobs/applications/${SAVED_JOB_ID}/status`,
+      {
+        method: 'PATCH',
+        headers: {...sessionHeaders(false), 'Content-Type': 'application/json'},
+        body: '{"status":"INTERVIEW"}',
+      },
+    );
+
+    expect(create.status).toBe(403);
+    expect(update.status).toBe(403);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
   it('rejects a missing browser session before any downstream call', async () => {
     const upstream = vi.fn() as unknown as typeof fetch;
     const origin = await startApp(upstream);
@@ -507,7 +592,6 @@ describe('Job Finder route allowlist', () => {
 
   it.each([
     ['GET', '/api/jobs/applications/user/another-user'],
-    ['PATCH', `/api/jobs/applications/${SAVED_JOB_ID}/status`],
     ['POST', `/api/jobs/applications/${SAVED_JOB_ID}/withdraw-generated`],
     ['POST', '/api/v1/document-generation/jobs/job-1/generate'],
   ])('keeps retained %s %s routes fail-closed', async (method, path) => {

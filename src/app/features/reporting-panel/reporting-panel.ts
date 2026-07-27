@@ -100,7 +100,7 @@ export class ReportingPanelComponent {
       },
     });
 
-    this.applicationTracker.listApplications(userId, token).subscribe({
+    this.applicationTracker.listApplications().subscribe({
       next: applications => {
         this.applications.set(applications);
         this.applicationEvents.set(this.applicationTracker.eventsForApplications(applications));

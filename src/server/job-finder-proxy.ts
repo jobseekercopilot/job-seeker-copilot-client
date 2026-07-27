@@ -17,7 +17,7 @@ const SAVED_JOB_OUTCOMES = new Set([
 ]);
 
 type BrowserHeaders = Record<string, string | string[] | undefined>;
-type JobFinderMethod = 'DELETE' | 'GET' | 'POST';
+type JobFinderMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST';
 
 export interface JobFinderProxyConfig {
   accessCookieName: string;
@@ -143,7 +143,7 @@ export async function callJobFinder(
   requiresCsrf: boolean,
   fetchImplementation: typeof fetch = fetch,
 ): Promise<CredentialFailure | JobFinderProxyResult> {
-  const includeJsonBody = method === 'POST' && body !== undefined;
+  const includeJsonBody = ['PATCH', 'POST'].includes(method) && body !== undefined;
   const credentials = jobFinderCredentials(
     browserHeaders,
     config,
@@ -354,6 +354,42 @@ export function registerJobFinderRoutes(
       response,
       `/api/jobs/saved/${request.params['savedJobId'].toLowerCase()}`,
       'DELETE',
+      true,
+    );
+  });
+  app.post('/api/jobs/applications', async (request, response) => {
+    await proxy(
+      request,
+      response,
+      '/api/jobs/applications',
+      'POST',
+      true,
+    );
+  });
+  app.get('/api/jobs/applications', async (request, response) => {
+    await proxy(
+      request,
+      response,
+      '/api/jobs/applications',
+      'GET',
+      false,
+    );
+  });
+  app.patch('/api/jobs/applications/:applicationId/status', async (request, response) => {
+    if (!validSavedJobId(request.params['applicationId'])) {
+      sendFailure(
+        response,
+        400,
+        'INVALID_APPLICATION_ID',
+        'The application identifier is invalid',
+      );
+      return;
+    }
+    await proxy(
+      request,
+      response,
+      `/api/jobs/applications/${request.params['applicationId'].toLowerCase()}/status`,
+      'PATCH',
       true,
     );
   });

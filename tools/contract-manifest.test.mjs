@@ -121,7 +121,7 @@ test('pins the token-free UMG browser-session contract', async () => {
   ]);
 });
 
-test('pins the owner-scoped Job Finder search and saved-job contract', async () => {
+test('pins the session-derived Job Finder search, saved-job and application contract', async () => {
   const lock = await verifyContractManifest(rootDir);
   const gateway = lock.contracts.find(({id}) => id === 'job-finder-gateway');
   const contract = JSON.parse(
@@ -129,19 +129,21 @@ test('pins the owner-scoped Job Finder search and saved-job contract', async () 
   );
   const savedJob = contract.components.schemas.SavedJobResponse.properties;
 
-  assert.equal(gateway.version, '1.2.0');
+  assert.equal(gateway.version, '1.5.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
   assert.equal(
     gateway.sourceCommit,
-    '3effd28429fe10eb56921beb9098b97ffcb3a7b5',
+    '9ec7b4694fddf2ce3a96a429e359408079eb4522',
   );
   assert.equal(gateway.output, 'src/app/api/job-finder');
   assert.deepEqual(gateway.requiredPaths, [
     '/api/jobs/search',
     '/api/jobs/saved',
     '/api/jobs/saved/{savedJobId}',
+    '/api/jobs/applications',
+    '/api/jobs/applications/{applicationId}/status',
   ]);
-  assert.equal(contract.info.version, '1.2.0');
+  assert.equal(contract.info.version, '1.5.0');
   assert.equal(savedJob.savedJobId.format, 'uuid');
   assert.equal(savedJob.snapshotVersion.format, 'int64');
   assert.equal(savedJob.contentSha256.type, 'string');
@@ -155,6 +157,19 @@ test('pins the owner-scoped Job Finder search and saved-job contract', async () 
     contract.paths['/api/jobs/saved'].post.responses['200']
       .headers['X-Saved-Job-Outcome'].schema.enum,
     ['REPLAYED', 'UPDATED', 'REACTIVATED'],
+  );
+  assert.equal(
+    contract.components.schemas.CreateTrackedApplicationRequest
+      .properties.userId,
+    undefined,
+  );
+  assert.deepEqual(
+    contract.paths['/api/jobs/applications'].post.security ?? contract.security,
+    [{bearerAuth: []}],
+  );
+  assert.equal(
+    contract.paths['/api/jobs/applications'].get.parameters,
+    undefined,
   );
 });
 
@@ -183,6 +198,14 @@ test('rejects unsafe or incomplete Job Finder saved-job drift', async (context) 
         }];
       },
       /save must not accept X-User-Id/,
+    ],
+    [
+      'browser-selected application owner',
+      (contract) => {
+        contract.components.schemas.CreateTrackedApplicationRequest
+          .properties.userId = {type: 'string'};
+      },
+      /application creation must derive ownership without browser userId/,
     ],
     [
       'missing immutable digest',

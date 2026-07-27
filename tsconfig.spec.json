@@ -9,6 +9,7 @@
   "include": [
     "src/**/*.d.ts",
     "src/app/app.spec.ts",
+    "src/app/full-app.spec.ts",
     "src/app/config/**/*.spec.ts",
     "src/app/features/beta-job-search/beta-job-search.spec.ts",
     "src/app/features/claimant-profile/claimant-profile.spec.ts",

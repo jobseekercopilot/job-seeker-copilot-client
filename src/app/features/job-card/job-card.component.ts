@@ -53,7 +53,10 @@ export class JobCardComponent {
   coverLetterDocumentId = input<string | null>(null);
   uploadingDocument = input<UploadDocumentKind | null>(null);
   updatingStatus = input<StatusUpdateTarget | null>(null);
+  creatingApplication = input(false);
+  applicationTrackingAvailable = input(false);
   applicationToolsAvailable = input(false);
+  trackApplication = output<Job>();
   generateDocuments = output<Job>();
   updateApplicationStatus = output<StatusUpdateTarget>();
   downloadFile = output<DownloadFileResponse>();
@@ -88,13 +91,18 @@ export class JobCardComponent {
 
   toggleStatusMenu(event: MouseEvent): void {
     event.stopPropagation();
-    if (!this.applicationToolsAvailable() || this.statusActions().length === 0 || this.updatingStatus()) return;
+    if (!this.applicationTrackingAvailable() || this.statusActions().length === 0 || this.updatingStatus()) return;
     this.statusMenuOpen.update(open => !open);
   }
 
   requestGeneration(): void {
     if (!this.applicationToolsAvailable()) return;
     this.generateDocuments.emit(this.job());
+  }
+
+  requestTrackApplication(): void {
+    if (!this.applicationTrackingAvailable() || this.creatingApplication()) return;
+    this.trackApplication.emit(this.job());
   }
 
   requestStatusUpdate(action: StatusAction): void {

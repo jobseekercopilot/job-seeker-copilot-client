@@ -20,6 +20,9 @@ function validateJobFinderContract(document) {
     ['/api/jobs/saved', 'get', 'list'],
     ['/api/jobs/saved/{savedJobId}', 'get', 'get'],
     ['/api/jobs/saved/{savedJobId}', 'delete', 'unsave'],
+    ['/api/jobs/applications', 'post', 'createApplication'],
+    ['/api/jobs/applications', 'get', 'getApplications'],
+    ['/api/jobs/applications/{applicationId}/status', 'patch', 'updateApplicationStatus'],
   ];
 
   for (const [path, method, operationId] of operations) {
@@ -43,6 +46,16 @@ function validateJobFinderContract(document) {
         `job-finder-gateway ${operationId} must not accept X-User-Id`,
       );
     }
+  }
+
+  const createApplication =
+    document.components?.schemas?.CreateTrackedApplicationRequest;
+  if (!createApplication ||
+      createApplication.properties?.userId ||
+      createApplication.required?.includes('userId')) {
+    throw new Error(
+      'job-finder-gateway application creation must derive ownership without browser userId',
+    );
   }
 
   const bearer = document.components?.securitySchemes?.bearerAuth;

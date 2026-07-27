@@ -137,7 +137,7 @@ export class DocumentsWorkspaceComponent {
 
     this.loading.set(true);
     this.error.set(null);
-    this.applicationTracker.listApplications(userId, this.authToken()).subscribe({
+    this.applicationTracker.listApplications().subscribe({
       next: applications => this.loadDocuments(applications),
       error: err => {
         this.loading.set(false);

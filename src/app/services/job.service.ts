@@ -1,31 +1,20 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
 import { of } from 'rxjs';
 import {
-  ApplicationRecordResponse,
   JobSearchRequest,
   ReedJobSearchResponse,
-  JobSearchService as GeneratedJobSearchService,
-  UpdateApplicationStatusRequest
+  JobSearchService as GeneratedJobSearchService
 } from '../api/job-finder';
 import { LocationService } from './location.service';
 import { BrowserSessionService } from './browser-session.service';
-
-export interface WithdrawGeneratedApplicationResponse {
-  applicationId?: string;
-  status?: 'NEW';
-  withdrawn?: boolean;
-  message?: string;
-}
 
 @Injectable({
   providedIn: 'root'
 })
 export class JobService {
   private jobSearchApi = inject(GeneratedJobSearchService);
-  private http = inject(HttpClient);
   private locationService = inject(LocationService);
   private browserSession = inject(BrowserSessionService);
 
@@ -172,39 +161,4 @@ export class JobService {
     );
   }
 
-  updateApplicationStatus(
-    applicationId: string,
-    status: string,
-    token: string,
-    userId: string
-  ): Observable<ApplicationRecordResponse> {
-    return this.http.patch<ApplicationRecordResponse>(
-      `/api/jobs/applications/${encodeURIComponent(applicationId)}/status`,
-      { status: status as UpdateApplicationStatusRequest['status'] },
-      { headers: this.applicationActionHeaders(token, userId) }
-    );
-  }
-
-  withdrawGeneratedApplication(
-    applicationId: string,
-    token: string,
-    userId: string
-  ): Observable<WithdrawGeneratedApplicationResponse> {
-    return this.http.post<WithdrawGeneratedApplicationResponse>(
-      `/api/jobs/applications/${encodeURIComponent(applicationId)}/withdraw-generated`,
-      {},
-      { headers: this.applicationActionHeaders(token, userId) }
-    );
-  }
-
-  private applicationActionHeaders(token: string, userId: string): HttpHeaders {
-    let headers = new HttpHeaders();
-    if (token) {
-      headers = headers.set('Authorization', token.startsWith('Bearer ') ? token : `Bearer ${token}`);
-    }
-    if (userId) {
-      headers = headers.set('X-User-Id', userId);
-    }
-    return headers;
-  }
 }

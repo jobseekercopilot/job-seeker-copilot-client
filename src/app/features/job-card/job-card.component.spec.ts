@@ -40,7 +40,7 @@ describe('JobCardComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Generate CV & Cover Letter');
   });
 
-  it('labels application and document actions as coming next when they are not integrated', () => {
+  it('keeps document generation disabled while identifying application tracking as available', () => {
     const fixture = createFixture({ applicationToolsAvailable: false });
     expandCard(fixture);
     const button: HTMLButtonElement = fixture.debugElement
@@ -49,7 +49,9 @@ describe('JobCardComponent', () => {
       .nativeElement;
 
     expect(button.disabled).toBe(true);
-    expect(fixture.nativeElement.textContent).toContain('Job details are available');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Application tracking is available. CV and cover-letter generation is coming next.',
+    );
   });
 
   it('shows the loading state and disables generation while generating', () => {
@@ -302,6 +304,7 @@ describe('JobCardComponent', () => {
     generationError?: string;
     downloads?: GenerationDownloadsResponse;
     applicationToolsAvailable?: boolean;
+    applicationTrackingAvailable?: boolean;
   } = {}) {
     const fixture = TestBed.createComponent(JobCardComponent);
     fixture.componentRef.setInput('job', options.job ?? job);
@@ -311,6 +314,7 @@ describe('JobCardComponent', () => {
     fixture.componentRef.setInput('cvDocumentId', 'cv-123');
     fixture.componentRef.setInput('coverLetterDocumentId', 'cl-456');
     fixture.componentRef.setInput('applicationToolsAvailable', options.applicationToolsAvailable ?? true);
+    fixture.componentRef.setInput('applicationTrackingAvailable', options.applicationTrackingAvailable ?? true);
     fixture.detectChanges();
     return fixture;
   }

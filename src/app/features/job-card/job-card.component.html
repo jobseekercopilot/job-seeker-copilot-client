@@ -140,6 +140,16 @@
       </div>
 
       <div class="documents-area mt-5 pt-4">
+        @if (statusLabel() === 'NEW') {
+          <button type="button"
+                  (click)="requestTrackApplication()"
+                  [disabled]="creatingApplication() || !applicationTrackingAvailable()"
+                  data-testid="track-application-button"
+                  class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
+            <mat-icon class="text-base">playlist_add</mat-icon>
+            {{ creatingApplication() ? 'Adding application...' : 'Add to My Applications' }}
+          </button>
+        }
         @if (statusLabel() === 'NEW' || generating()) {
           <button type="button"
                   (click)="requestGeneration()"
@@ -155,7 +165,7 @@
           </button>
           @if (!applicationToolsAvailable()) {
             <p class="document-lock-note mt-3 mb-0 text-sm" role="status">
-              Job details are available. Secure application creation and document generation will be enabled at the next checkpoint.
+              Application tracking is available. CV and cover-letter generation is coming next.
             </p>
           }
         }

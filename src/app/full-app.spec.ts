@@ -10,6 +10,7 @@ import type {BrowserSessionStatus} from './services/browser-session.service';
 import {BrowserSessionService} from './services/browser-session.service';
 import {JobService} from './services/job.service';
 import {PaymentService} from './services/payment.service';
+import {ApplicationTrackerService} from './services/application-tracker.service';
 
 describe('Full App checkpoint', () => {
   const status = signal<BrowserSessionStatus>('authenticated');
@@ -56,6 +57,14 @@ describe('Full App checkpoint', () => {
           },
         },
         {provide: JobService, useValue: {searchJobs}},
+        {
+          provide: ApplicationTrackerService,
+          useValue: {
+            listApplications: () => of([]),
+            createApplication: vi.fn(),
+            updateStatus: vi.fn(),
+          },
+        },
         {
           provide: PaymentService,
           useValue: {

@@ -29,7 +29,8 @@ type WorkspaceTab = 'search' | 'applications' | 'documents';
     ClaimantProfileComponent,
     NavigationBar,
     LandingAuthComponent,
-    JobResultsComponent
+    JobResultsComponent,
+    MyApplicationsComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.css',
@@ -287,6 +288,10 @@ export class App implements OnInit {
     this.refreshReporting();
     this.refreshAiTokenBalance();
     this.refreshAiCreditPricing();
+  }
+
+  refreshApplicationTracking(): void {
+    this.myApplications?.refresh();
   }
 
   openApplicationFromDocument(applicationId: string): void {

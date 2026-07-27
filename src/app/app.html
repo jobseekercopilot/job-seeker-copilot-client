@@ -106,7 +106,7 @@
             <article data-testid="capability-profile"><span class="capability-state state-available">Available</span><strong>Profile</strong></article>
             <article data-testid="capability-job-search"><span class="capability-state state-fixture">Fixture-backed</span><strong>Job search</strong></article>
             <article data-testid="capability-job-details"><span class="capability-state state-fixture">Fixture-backed</span><strong>Job matching &amp; details</strong></article>
-            <article data-testid="capability-applications"><span class="capability-state state-unavailable">Temporarily unavailable</span><strong>Application tracking</strong></article>
+            <article data-testid="capability-applications"><span class="capability-state state-available">Available</span><strong>Application tracking</strong></article>
             <article data-testid="capability-generation"><span class="capability-state state-next">Coming next</span><strong>CV &amp; cover-letter generation</strong></article>
             <article data-testid="capability-documents"><span class="capability-state state-unavailable">Temporarily unavailable</span><strong>Documents &amp; export</strong></article>
             <article data-testid="capability-reporting"><span class="capability-state state-unavailable">Temporarily unavailable</span><strong>Reporting &amp; evidence</strong></article>
@@ -187,19 +187,23 @@
               [experience]="profileExperience()"
               [aspirations]="profileAspirations()"
               [workPrefs]="profileWorkPrefs()"
-              [userId]="userAccountId()"
+              [applicationTrackingAvailable]="true"
               [applicationToolsAvailable]="false"
               (notify)="showToast($event.message, $event.type)"
-              (applicationChanged)="refreshAfterAiGeneration()">
+              (applicationChanged)="refreshApplicationTracking()">
             </app-job-results>
           </div>
 
           <div data-testid="workspace-panel-applications" [hidden]="activeWorkspaceTab() !== 'applications'">
-            <section class="capability-placeholder" data-testid="workspace-application-tracking">
-              <span class="capability-state state-unavailable">Temporarily unavailable</span>
-              <h2>Application tracking</h2>
-              <p>The tracker, statuses and application history are part of the restored product. They will be enabled once ownership is derived entirely from the secure browser session.</p>
-            </section>
+            <div class="workspace-status-line">
+              <span class="capability-state state-available">Available</span>
+              <strong>Application tracking and status history</strong>
+            </div>
+            <app-my-applications #myApplications
+              [selectedApplicationId]="selectedApplicationId()"
+              (notify)="showToast($event.message, $event.type)"
+              (applicationChanged)="refreshApplicationTracking()">
+            </app-my-applications>
           </div>
 
           <div data-testid="workspace-panel-documents" [hidden]="activeWorkspaceTab() !== 'documents'">

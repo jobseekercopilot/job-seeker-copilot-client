@@ -11,6 +11,7 @@ import {
   GenerationDownloadsResponse,
 } from '../../api/document-generation-gateway';
 import {logMalformedProviderResult} from '../../../shared/provider-content-policy';
+import {ApplicationTrackerService} from '../../services/application-tracker.service';
 
 type StatusUpdateTarget =
   | 'DOCUMENTS_GENERATED'
@@ -37,6 +38,7 @@ type SortOption = 'MOST_RELEVANT' | 'CLOSEST' | 'HIGHEST_SALARY' | 'NEWEST_POSTE
 export class JobResultsComponent implements OnInit {
   private jobService = inject(JobService);
   private documentGenerationService = inject(DocumentGenerationService);
+  private applicationTracker = inject(ApplicationTrackerService);
 
   // Inputs from the parent App component (profile signals)
   skills = input<string>('');
@@ -46,6 +48,7 @@ export class JobResultsComponent implements OnInit {
   authToken = input<string>('');
   userId = input<string>('');
   applicationToolsAvailable = input(false);
+  applicationTrackingAvailable = input(false);
 
   // Output to notify parent to show a toast
   notify = output<{ message: string; type: 'success' | 'info' | 'error' }>();
@@ -70,6 +73,7 @@ export class JobResultsComponent implements OnInit {
   generatedDocumentIds = signal<Record<string, { cvDocumentId?: string; coverLetterDocumentId?: string } | undefined>>({});
   uploadingDocuments = signal<Record<string, 'CV' | 'COVER_LETTER' | undefined>>({});
   updatingApplicationStatuses = signal<Record<string, StatusUpdateTarget | undefined>>({});
+  creatingApplicationIds = signal<Set<string>>(new Set());
   readonly jobsPerPage = 10;
   readonly Math = Math;
   readonly futureFilterSections = ['Status', 'Date Posted', 'Salary', 'Location', 'Remote / On-site'];
@@ -370,6 +374,37 @@ export class JobResultsComponent implements OnInit {
     });
   }
 
+  trackApplication(job: Job): void {
+    if (!job.id || job.applicationId || this.creatingApplicationIds().has(job.id)) return;
+    const jobId = job.id;
+    this.creatingApplicationIds.update(ids => new Set(ids).add(jobId));
+
+    this.applicationTracker.createApplication(job).subscribe({
+      next: record => {
+        this.applyApplicationRecord(jobId, record);
+        this.notify.emit({
+          message: 'Application added to My Applications.',
+          type: 'success',
+        });
+        this.applicationChanged.emit();
+      },
+      error: () => {
+        this.notify.emit({
+          message: 'Could not add this application. Please try again.',
+          type: 'error',
+        });
+        console.error('[JobResults] Application creation failed');
+      },
+      complete: () => {
+        this.creatingApplicationIds.update(ids => {
+          const next = new Set(ids);
+          next.delete(jobId);
+          return next;
+        });
+      },
+    });
+  }
+
   updateApplicationStatus(job: Job, status: StatusUpdateTarget): void {
     if (!job.id || !job.applicationId || this.updatingApplicationStatuses()[job.id]) {
       if (!job.applicationId) {
@@ -383,7 +418,7 @@ export class JobResultsComponent implements OnInit {
 
     const jobId = job.id;
     this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: status }));
-    this.jobService.updateApplicationStatus(job.applicationId, status, this.authToken(), this.userId()).subscribe({
+    this.applicationTracker.updateStatus(job.applicationId, status).subscribe({
       next: (record) => {
         this.applyApplicationRecord(jobId, record);
         const updatedStatus = record.status ?? status;
@@ -422,7 +457,7 @@ export class JobResultsComponent implements OnInit {
 
     const jobId = job.id;
     this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: 'WITHDRAWN' }));
-    this.jobService.withdrawGeneratedApplication(job.applicationId, this.authToken(), this.userId()).subscribe({
+    this.applicationTracker.withdrawGeneratedApplication(job.applicationId).subscribe({
       next: () => {
         this.updateJobLocally(jobId, {
           applicationId: undefined,
