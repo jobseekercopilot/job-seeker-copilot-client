@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
-import { ReportingSummaryResponse } from '../../../generated/api/reporting-gateway';
+import { ReportingSummaryResponse } from '../../api/reporting-gateway';
 import { ReportingService } from '../../services/reporting.service';
 import {
   ApplicationEvent,
@@ -100,7 +100,7 @@ export class ReportingPanelComponent {
       },
     });
 
-    this.applicationTracker.listApplications(userId, token).subscribe({
+    this.applicationTracker.listApplications().subscribe({
       next: applications => {
         this.applications.set(applications);
         this.applicationEvents.set(this.applicationTracker.eventsForApplications(applications));

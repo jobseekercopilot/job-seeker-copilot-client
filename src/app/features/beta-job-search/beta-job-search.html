@@ -1,0 +1,42 @@
+<section class="job-results-panel rounded-2xl overflow-hidden" data-testid="job-results-workspace">
+  <header class="job-results-header px-6 py-4">
+    <p class="eyebrow">Profile-driven job search</p>
+    <h2>Job Matches</h2>
+    <button type="button" (click)="search()" [disabled]="loading()">
+      {{ loading() ? 'Searching…' : 'Refresh matches' }}
+    </button>
+  </header>
+
+  <div class="px-6 py-5" aria-live="polite">
+    @if (loading()) {
+      <p role="status">Searching for roles that match your claimant profile.</p>
+    } @else if (error(); as message) {
+      <p role="alert">{{ message }}</p>
+    } @else if (jobs().length === 0) {
+      <p role="status">No matching jobs were returned. Update your profile and try again.</p>
+    } @else {
+      <p role="status">{{ jobs().length }} job match{{ jobs().length === 1 ? '' : 'es' }} found.</p>
+      <div class="grid gap-4">
+        @for (job of jobs(); track jobId(job, $index); let index = $index) {
+          <article class="job-card rounded-xl px-5 py-4" data-testid="job-result-card">
+            <h3>{{ title(job) }}</h3>
+            <p>{{ company(job) }} · {{ location(job) }}</p>
+            <button
+              type="button"
+              (click)="toggle(job, index)"
+              [attr.aria-expanded]="expandedJobId() === jobId(job, index)"
+              aria-label="Toggle job details">
+              {{ expandedJobId() === jobId(job, index) ? 'Hide details' : 'View details' }}
+            </button>
+            @if (expandedJobId() === jobId(job, index)) {
+              <div>
+                <h4>Job Description</h4>
+                <p>{{ job.description || 'No description is available.' }}</p>
+              </div>
+            }
+          </article>
+        }
+      </div>
+    }
+  </div>
+</section>

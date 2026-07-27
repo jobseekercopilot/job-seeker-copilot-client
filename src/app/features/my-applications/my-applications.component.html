@@ -133,6 +133,9 @@
                     {{ isUploading(application, 'COVER_LETTER') ? 'Uploading Letter...' : 'Upload Cover Letter' }}
                   </button>
                 }
+                <button type="button" disabled aria-disabled="true">
+                  Document replacement — Coming next
+                </button>
 
                 @for (action of actions(application); track action.label) {
                   <button type="button"

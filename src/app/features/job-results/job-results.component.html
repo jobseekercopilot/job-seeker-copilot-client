@@ -6,6 +6,11 @@
       <div class="flex items-center gap-3">
         <mat-icon class="panel-icon">work</mat-icon>
         <h2 class="text-lg font-semibold m-0">Job Matches</h2>
+        <span class="provider-mode-badge"
+              [class.provider-mode-partial]="providerDegraded()"
+              data-testid="job-search-provider-mode">
+          {{ providerModeLabel() }}
+        </span>
       </div>
     </div>
     <div class="flex flex-wrap items-center gap-2">
@@ -132,7 +137,7 @@
     @if (!loading() && !error() && filteredJobs().length === 0) {
       <div class="flex flex-col items-center justify-center py-12 text-center">
         <mat-icon class="empty-icon text-5xl mb-4">search_off</mat-icon>
-        <p class="text-sm m-0">No job matches found based on your current profile.</p>
+        <p class="text-sm m-0">{{ emptyStateMessage() }}</p>
         <p class="text-xs mt-1">Try updating your skills, aspirations, or work preferences.</p>
       </div>
     }
@@ -161,6 +166,10 @@
           [coverLetterDocumentId]="generatedDocumentIds()[job.id ?? '']?.coverLetterDocumentId ?? job.coverLetterDocumentId ?? null"
           [uploadingDocument]="uploadingDocuments()[job.id ?? ''] ?? null"
           [updatingStatus]="updatingApplicationStatuses()[job.id ?? ''] ?? null"
+          [creatingApplication]="creatingApplicationIds().has(job.id ?? '')"
+          [applicationTrackingAvailable]="applicationTrackingAvailable()"
+          [applicationToolsAvailable]="applicationToolsAvailable()"
+          (trackApplication)="trackApplication($event)"
           (generateDocuments)="generateDocuments($event)"
           (updateApplicationStatus)="updateApplicationStatus(job, $event)"
           (withdrawGeneratedApplication)="withdrawGeneratedApplication(job)"

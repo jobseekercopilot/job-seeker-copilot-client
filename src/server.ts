@@ -17,7 +17,12 @@ import {
 import {callUserManagement} from './server/user-management-proxy';
 import {installGracefulShutdown} from './server/graceful-shutdown';
 import {registerJobFinderRoutes} from './server/job-finder-proxy';
+import {registerDocumentGenerationRoutes} from './server/document-generation-proxy';
 import {callTrustedPaymentGateway, paymentProxyFailure} from './server/payment-proxy';
+import {
+  documentGenerationMode,
+  jobSearchProviderMode,
+} from './server/runtime-configuration';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 const bffConfig = loadBffConfig();
@@ -44,6 +49,16 @@ const REPORTING_GATEWAY_URL = process.env['REPORTING_GATEWAY_URL'] || 'http://lo
 const PAYMENT_GATEWAY_URL = process.env['PAYMENT_GATEWAY_URL'] || 'http://localhost:8098';
 
 const angularApp = new AngularNodeAppEngine({ allowedHosts: bffConfig.allowedHosts });
+
+app.get('/api/runtime/job-search-mode', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({mode: jobSearchProviderMode()});
+});
+
+app.get('/api/runtime/document-generation-mode', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({mode: documentGenerationMode()});
+});
 
 app.get('/api/auth/csrf', async (req, res) => {
   await proxyUserManagementRequest('/api/auth/csrf', 'GET', req, res);
@@ -152,6 +167,13 @@ registerJobFinderRoutes(app, {
   csrfCookieName: bffConfig.sessionCsrfCookieName,
   origin: bffConfig.jobFinderGatewayOrigin,
   timeoutMs: bffConfig.downstreamTimeoutMs,
+});
+registerDocumentGenerationRoutes(app, {
+  accessCookieName: bffConfig.sessionAccessCookieName,
+  csrfCookieName: bffConfig.sessionCsrfCookieName,
+  origin: DOCUMENT_GENERATION_GATEWAY_URL,
+  documentStoreOrigin: DOCUMENT_STORE_SERVICE_URL,
+  timeoutMs: Math.max(bffConfig.downstreamTimeoutMs, 60_000),
 });
 
 // These capabilities have no authoritative private contract in the selected

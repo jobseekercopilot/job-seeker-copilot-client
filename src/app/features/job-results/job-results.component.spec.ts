@@ -5,6 +5,7 @@ import { JobResultsComponent } from './job-results.component';
 import { JobService } from '../../services/job.service';
 import { DocumentGenerationService } from '../../services/document-generation.service';
 import { Job, JobSearchResponse } from '../../models/job-search.model';
+import { ProviderResultStatusStatusEnum } from '../../api/job-finder';
 
 describe('JobResultsComponent', () => {
   const response: JobSearchResponse = {
@@ -167,12 +168,66 @@ describe('JobResultsComponent', () => {
     expect(fixture.nativeElement.textContent).not.toContain('null miles');
   });
 
-  function createFixture() {
+  it('keeps successful real jobs visible when another provider is rate limited', () => {
+    currentResponse = {
+      ...singleRoleResponse([job('real developer role', {})]),
+      providerResults: [
+        {provider: 'REED', status: ProviderResultStatusStatusEnum.Success, rawResultCount: 1},
+        {provider: 'JSEARCH', status: ProviderResultStatusStatusEnum.RateLimited, rawResultCount: 0},
+      ],
+    };
+    const fixture = createFixture('REAL_PROVIDERS');
+
+    expect(fixture.nativeElement.textContent).toContain('Real providers — partial availability');
+    expect(fixture.nativeElement.textContent).toContain('real developer role');
+    expect(fixture.nativeElement.textContent).toContain('JSEARCH has reached its current request limit');
+  });
+
+  it('distinguishes a real-provider configuration error from zero results', () => {
+    currentResponse = {
+      ...singleRoleResponse([]),
+      providerResults: [
+        {provider: 'REED', status: ProviderResultStatusStatusEnum.ConfigurationError, rawResultCount: 0},
+      ],
+    };
+    const fixture = createFixture('REAL_PROVIDERS');
+
+    expect(fixture.nativeElement.textContent).toContain('Real-provider configuration error');
+    expect(fixture.nativeElement.textContent)
+      .toContain('Real-provider configuration is incomplete. No fixture results were substituted.');
+  });
+
+  it('distinguishes unavailable real providers from a successful zero-result search', () => {
+    currentResponse = {
+      ...singleRoleResponse([]),
+      providerResults: [
+        {provider: 'ADZUNA', status: ProviderResultStatusStatusEnum.Unavailable, rawResultCount: 0},
+      ],
+    };
+    const unavailable = createFixture('REAL_PROVIDERS');
+    expect(unavailable.nativeElement.textContent).toContain('Real providers temporarily unavailable');
+    expect(unavailable.nativeElement.textContent)
+      .toContain('Real job providers are temporarily unavailable. Please try again later.');
+
+    currentResponse = {
+      ...singleRoleResponse([]),
+      providerResults: [
+        {provider: 'ADZUNA', status: ProviderResultStatusStatusEnum.Success, rawResultCount: 0},
+      ],
+    };
+    const zeroResults = createFixture('REAL_PROVIDERS');
+    expect(zeroResults.nativeElement.textContent).toContain('Real providers');
+    expect(zeroResults.nativeElement.textContent)
+      .toContain('No job matches found based on your current profile.');
+  });
+
+  function createFixture(providerMode: 'FIXTURE' | 'REAL_PROVIDERS' | 'REQUIRED_VALIDATION' = 'FIXTURE') {
     const fixture = TestBed.createComponent(JobResultsComponent);
     fixture.componentRef.setInput('authToken', 'token');
     fixture.componentRef.setInput('userId', 'user-1');
     fixture.componentRef.setInput('aspirations', 'cleaning, programming');
     fixture.componentRef.setInput('workPrefs', JSON.stringify({ postcode: 'SW1A 1AA', hours: 'full time' }));
+    fixture.componentRef.setInput('providerMode', providerMode);
     fixture.detectChanges();
     return fixture;
   }

@@ -1,31 +1,22 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
 import { of } from 'rxjs';
 import {
-  ApplicationRecordResponse,
   JobSearchRequest,
-  JobSearchResponse,
-  JobSearchService as GeneratedJobSearchService,
-  UpdateApplicationStatusRequest
+  ReedJobSearchResponse,
+  JobSearchService as GeneratedJobSearchService
 } from '../api/job-finder';
 import { LocationService } from './location.service';
-
-export interface WithdrawGeneratedApplicationResponse {
-  applicationId?: string;
-  status?: 'NEW';
-  withdrawn?: boolean;
-  message?: string;
-}
+import { BrowserSessionService } from './browser-session.service';
 
 @Injectable({
   providedIn: 'root'
 })
 export class JobService {
   private jobSearchApi = inject(GeneratedJobSearchService);
-  private http = inject(HttpClient);
   private locationService = inject(LocationService);
+  private browserSession = inject(BrowserSessionService);
 
   /**
    * Calls POST /api/jobs/search with the claimant profile as a JSON body.
@@ -35,16 +26,13 @@ export class JobService {
    * @param experience - Claimant's work experience (unused in search, but passed for context)
    * @param aspirations - Claimant's career aspirations (comma-separated roles)
    * @param workPrefs   - Claimant's work preferences (JSON string)
-   * @param token       - JWT Bearer token for authorization
    */
   searchJobs(
     skills: string,
     experience: string,
     aspirations: string,
-    workPrefs: string,
-    token: string,
-    userId: string
-  ): Observable<JobSearchResponse> {
+    workPrefs: string
+  ): Observable<ReedJobSearchResponse> {
     // Parse aspirations into desired roles
     const desiredRoles = aspirations
       .split(',')
@@ -79,11 +67,19 @@ export class JobService {
       const prefs = JSON.parse(workPrefs);
       if (prefs.postcode) {
         homePostcode = String(prefs.postcode).trim().toUpperCase();
-        locations.push(homePostcode);
       }
       if (prefs.region) {
         homeDisplayName = String(prefs.region).trim();
-        locations.push(homeDisplayName);
+      }
+      const adminDistrict = prefs.adminDistrict
+        ? String(prefs.adminDistrict).trim()
+        : '';
+      const searchableLocation = adminDistrict || homeDisplayName?.split(',', 1)[0]?.trim();
+      if (searchableLocation) {
+        locations.push(searchableLocation);
+      }
+      if (homePostcode) {
+        locations.push(homePostcode);
       }
       if (typeof prefs.latitude === 'number') {
         homeLatitude = prefs.latitude;
@@ -103,8 +99,6 @@ export class JobService {
         desiredRoles,
         industries: [],
         salaryExpectation: {
-          min: 0,
-          max: 0,
           currency: 'GBP'
         },
         locations
@@ -125,8 +119,14 @@ export class JobService {
       }
     };
 
-    return this.resolveHomeLocation(body).pipe(
-      switchMap(searchBody => this.jobSearchApi.searchJobs(userId || undefined, searchBody))
+    return this.browserSession.ensureCsrf().pipe(
+      switchMap(() => this.resolveHomeLocation(body)),
+      switchMap(searchBody => this.jobSearchApi.searchJobs(
+        searchBody,
+        'body',
+        false,
+        { transferCache: false }
+      ))
     );
   }
 
@@ -161,39 +161,4 @@ export class JobService {
     );
   }
 
-  updateApplicationStatus(
-    applicationId: string,
-    status: UpdateApplicationStatusRequest['status'],
-    token: string,
-    userId: string
-  ): Observable<ApplicationRecordResponse> {
-    return this.http.patch<ApplicationRecordResponse>(
-      `/api/jobs/applications/${encodeURIComponent(applicationId)}/status`,
-      { status },
-      { headers: this.applicationActionHeaders(token, userId) }
-    );
-  }
-
-  withdrawGeneratedApplication(
-    applicationId: string,
-    token: string,
-    userId: string
-  ): Observable<WithdrawGeneratedApplicationResponse> {
-    return this.http.post<WithdrawGeneratedApplicationResponse>(
-      `/api/jobs/applications/${encodeURIComponent(applicationId)}/withdraw-generated`,
-      {},
-      { headers: this.applicationActionHeaders(token, userId) }
-    );
-  }
-
-  private applicationActionHeaders(token: string, userId: string): HttpHeaders {
-    let headers = new HttpHeaders();
-    if (token) {
-      headers = headers.set('Authorization', token.startsWith('Bearer ') ? token : `Bearer ${token}`);
-    }
-    if (userId) {
-      headers = headers.set('X-User-Id', userId);
-    }
-    return headers;
-  }
 }

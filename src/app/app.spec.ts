@@ -6,6 +6,7 @@ import type {GatewayResponse, User, UserProfile} from './api';
 import {BrowserSessionService} from './services/browser-session.service';
 import type {BrowserSessionStatus} from './services/browser-session.service';
 import {LEGACY_SESSION_STORAGE_KEYS} from './services/browser-storage';
+import {JobService} from './services/job.service';
 
 interface BetaAppTestAccess {
   sessionStatus(): BrowserSessionStatus;
@@ -38,6 +39,9 @@ describe('BetaApp', () => {
       status.set('anonymous');
     }
   });
+  const jobService = {
+    searchJobs: vi.fn(() => of({jobs: [], totalResults: 0})),
+  };
 
   beforeEach(async () => {
     status.set('checking');
@@ -56,17 +60,21 @@ describe('BetaApp', () => {
     acceptAuthenticatedUser.mockClear();
     updateCurrentProfile.mockClear();
     handleAuthenticatedError.mockClear();
+    jobService.searchJobs.mockClear();
     await TestBed.configureTestingModule({
       imports: [BetaApp],
-      providers: [{provide: BrowserSessionService, useValue: {
-        status,
-        user,
-        restore,
-        logout,
-        acceptAuthenticatedUser,
-        updateCurrentProfile,
-        handleAuthenticatedError,
-      }}],
+      providers: [
+        {provide: BrowserSessionService, useValue: {
+          status,
+          user,
+          restore,
+          logout,
+          acceptAuthenticatedUser,
+          updateCurrentProfile,
+          handleAuthenticatedError,
+        }},
+        {provide: JobService, useValue: jobService},
+      ],
     }).compileComponents();
   });
 
@@ -151,5 +159,31 @@ describe('BetaApp', () => {
     expect(access.name()).toBe('');
     expect(access.profile()).toBeNull();
     expect(access.message()).toBe('Your session has expired. Please sign in again.');
+  });
+
+  it('renders session-backed job search without exposing application actions', () => {
+    status.set('authenticated');
+    restore.mockReturnValue(of<BrowserSessionStatus>('authenticated'));
+    user.set({
+      name: 'Beta User',
+      email: 'beta@example.test',
+      profile: {
+        skills: ['TypeScript'],
+        aspirations: {targetRoles: ['Frontend developer']},
+        workPreferences: {location: {postcode: 'RG1 1AA'}},
+      },
+    });
+    const fixture = TestBed.createComponent(BetaApp);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-search"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="job-results-workspace"]')).not.toBeNull();
+    expect(jobService.searchJobs).toHaveBeenCalledWith(
+      'TypeScript',
+      '',
+      'Frontend developer',
+      expect.stringContaining('RG1 1AA'),
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="generate-documents-button"]')).toBeNull();
   });
 });

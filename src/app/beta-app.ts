@@ -4,7 +4,8 @@ import {firstValueFrom} from 'rxjs';
 import type {GatewayResponse, UserProfile} from './api';
 import {ClaimantProfileComponent} from './features/claimant-profile/claimant-profile';
 import {LandingAuthComponent} from './features/landing-auth/landing-auth';
-import {normaliseProfile} from './models/user-profile.model';
+import {BetaJobSearchComponent} from './features/beta-job-search/beta-job-search';
+import {normaliseProfile, profileToSearchText} from './models/user-profile.model';
 import {BrowserSessionService} from './services/browser-session.service';
 import {removeLegacySessionData} from './services/browser-storage';
 
@@ -16,7 +17,7 @@ interface OnboardedUser {
 
 @Component({
   selector: 'app-root',
-  imports: [ClaimantProfileComponent, LandingAuthComponent],
+  imports: [BetaJobSearchComponent, ClaimantProfileComponent, LandingAuthComponent],
   templateUrl: './beta-app.html',
   styleUrl: './app.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,6 +29,10 @@ export class BetaApp implements OnInit {
   protected readonly name = computed(() => this.browserSession.user()?.name ?? '');
   protected readonly email = computed(() => this.browserSession.user()?.email ?? '');
   protected readonly profile = computed(() => this.browserSession.user()?.profile ?? null);
+  protected readonly searchText = computed(() => {
+    const profile = this.profile();
+    return profile ? profileToSearchText(profile) : null;
+  });
   protected readonly message = signal<string | null>(null);
 
   ngOnInit(): void {

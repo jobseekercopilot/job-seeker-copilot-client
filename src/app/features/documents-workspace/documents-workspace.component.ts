@@ -54,8 +54,7 @@ export class DocumentsWorkspaceComponent {
   private readonly applicationTracker = inject(ApplicationTrackerService);
   private readonly documentGenerationService = inject(DocumentGenerationService);
 
-  userId = input<string>('');
-  authToken = input<string>('');
+  enabled = input(false);
   selectedApplicationId = input<string | null>(null);
   notify = output<{ message: string; type: 'success' | 'info' | 'error' }>();
   applicationChanged = output<void>();
@@ -111,9 +110,8 @@ export class DocumentsWorkspaceComponent {
 
   constructor() {
     effect(() => {
-      const key = `${this.userId()}|${this.authToken()}`;
-      if (this.userId() && key !== this.lastLoadKey) {
-        this.lastLoadKey = key;
+      if (this.enabled() && this.lastLoadKey !== 'enabled') {
+        this.lastLoadKey = 'enabled';
         this.refresh();
       }
     });
@@ -129,15 +127,14 @@ export class DocumentsWorkspaceComponent {
   }
 
   refresh(): void {
-    const userId = this.userId();
-    if (!userId) {
+    if (!this.enabled()) {
       this.documents.set([]);
       return;
     }
 
     this.loading.set(true);
     this.error.set(null);
-    this.applicationTracker.listApplications(userId, this.authToken()).subscribe({
+    this.applicationTracker.listApplications().subscribe({
       next: applications => this.loadDocuments(applications),
       error: err => {
         this.loading.set(false);
@@ -199,11 +196,11 @@ export class DocumentsWorkspaceComponent {
   }
 
   canReplace(document: ApplicationDocument): boolean {
-    return document.status === 'DOCUMENTS_GENERATED';
+    return false;
   }
 
   canDelete(document: ApplicationDocument): boolean {
-    return document.status === 'DOCUMENTS_GENERATED';
+    return false;
   }
 
   latestFileType(document: ApplicationDocument): string {
@@ -235,7 +232,7 @@ export class DocumentsWorkspaceComponent {
 
   download(file: DownloadFileResponse | undefined): void {
     if (!file) return;
-    this.documentGenerationService.download(file, this.authToken()).catch(err => {
+    this.documentGenerationService.download(file).catch(err => {
       this.notify.emit({ message: 'Download failed. Please try again.', type: 'error' });
       console.error('Document download failed:', err);
     });
@@ -256,8 +253,6 @@ export class DocumentsWorkspaceComponent {
       document.applicationId,
       file,
       document.documentType,
-      this.authToken(),
-      this.userId(),
     ).then(() => {
       this.notify.emit({ message: `${this.documentTypeLabel(document.documentType)} replaced successfully. PDF version has been updated.`, type: 'success' });
       this.applicationChanged.emit();
@@ -274,7 +269,7 @@ export class DocumentsWorkspaceComponent {
     if (!window.confirm(`Delete generated documents for ${document.jobTitle || 'this application'}? This is only allowed before the application is applied.`)) return;
 
     this.deletingDocumentId.set(document.documentId);
-    this.documentGenerationService.withdrawGeneratedApplication(document.applicationId, this.authToken(), this.userId()).then(() => {
+    this.documentGenerationService.withdrawGeneratedApplication(document.applicationId).then(() => {
       this.notify.emit({ message: 'Generated documents deleted.', type: 'success' });
       this.documents.update(documents => documents.filter(item => item.applicationId !== document.applicationId));
       if (this.selectedDocumentId() && !this.documents().some(item => item.documentId === this.selectedDocumentId())) {

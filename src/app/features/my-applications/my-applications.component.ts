@@ -1,7 +1,6 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, OnInit, output, signal } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
-import { UpdateApplicationStatusRequest } from '../../api/job-finder';
 import {
   ApplicationEvent,
   ApplicationFilter,
@@ -15,7 +14,15 @@ import {
   GenerationDownloadsResponse,
 } from '../../api/document-generation-gateway';
 
-type StatusUpdateTarget = UpdateApplicationStatusRequest['status'];
+type StatusUpdateTarget =
+  | 'DOCUMENTS_GENERATED'
+  | 'APPLIED'
+  | 'INTERVIEW'
+  | 'UNSUCCESSFUL'
+  | 'OFFER'
+  | 'ACCEPTED'
+  | 'REJECTED_BY_USER'
+  | 'WITHDRAWN';
 
 interface FilterOption {
   key: ApplicationFilter;
@@ -40,7 +47,7 @@ interface TimelineStep {
   templateUrl: './my-applications.component.html',
   styleUrl: './my-applications.component.css',
 })
-export class MyApplicationsComponent {
+export class MyApplicationsComponent implements OnInit {
   private readonly applicationTracker = inject(ApplicationTrackerService);
   private readonly documentGenerationService = inject(DocumentGenerationService);
 
@@ -57,7 +64,6 @@ export class MyApplicationsComponent {
   downloads = signal<Record<string, GenerationDownloadsResponse | undefined>>({});
   uploadingDocuments = signal<Record<string, DocumentKind | undefined>>({});
   updatingStatuses = signal<Record<string, StatusUpdateTarget | undefined>>({});
-  private lastLoadKey = '';
 
   readonly filters: FilterOption[] = [
     { key: 'ALL', label: 'All' },
@@ -77,14 +83,6 @@ export class MyApplicationsComponent {
 
   constructor() {
     effect(() => {
-      const key = `${this.userId()}|${this.authToken()}`;
-      if (this.userId() && key !== this.lastLoadKey) {
-        this.lastLoadKey = key;
-        this.refresh();
-      }
-    });
-
-    effect(() => {
       const applicationId = this.selectedApplicationId();
       if (applicationId) {
         this.selectedFilter.set('ALL');
@@ -92,16 +90,14 @@ export class MyApplicationsComponent {
     });
   }
 
-  refresh(): void {
-    const userId = this.userId();
-    if (!userId) {
-      this.applications.set([]);
-      return;
-    }
+  ngOnInit(): void {
+    this.refresh();
+  }
 
+  refresh(): void {
     this.loading.set(true);
     this.error.set(null);
-    this.applicationTracker.listApplications(userId, this.authToken()).subscribe({
+    this.applicationTracker.listApplications().subscribe({
       next: applications => {
         this.applications.set(applications);
         this.loading.set(false);
@@ -205,7 +201,7 @@ export class MyApplicationsComponent {
   }
 
   canUploadDocuments(application: TrackedApplication): boolean {
-    return application.status === 'DOCUMENTS_GENERATED';
+    return false;
   }
 
   downloadGroup(application: TrackedApplication, kind: DocumentKind): DocumentDownloadsResponse | undefined {
@@ -215,7 +211,7 @@ export class MyApplicationsComponent {
 
   downloadFile(file: DownloadFileResponse | undefined): void {
     if (!file) return;
-    this.documentGenerationService.download(file, this.authToken()).catch(err => {
+    this.documentGenerationService.download(file).catch(err => {
       this.notify.emit({ message: 'Download failed. Please try again.', type: 'error' });
       console.error('Application document download failed:', err);
     });
@@ -242,8 +238,6 @@ export class MyApplicationsComponent {
       applicationId,
       file,
       kind,
-      this.authToken(),
-      this.userId(),
     ).then(response => {
       const existing = this.downloads()[applicationId] ?? {};
       this.downloads.update(downloads => ({
@@ -284,7 +278,7 @@ export class MyApplicationsComponent {
     }
 
     this.updatingStatuses.update(updating => ({ ...updating, [applicationId]: status }));
-    this.applicationTracker.updateStatus(applicationId, status, this.authToken(), this.userId()).subscribe({
+    this.applicationTracker.updateStatus(applicationId, status).subscribe({
       next: record => {
         this.upsert(record);
         this.notify.emit({ message: `Application updated to ${this.statusLabel(record.status)}.`, type: 'success' });
@@ -340,7 +334,7 @@ export class MyApplicationsComponent {
   private withdraw(application: TrackedApplication): void {
     const applicationId = this.applicationId(application);
     this.updatingStatuses.update(updating => ({ ...updating, [applicationId]: 'WITHDRAWN' }));
-    this.applicationTracker.withdrawGeneratedApplication(applicationId, this.authToken(), this.userId()).subscribe({
+    this.applicationTracker.withdrawGeneratedApplication(applicationId).subscribe({
       next: () => {
         this.applications.update(applications => applications.filter(item => this.applicationId(item) !== applicationId));
         this.notify.emit({ message: 'Generated application withdrawn.', type: 'success' });

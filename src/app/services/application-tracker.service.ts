@@ -1,10 +1,17 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Observable, catchError, map, of, switchMap, throwError } from 'rxjs';
-import { ApplicationRecordResponse, UpdateApplicationStatusRequest } from '../api/job-finder';
-import { JobService, WithdrawGeneratedApplicationResponse } from './job.service';
+import { Observable, map, switchMap } from 'rxjs';
+import {
+  ApplicationRecordResponse,
+  CreateTrackedApplicationRequest,
+  JobApplicationsService,
+  UpdateApplicationStatusRequest,
+  WithdrawGeneratedApplicationResponse,
+} from '../api/job-finder';
+import { Job } from '../models/job-search.model';
+import { BrowserSessionService } from './browser-session.service';
 
 export type ApplicationStatus = NonNullable<ApplicationRecordResponse['status']>;
+export type ApplicationStatusUpdate = `${UpdateApplicationStatusRequest['status']}`;
 export type ApplicationFilter = 'ALL' | 'NEEDS_ACTION' | 'APPLIED' | 'INTERVIEW' | 'OFFERS' | 'ARCHIVED';
 export type ApplicationEventType =
   | 'CV_GENERATED'
@@ -45,41 +52,77 @@ export interface ApplicationEvent {
 
 @Injectable({ providedIn: 'root' })
 export class ApplicationTrackerService {
-  private readonly http = inject(HttpClient);
-  private readonly jobService = inject(JobService);
+  private readonly api = inject(JobApplicationsService);
+  private readonly browserSession = inject(BrowserSessionService);
 
-  listApplications(userId: string, token: string): Observable<TrackedApplication[]> {
-    if (!userId) return of([]);
-    const headers = this.headers(token, userId);
-    const encodedUserId = encodeURIComponent(userId);
-
-    return this.http.get<TrackedApplication[]>(`/api/jobs/applications/user/${encodedUserId}`, { headers }).pipe(
-      catchError(() => this.http.get<TrackedApplication[]>(`/api/v1/applications/user/${encodedUserId}`, { headers })),
+  listApplications(): Observable<TrackedApplication[]> {
+    return this.api.getApplications('body', false, {transferCache: false}).pipe(
       map(applications => (applications ?? []).map(application => ({
         ...application,
-        applicationId: application.applicationId ?? application.id,
-        canonicalJobId: application.canonicalJobId ?? application.jobId,
+        applicationId: application.id,
+        canonicalJobId: application.jobId,
       }))),
+    );
+  }
+
+  createApplication(job: Job): Observable<TrackedApplication> {
+    const request: CreateTrackedApplicationRequest = {
+      jobId: this.required(job.canonicalJobId ?? job.id, 'Job identifier'),
+      canonicalJobId: this.required(job.canonicalJobId ?? job.id, 'Canonical job identifier'),
+      provider: this.required(
+        job.primarySource
+          ?? job.provider
+          ?? job.sources?.[0]?.provider
+          ?? job.sources?.[0]?.integrationProvider,
+        'Job provider',
+      ),
+      externalJobId: this.required(
+        job.externalJobId ?? job.sources?.[0]?.externalJobId ?? job.id,
+        'External job identifier',
+      ),
+      jobTitle: this.required(job.jobTitle ?? job.title, 'Job title'),
+      companyName: this.required(job.companyName ?? job.company, 'Company name'),
+      location: job.canonicalLocation?.displayName ?? job.location,
+    };
+
+    return this.browserSession.ensureCsrf().pipe(
+      switchMap(() => this.api.createApplication(
+        request,
+        'body',
+        false,
+        {transferCache: false},
+      )),
+      map(record => ({...record, applicationId: record.id})),
     );
   }
 
   updateStatus(
     applicationId: string,
-    status: UpdateApplicationStatusRequest['status'],
-    token: string,
-    userId: string,
+    status: ApplicationStatusUpdate,
   ): Observable<TrackedApplication> {
-    return this.jobService.updateApplicationStatus(applicationId, status, token, userId).pipe(
-      map(record => ({ ...record, applicationId: record.id }))
+    return this.browserSession.ensureCsrf().pipe(
+      switchMap(() => this.api.updateApplicationStatus(
+        applicationId,
+        {status: status as UpdateApplicationStatusRequest['status']},
+        'body',
+        false,
+        {transferCache: false},
+      )),
+      map(record => ({...record, applicationId: record.id})),
     );
   }
 
   withdrawGeneratedApplication(
     applicationId: string,
-    token: string,
-    userId: string,
   ): Observable<WithdrawGeneratedApplicationResponse> {
-    return this.jobService.withdrawGeneratedApplication(applicationId, token, userId);
+    return this.browserSession.ensureCsrf().pipe(
+      switchMap(() => this.api.withdrawGeneratedApplication(
+        applicationId,
+        'body',
+        false,
+        {transferCache: false},
+      )),
+    );
   }
 
   eventsForApplications(applications: TrackedApplication[]): ApplicationEvent[] {
@@ -195,14 +238,9 @@ export class ApplicationTrackerService {
     return `${day}/${month} ${hours}:${minutes}`;
   }
 
-  private headers(token: string, userId: string): HttpHeaders {
-    let headers = new HttpHeaders();
-    if (token) {
-      headers = headers.set('Authorization', token.startsWith('Bearer ') ? token : `Bearer ${token}`);
-    }
-    if (userId) {
-      headers = headers.set('X-User-Id', userId);
-    }
-    return headers;
+  private required(value: string | undefined | null, label: string): string {
+    const normalized = value?.trim();
+    if (!normalized) throw new Error(`${label} is missing from this job result.`);
+    return normalized;
   }
 }

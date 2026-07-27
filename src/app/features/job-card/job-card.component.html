@@ -140,15 +140,34 @@
       </div>
 
       <div class="documents-area mt-5 pt-4">
+        @if (statusLabel() === 'NEW') {
+          <button type="button"
+                  (click)="requestTrackApplication()"
+                  [disabled]="creatingApplication() || !applicationTrackingAvailable()"
+                  data-testid="track-application-button"
+                  class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
+            <mat-icon class="text-base">playlist_add</mat-icon>
+            {{ creatingApplication() ? 'Adding application...' : 'Add to My Applications' }}
+          </button>
+        }
         @if (statusLabel() === 'NEW' || generating()) {
           <button type="button"
                   (click)="requestGeneration()"
-                  [disabled]="generating()"
+                  [disabled]="generating() || !applicationToolsAvailable()"
                   data-testid="generate-documents-button"
                   class="dashboard-button dashboard-button-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
             <mat-icon class="text-base">description</mat-icon>
-            {{ generating() ? 'Generating CV & Cover Letter...' : 'Generate CV & Cover Letter' }}
+            {{ generating()
+              ? 'Generating CV & Cover Letter...'
+              : applicationToolsAvailable()
+                ? 'Generate CV & Cover Letter'
+                : 'CV & Cover Letter — Coming next' }}
           </button>
+          @if (!applicationToolsAvailable()) {
+            <p class="document-lock-note mt-3 mb-0 text-sm" role="status">
+              Application tracking is available. CV and cover-letter generation is coming next.
+            </p>
+          }
         }
         @if (generationMessage(); as message) {
           <p class="generation-message mt-2 mb-0 text-sm" role="status">{{ message }}</p>

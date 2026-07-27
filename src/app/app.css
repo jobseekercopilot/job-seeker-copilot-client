@@ -314,3 +314,103 @@ h1, h2, h3, h4 {
     flex-direction: column;
   }
 }
+.capability-overview,
+.capability-placeholder,
+.workspace-status-line {
+  border: 1px solid var(--color-border, #dbe3ef);
+  background: #fff;
+  border-radius: 1rem;
+}
+
+.capability-overview {
+  margin-bottom: 1.25rem;
+  padding: 1.25rem;
+}
+
+.capability-overview h1 {
+  margin: 0.2rem 0 0.35rem;
+}
+
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.capability-grid article {
+  display: flex;
+  min-height: 5.25rem;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.8rem;
+  background: #f8fafc;
+  padding: 0.8rem;
+}
+
+.capability-state {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.state-available {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.state-fixture {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.state-unavailable {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.state-next {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.capability-placeholder {
+  padding: 1.25rem;
+}
+
+.capability-placeholder h2 {
+  margin: 0.75rem 0 0.45rem;
+}
+
+.workspace-status-line {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.workspace-navigation {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding-bottom: 0.6rem;
+}
+
+.workspace-navigation a {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-decoration: none;
+}

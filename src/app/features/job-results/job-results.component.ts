@@ -5,14 +5,24 @@ import { DocumentUploadRequest, JobCardComponent } from '../job-card/job-card.co
 import { JobService } from '../../services/job.service';
 import { DocumentGenerationService } from '../../services/document-generation.service';
 import { Job } from '../../models/job-search.model';
-import { ApplicationRecordResponse, UpdateApplicationStatusRequest } from '../../api/job-finder';
+import { ApplicationRecordResponse } from '../../api/job-finder';
 import {
   DownloadFileResponse,
   GenerationDownloadsResponse,
 } from '../../api/document-generation-gateway';
 import {logMalformedProviderResult} from '../../../shared/provider-content-policy';
+import {ApplicationTrackerService} from '../../services/application-tracker.service';
+import type {JobSearchProviderMode} from '../../services/runtime-configuration.service';
 
-type StatusUpdateTarget = UpdateApplicationStatusRequest['status'];
+type StatusUpdateTarget =
+  | 'DOCUMENTS_GENERATED'
+  | 'APPLIED'
+  | 'INTERVIEW'
+  | 'UNSUCCESSFUL'
+  | 'OFFER'
+  | 'ACCEPTED'
+  | 'REJECTED_BY_USER'
+  | 'WITHDRAWN';
 type SortOption = 'MOST_RELEVANT' | 'CLOSEST' | 'HIGHEST_SALARY' | 'NEWEST_POSTED' | 'OLDEST_POSTED' | 'COMPANY_AZ' | 'JOB_TITLE_AZ';
 
 @Component({
@@ -29,6 +39,7 @@ type SortOption = 'MOST_RELEVANT' | 'CLOSEST' | 'HIGHEST_SALARY' | 'NEWEST_POSTE
 export class JobResultsComponent implements OnInit {
   private jobService = inject(JobService);
   private documentGenerationService = inject(DocumentGenerationService);
+  private applicationTracker = inject(ApplicationTrackerService);
 
   // Inputs from the parent App component (profile signals)
   skills = input<string>('');
@@ -37,6 +48,9 @@ export class JobResultsComponent implements OnInit {
   workPrefs = input<string>('');
   authToken = input<string>('');
   userId = input<string>('');
+  applicationToolsAvailable = input(false);
+  applicationTrackingAvailable = input(false);
+  providerMode = input<JobSearchProviderMode>('REQUIRED_VALIDATION');
 
   // Output to notify parent to show a toast
   notify = output<{ message: string; type: 'success' | 'info' | 'error' }>();
@@ -50,6 +64,46 @@ export class JobResultsComponent implements OnInit {
   selectedSort = signal<SortOption>('MOST_RELEVANT');
   filtersOpen = signal(false);
   providerWarnings = signal<string[]>([]);
+  providerStatuses = signal<string[]>([]);
+  providerDegraded = computed(() => {
+    const statuses = this.providerStatuses();
+    return statuses.some(status => status !== 'SUCCESS' && status !== 'DISABLED');
+  });
+  providerModeLabel = computed(() => {
+    if (this.providerMode() === 'FIXTURE') return 'Fixture-backed';
+    if (this.providerMode() === 'REQUIRED_VALIDATION') return 'Required validation';
+    const statuses = this.providerStatuses().filter(status => status !== 'DISABLED');
+    const hasSuccess = statuses.includes('SUCCESS');
+    if (statuses.includes('CONFIGURATION_ERROR') && !hasSuccess) {
+      return 'Real-provider configuration error';
+    }
+    if (statuses.length > 0 && !hasSuccess) {
+      return 'Real providers temporarily unavailable';
+    }
+    if (this.providerDegraded()) return 'Real providers — partial availability';
+    return 'Real providers';
+  });
+  emptyStateMessage = computed(() => {
+    if (this.providerMode() !== 'REAL_PROVIDERS') {
+      return 'No job matches found based on your current profile.';
+    }
+    const statuses = this.providerStatuses().filter(status => status !== 'DISABLED');
+    const hasSuccess = statuses.includes('SUCCESS');
+    const hasFailure = statuses.some(status => status !== 'SUCCESS');
+    if (statuses.includes('CONFIGURATION_ERROR') && !hasSuccess) {
+      return 'Real-provider configuration is incomplete. No fixture results were substituted.';
+    }
+    if (!hasSuccess && statuses.includes('RATE_LIMITED')) {
+      return 'All available real providers are currently rate limited. Please try again later.';
+    }
+    if (statuses.length > 0 && !hasSuccess) {
+      return 'Real job providers are temporarily unavailable. Please try again later.';
+    }
+    if (hasSuccess && hasFailure) {
+      return 'Available providers returned no matches; some real providers were unavailable.';
+    }
+    return 'No job matches found based on your current profile.';
+  });
   currentPage = signal(1);
   totalResults = signal(0);
   loading = signal(false);
@@ -61,6 +115,7 @@ export class JobResultsComponent implements OnInit {
   generatedDocumentIds = signal<Record<string, { cvDocumentId?: string; coverLetterDocumentId?: string } | undefined>>({});
   uploadingDocuments = signal<Record<string, 'CV' | 'COVER_LETTER' | undefined>>({});
   updatingApplicationStatuses = signal<Record<string, StatusUpdateTarget | undefined>>({});
+  creatingApplicationIds = signal<Set<string>>(new Set());
   readonly jobsPerPage = 10;
   readonly Math = Math;
   readonly futureFilterSections = ['Status', 'Date Posted', 'Salary', 'Location', 'Remote / On-site'];
@@ -154,12 +209,6 @@ export class JobResultsComponent implements OnInit {
   }
 
   search(): void {
-    const token = this.authToken();
-    if (!token) {
-      this.error.set('Authentication token is missing. Please log in again.');
-      return;
-    }
-
     this.loading.set(true);
     this.error.set(null);
 
@@ -167,9 +216,7 @@ export class JobResultsComponent implements OnInit {
       this.skills(),
       this.experience(),
       this.aspirations(),
-      this.workPrefs(),
-      token,
-      this.userId()
+      this.workPrefs()
     ).subscribe({
       next: (response) => {
         const roleGroups = response.resultsByTargetRole?.length
@@ -208,9 +255,17 @@ export class JobResultsComponent implements OnInit {
         this.filtersOpen.set(false);
         this.currentPage.set(1);
         this.totalResults.set(validJobs.length);
-        this.providerWarnings.set((response.providerResults ?? [])
-          .filter(result => result.status === 'UNAVAILABLE')
-          .map(result => `${result.provider} was temporarily unavailable. Results from other job sites are still shown.`));
+        const degradedResults = (response.providerResults ?? [])
+          .filter(result => result.status !== 'SUCCESS' && result.status !== 'DISABLED');
+        this.providerStatuses.set(
+          (response.providerResults ?? []).map(result => result.status ?? 'UNAVAILABLE')
+        );
+        this.providerWarnings.set(Array.from(new Set(
+          degradedResults.map(result => this.providerWarning(
+            result.provider ?? 'A job provider',
+            result.status ?? 'UNAVAILABLE',
+          )),
+        )));
         this.reconcileGeneratedState(validJobs);
         this.rehydrateGeneratedDownloads(validJobs);
         this.loading.set(false);
@@ -221,6 +276,7 @@ export class JobResultsComponent implements OnInit {
       },
       error: (err) => {
         this.loading.set(false);
+        this.providerStatuses.set(['UNAVAILABLE']);
         const status = err.status;
 
         if (status === 503) {
@@ -256,6 +312,24 @@ export class JobResultsComponent implements OnInit {
 
   refresh(): void {
     this.search();
+  }
+
+  private providerWarning(provider: string, status: string): string {
+    const providerName = provider || 'A job provider';
+    switch (status) {
+      case 'RATE_LIMITED':
+        return `${providerName} has reached its current request limit. Results from other job sites are still shown.`;
+      case 'CONFIGURATION_ERROR':
+        return `${providerName} needs provider-account validation. Results from other job sites are still shown.`;
+      case 'TIMED_OUT':
+        return `${providerName} timed out. Results from other job sites are still shown.`;
+      case 'SATURATED':
+        return `${providerName} is currently at capacity. Results from other job sites are still shown.`;
+      case 'REJECTED':
+        return `${providerName} rejected this search. Results from other job sites are still shown.`;
+      default:
+        return `${providerName} was temporarily unavailable. Results from other job sites are still shown.`;
+    }
   }
 
   selectTargetRole(targetRole: string): void {
@@ -340,7 +414,7 @@ export class JobResultsComponent implements OnInit {
     this.generationMessages.update(messages => ({ ...messages, [jobId]: 'Generating CV & Cover Letter...' }));
     this.generationErrors.update(errors => ({ ...errors, [jobId]: undefined }));
 
-    this.documentGenerationService.generate(job, this.authToken(), this.userId()).subscribe({
+    this.documentGenerationService.generate(job).subscribe({
       next: (response) => {
         this.generationDownloads.update(downloads => ({ ...downloads, [jobId]: response.downloads }));
         this.generatedDocumentIds.update(documentIds => ({
@@ -369,6 +443,37 @@ export class JobResultsComponent implements OnInit {
     });
   }
 
+  trackApplication(job: Job): void {
+    if (!job.id || job.applicationId || this.creatingApplicationIds().has(job.id)) return;
+    const jobId = job.id;
+    this.creatingApplicationIds.update(ids => new Set(ids).add(jobId));
+
+    this.applicationTracker.createApplication(job).subscribe({
+      next: record => {
+        this.applyApplicationRecord(jobId, record);
+        this.notify.emit({
+          message: 'Application added to My Applications.',
+          type: 'success',
+        });
+        this.applicationChanged.emit();
+      },
+      error: () => {
+        this.notify.emit({
+          message: 'Could not add this application. Please try again.',
+          type: 'error',
+        });
+        console.error('[JobResults] Application creation failed');
+      },
+      complete: () => {
+        this.creatingApplicationIds.update(ids => {
+          const next = new Set(ids);
+          next.delete(jobId);
+          return next;
+        });
+      },
+    });
+  }
+
   updateApplicationStatus(job: Job, status: StatusUpdateTarget): void {
     if (!job.id || !job.applicationId || this.updatingApplicationStatuses()[job.id]) {
       if (!job.applicationId) {
@@ -382,7 +487,7 @@ export class JobResultsComponent implements OnInit {
 
     const jobId = job.id;
     this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: status }));
-    this.jobService.updateApplicationStatus(job.applicationId, status, this.authToken(), this.userId()).subscribe({
+    this.applicationTracker.updateStatus(job.applicationId, status).subscribe({
       next: (record) => {
         this.applyApplicationRecord(jobId, record);
         const updatedStatus = record.status ?? status;
@@ -421,7 +526,7 @@ export class JobResultsComponent implements OnInit {
 
     const jobId = job.id;
     this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: 'WITHDRAWN' }));
-    this.jobService.withdrawGeneratedApplication(job.applicationId, this.authToken(), this.userId()).subscribe({
+    this.applicationTracker.withdrawGeneratedApplication(job.applicationId).subscribe({
       next: () => {
         this.updateJobLocally(jobId, {
           applicationId: undefined,
@@ -463,9 +568,7 @@ export class JobResultsComponent implements OnInit {
     this.documentGenerationService.uploadReplacement(
       request.applicationId,
       request.file,
-      request.documentKind,
-      this.authToken(),
-      this.userId()
+      request.documentKind
     ).then((response) => {
       this.generationDownloads.update(downloads => {
         const existing = downloads[jobId] ?? {};
@@ -504,7 +607,7 @@ export class JobResultsComponent implements OnInit {
   }
 
   downloadFile(file: DownloadFileResponse): void {
-    this.documentGenerationService.download(file, this.authToken()).catch(() => {
+    this.documentGenerationService.download(file).catch(() => {
       this.notify.emit({ message: 'Download failed. Please try again.', type: 'error' });
       console.error('[JobResults] Document download failed');
     });
