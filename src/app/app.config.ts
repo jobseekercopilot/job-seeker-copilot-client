@@ -11,6 +11,10 @@ import {
   BASE_PATH as LOCATION_BASE_PATH,
   Configuration as LocationConfiguration
 } from './api/location';
+import {
+  BASE_PATH as JOB_FINDER_BASE_PATH,
+  Configuration as JobFinderConfiguration,
+} from './api/job-finder';
 import {browserSessionInterceptor} from './services/browser-session.service';
 
 class JsonApiConfiguration extends Configuration {
@@ -27,6 +31,13 @@ class JsonLocationConfiguration extends LocationConfiguration {
   }
 }
 
+class JsonJobFinderConfiguration extends JobFinderConfiguration {
+  override selectHeaderAccept(accepts: string[]): string | undefined {
+    const selected = super.selectHeaderAccept(accepts);
+    return selected === '*/*' ? 'application/json' : selected;
+  }
+}
+
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
@@ -34,6 +45,7 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(withInterceptors([browserSessionInterceptor])),
     {provide: BASE_PATH, useValue: ''},
     {provide: LOCATION_BASE_PATH, useValue: ''},
+    {provide: JOB_FINDER_BASE_PATH, useValue: ''},
     {
       provide: Configuration,
       useFactory: () => new JsonApiConfiguration({basePath: '', withCredentials: true}),
@@ -41,6 +53,10 @@ export const appConfig: ApplicationConfig = {
     {
       provide: LocationConfiguration,
       useFactory: () => new JsonLocationConfiguration({basePath: ''}),
+    },
+    {
+      provide: JobFinderConfiguration,
+      useFactory: () => new JsonJobFinderConfiguration({basePath: '', withCredentials: true}),
     },
   ],
 };

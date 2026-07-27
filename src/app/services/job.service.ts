@@ -6,11 +6,12 @@ import { of } from 'rxjs';
 import {
   ApplicationRecordResponse,
   JobSearchRequest,
-  JobSearchResponse,
+  ReedJobSearchResponse,
   JobSearchService as GeneratedJobSearchService,
   UpdateApplicationStatusRequest
 } from '../api/job-finder';
 import { LocationService } from './location.service';
+import { BrowserSessionService } from './browser-session.service';
 
 export interface WithdrawGeneratedApplicationResponse {
   applicationId?: string;
@@ -26,6 +27,7 @@ export class JobService {
   private jobSearchApi = inject(GeneratedJobSearchService);
   private http = inject(HttpClient);
   private locationService = inject(LocationService);
+  private browserSession = inject(BrowserSessionService);
 
   /**
    * Calls POST /api/jobs/search with the claimant profile as a JSON body.
@@ -35,16 +37,13 @@ export class JobService {
    * @param experience - Claimant's work experience (unused in search, but passed for context)
    * @param aspirations - Claimant's career aspirations (comma-separated roles)
    * @param workPrefs   - Claimant's work preferences (JSON string)
-   * @param token       - JWT Bearer token for authorization
    */
   searchJobs(
     skills: string,
     experience: string,
     aspirations: string,
-    workPrefs: string,
-    token: string,
-    userId: string
-  ): Observable<JobSearchResponse> {
+    workPrefs: string
+  ): Observable<ReedJobSearchResponse> {
     // Parse aspirations into desired roles
     const desiredRoles = aspirations
       .split(',')
@@ -125,8 +124,14 @@ export class JobService {
       }
     };
 
-    return this.resolveHomeLocation(body).pipe(
-      switchMap(searchBody => this.jobSearchApi.searchJobs(userId || undefined, searchBody))
+    return this.browserSession.ensureCsrf().pipe(
+      switchMap(() => this.resolveHomeLocation(body)),
+      switchMap(searchBody => this.jobSearchApi.searchJobs(
+        searchBody,
+        'body',
+        false,
+        { transferCache: false }
+      ))
     );
   }
 

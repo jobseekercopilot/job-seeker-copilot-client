@@ -167,9 +167,7 @@ export class JobResultsComponent implements OnInit {
       this.skills(),
       this.experience(),
       this.aspirations(),
-      this.workPrefs(),
-      token,
-      this.userId()
+      this.workPrefs()
     ).subscribe({
       next: (response) => {
         const roleGroups = response.resultsByTargetRole?.length

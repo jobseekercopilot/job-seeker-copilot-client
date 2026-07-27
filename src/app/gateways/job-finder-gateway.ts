@@ -14,8 +14,8 @@ import {
 export class JobFinderGatewayService {
   private api = inject(JobSearchService);
 
-  searchJobs(request: JobSearchRequest, userId?: string): Observable<JobSearchResponse> {
-    return this.api.searchJobs(userId, request);
+  searchJobs(request: JobSearchRequest): Observable<JobSearchResponse> {
+    return this.api.searchJobs(request, 'body', false, {transferCache: false});
   }
 
   updateApplicationStatus(

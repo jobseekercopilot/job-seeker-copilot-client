@@ -22,7 +22,7 @@
       <header class="mb-5">
         <p class="eyebrow">Private beta</p>
         <h1>Your claimant profile</h1>
-        <p>Job search, document generation, and reporting are not enabled in this beta path.</p>
+        <p>Your profile powers a fixture-backed job search in this local beta environment.</p>
       </header>
 
       @if (message()) {
@@ -35,6 +35,16 @@
         [profile]="profile()"
         (profileSaved)="handleProfileSaved($event)"
         (logoutRequested)="logout()" />
+
+      @if (searchText(); as search) {
+        <section class="mt-8" data-testid="workspace-tab-search">
+          <app-beta-job-search
+            [skills]="search.skills"
+            [experience]="search.experience"
+            [aspirations]="search.aspirations"
+            [workPrefs]="search.workPrefs" />
+        </section>
+      }
     </section>
   }
 </main>

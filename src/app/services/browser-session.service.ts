@@ -204,7 +204,8 @@ export class BrowserSessionService {
 export const browserSessionInterceptor: HttpInterceptorFn = (request, next) => {
   const methodRequiresCsrf = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method.toUpperCase());
   const path = request.url.split(/[?#]/, 1)[0];
-  if (!methodRequiresCsrf || !path.startsWith('/api/auth/')) return next(request);
+  const isSessionBoundWrite = path.startsWith('/api/auth/') || path.startsWith('/api/jobs/');
+  if (!methodRequiresCsrf || !isSessionBoundWrite) return next(request);
 
   const csrf = inject(BrowserSessionState).currentCsrf();
   if (!csrf) return next(request);

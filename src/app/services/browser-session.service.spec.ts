@@ -67,6 +67,17 @@ describe('browser session security', () => {
     request.flush({success: true});
   });
 
+  it('sends the in-memory CSRF value on a session-bound job search', () => {
+    const state = TestBed.inject(BrowserSessionState);
+    state.acceptBootstrap({headerName: 'X-CSRF-Token', token: '0123456789-secure-csrf-value'});
+    const httpClient = TestBed.inject(HttpClient);
+    httpClient.post('/api/jobs/search', {aspirations: {desiredRoles: ['developer']}}).subscribe();
+    const request = TestBed.inject(HttpTestingController).expectOne('/api/jobs/search');
+    expect(request.request.withCredentials).toBe(true);
+    expect(request.request.headers.get('X-CSRF-Token')).toBe('0123456789-secure-csrf-value');
+    request.flush({jobs: [], totalResults: 0});
+  });
+
   it('restores a valid cookie session from the subject-bound profile', () => {
     const service = TestBed.inject(BrowserSessionService);
     let result: string | undefined;
