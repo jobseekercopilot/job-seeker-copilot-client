@@ -4,6 +4,7 @@ import {
   downstreamFailureCategory,
   fetchWithTimeout,
 } from './bff-boundary';
+import {sanitiseProviderLinksJson} from '../shared/provider-content-policy';
 
 const ACCESS_TOKEN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const CSRF_TOKEN = /^[A-Za-z0-9._~+/=-]+$/;
@@ -179,12 +180,26 @@ export async function callJobFinder(
     ?.split(';', 1)[0]
     .trim()
     .toLowerCase();
+  const contentType = upstreamContentType === 'application/json'
+    || upstreamContentType === 'application/problem+json'
+    ? upstreamContentType
+    : 'application/json';
+  const sanitisedBody = responseBody && contentType === 'application/json'
+    ? sanitiseProviderLinksJson(responseBody)
+    : responseBody;
+  if (sanitisedBody === null) {
+    return {
+      body: JSON.stringify({
+        error: 'INVALID_DOWNSTREAM_RESPONSE',
+        message: 'Job Finder returned an invalid response',
+      }),
+      contentType: 'application/json',
+      status: 502,
+    };
+  }
   return {
-    body: responseBody,
-    contentType: upstreamContentType === 'application/json'
-      || upstreamContentType === 'application/problem+json'
-      ? upstreamContentType
-      : 'application/json',
+    body: sanitisedBody,
+    contentType,
     savedJobOutcome: savedJobOutcome
       && SAVED_JOB_OUTCOMES.has(savedJobOutcome)
       ? savedJobOutcome

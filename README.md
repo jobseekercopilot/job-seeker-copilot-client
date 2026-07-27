@@ -85,6 +85,9 @@ reproducible. See
 and [Job Finder contract ADR](docs/adr/0004-job-finder-typescript-contract.md).
 The [Job Finder BFF ADR](docs/adr/0005-session-bound-job-finder-bff.md)
 defines its server-only session translation and route allowlist.
+The [provider content security policy](docs/provider-content-security.md)
+defines text-only rendering, the shared HTTP(S) external-link allowlist,
+accessible duplicate-source handling and privacy-safe Job Search logging.
 The
 [accessibility baseline](docs/accessibility.md) documents the WCAG interaction
 contract, automated evidence and release checklist. The

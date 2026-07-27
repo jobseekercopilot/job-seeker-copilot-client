@@ -101,6 +101,85 @@ describe('JobCardComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Posted date unavailable');
   });
 
+  it('renders provider HTML as text without creating executable elements', () => {
+    const unsafeDescription = '<img src=x onerror="window.providerHtmlExecuted=true">';
+    const fixture = createFixture({ job: { ...job, description: unsafeDescription } });
+    expandCard(fixture);
+
+    expect(fixture.nativeElement.textContent).toContain(unsafeDescription);
+    expect(fixture.debugElement.query(By.css('.expanded-content img'))).toBeNull();
+  });
+
+  it.each([
+    'javascript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'https://user:secret@example.com/job-1',
+    'not a URL',
+  ])('makes an unsafe provider URL inert: %s', (url) => {
+    const fixture = createFixture({ job: { ...job, url } });
+    expandCard(fixture);
+
+    expect(fixture.debugElement.query(By.css('a[target="_blank"]'))).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('External job link unavailable.');
+  });
+
+  it('falls back from an unsafe direct-apply URL to the approved canonical URL', () => {
+    const fixture = createFixture({
+      job: {
+        ...job,
+        sources: [{
+          publisher: 'Unsafe publisher',
+          directApply: true,
+          applyUrl: 'javascript:alert(1)',
+        }],
+      },
+    });
+    expandCard(fixture);
+    const link: HTMLAnchorElement = fixture.debugElement
+      .query(By.css('a[target="_blank"]'))
+      .nativeElement;
+
+    expect(link.getAttribute('href')).toBe(job.url);
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(link.getAttribute('aria-label')).toContain('opens in a new tab');
+  });
+
+  it('keeps distinct safe source listings accessible and de-duplicates identical URLs', () => {
+    const fixture = createFixture({
+      job: {
+        ...job,
+        sources: [
+          {
+            publisher: 'Publisher one',
+            directApply: true,
+            applyUrl: 'https://one.example.test/apply/1',
+            listingUrl: 'https://one.example.test/listing/1',
+          },
+          {
+            publisher: 'Publisher duplicate',
+            listingUrl: 'https://one.example.test/listing/1',
+          },
+          {
+            publisher: 'Publisher two',
+            listingUrl: 'https://two.example.test/listing/1',
+          },
+        ],
+      },
+    });
+    expandCard(fixture);
+    const links: HTMLAnchorElement[] = fixture.debugElement
+      .queryAll(By.css('a[target="_blank"]'))
+      .map(candidate => candidate.nativeElement);
+
+    expect(links.map(link => link.getAttribute('href'))).toEqual([
+      'https://one.example.test/apply/1',
+      'https://one.example.test/listing/1',
+      'https://two.example.test/listing/1',
+      job.url,
+    ]);
+    expect(links.every(link => link.getAttribute('aria-label')?.includes('opens in a new tab'))).toBe(true);
+  });
+
   it('emits a status update from the document generated actions', () => {
     const fixture = createFixture({ job: { ...job, applicationId: 'app-1', applicationStatus: 'DOCUMENTS_GENERATED' } });
     expandCard(fixture);

@@ -216,8 +216,8 @@ async function proxyJobFinderRequest(
 
     const data = await response.text();
     res.status(response.status).type(response.headers.get('content-type') || 'application/json').send(data);
-  } catch (error: unknown) {
-    console.error('Job finder proxy error:', error);
+  } catch {
+    console.error('Job finder proxy failed');
     res.status(503).json({
       error: 'SERVICE_UNAVAILABLE',
       message: 'Job finder service is currently unavailable',
