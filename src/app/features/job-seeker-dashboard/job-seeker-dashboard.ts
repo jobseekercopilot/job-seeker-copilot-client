@@ -72,10 +72,10 @@ export class JobSeekerDashboardComponent {
         this.totalResults = response.totalResults ?? 0;
         this.loading = false;
       },
-      error: (err) => {
+      error: () => {
         this.error = 'Failed to search jobs. Please try again.';
         this.loading = false;
-        console.error('Job search error:', err);
+        console.error('Job search failed');
       }
     });
   }

@@ -7,10 +7,11 @@ import {
   DownloadFileResponse,
   GenerationDownloadsResponse,
 } from '../../api/document-generation-gateway';
+import {approvedExternalUrl} from '../../../shared/provider-content-policy';
 
 type UploadDocumentKind = 'CV' | 'COVER_LETTER';
 type ApplicationStatus = NonNullable<Job['applicationStatus']>;
-type StatusUpdateTarget = UpdateApplicationStatusRequest['status'];
+type StatusUpdateTarget = `${UpdateApplicationStatusRequest['status']}`;
 
 interface StatusAction {
   label: string;
@@ -310,7 +311,7 @@ export class JobCardComponent {
   sourceLabel(): string {
     const publishers = this.sourceLabels();
     if (publishers.length > 0) return publishers[0];
-    const url = this.job().url;
+    const url = this.primaryApplyUrl();
     if (!url) return 'Job source';
     try {
       return new URL(url).hostname.replace(/^www\./, '');
@@ -329,9 +330,30 @@ export class JobCardComponent {
     return Array.from(labels);
   }
 
-  primaryApplyUrl(): string | undefined {
-    const direct = (this.job().sources ?? []).find(source => source.directApply && source.applyUrl);
-    return direct?.applyUrl ?? this.job().url;
+  primaryApplyUrl(): string | null {
+    const direct = (this.job().sources ?? [])
+      .find(source => source.directApply && approvedExternalUrl(source.applyUrl));
+    return approvedExternalUrl(direct?.applyUrl)
+      ?? approvedExternalUrl(this.job().url)
+      ?? approvedExternalUrl(this.job().sourceUrl)
+      ?? this.safeSourceLinks()[0]?.url
+      ?? null;
+  }
+
+  safeSourceLinks(): {label: string; url: string}[] {
+    const links = new Map<string, string>();
+    for (const source of this.job().sources ?? []) {
+      const label = source.publisher?.trim() || source.integrationProvider?.trim() || 'Job source';
+      for (const candidate of [source.applyUrl, source.listingUrl]) {
+        const url = approvedExternalUrl(candidate);
+        if (url && !links.has(url)) links.set(url, label);
+      }
+    }
+    for (const candidate of [this.job().sourceUrl, this.job().url]) {
+      const url = approvedExternalUrl(candidate);
+      if (url && !links.has(url)) links.set(url, this.sourceLabelForUrl(url));
+    }
+    return Array.from(links, ([url, label]) => ({label, url}));
   }
 
   private setSelectedFile(file: File | null): void {
@@ -357,5 +379,13 @@ export class JobCardComponent {
 
   private slug(value: string): string {
     return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'item';
+  }
+
+  private sourceLabelForUrl(url: string): string {
+    try {
+      return new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+      return 'Job source';
+    }
   }
 }

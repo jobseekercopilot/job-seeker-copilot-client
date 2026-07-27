@@ -10,6 +10,7 @@ import {
   DownloadFileResponse,
   GenerationDownloadsResponse,
 } from '../../api/document-generation-gateway';
+import {logMalformedProviderResult} from '../../../shared/provider-content-policy';
 
 type StatusUpdateTarget = UpdateApplicationStatusRequest['status'];
 type SortOption = 'MOST_RELEVANT' | 'CLOSEST' | 'HIGHEST_SALARY' | 'NEWEST_POSTED' | 'OLDEST_POSTED' | 'COMPANY_AZ' | 'JOB_TITLE_AZ';
@@ -145,7 +146,7 @@ export class JobResultsComponent implements OnInit {
     });
 
     if (missingFields.length > 0) {
-      console.warn(`[JobResults] Skipping malformed job (id: ${job.id || 'unknown'}): missing/empty fields: ${missingFields.join(', ')}`, job);
+      logMalformedProviderResult(missingFields.length);
       return null;
     }
 
@@ -248,7 +249,7 @@ export class JobResultsComponent implements OnInit {
           });
         }
 
-        console.error('Job search error:', err);
+        console.error('[JobResults] Job search failed');
       }
     });
   }
@@ -359,11 +360,11 @@ export class JobResultsComponent implements OnInit {
         this.notify.emit({ message: 'CV and cover letter generated successfully.', type: 'success' });
         this.applicationChanged.emit();
       },
-      error: (err) => {
+      error: () => {
         this.finishGeneration(jobId, undefined);
         this.generationErrors.update(errors => ({ ...errors, [jobId]: 'Generation failed. Please try again.' }));
         this.notify.emit({ message: 'Generation failed. Please try again.', type: 'error' });
-        console.error('Document generation error:', err);
+        console.error('[JobResults] Document generation failed');
       }
     });
   }
@@ -393,13 +394,13 @@ export class JobResultsComponent implements OnInit {
         });
         this.applicationChanged.emit();
       },
-      error: (err) => {
+      error: () => {
         this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: undefined }));
         this.notify.emit({
           message: 'Could not update application status. Please try again.',
           type: 'error',
         });
-        console.error('Application status update error:', err);
+        console.error('[JobResults] Application status update failed');
       },
       complete: () => {
         this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: undefined }));
@@ -440,13 +441,13 @@ export class JobResultsComponent implements OnInit {
         });
         this.applicationChanged.emit();
       },
-      error: (err) => {
+      error: () => {
         this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: undefined }));
         this.notify.emit({
           message: 'Could not withdraw generated application. Please try again.',
           type: 'error',
         });
-        console.error('Generated application withdrawal error:', err);
+        console.error('[JobResults] Generated application withdrawal failed');
       },
       complete: () => {
         this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: undefined }));
@@ -496,16 +497,16 @@ export class JobResultsComponent implements OnInit {
         ? err.message
         : 'Upload failed. Please choose a DOCX file under 25MB.';
       this.notify.emit({ message, type: 'error' });
-      console.error('Document upload error:', err);
+      console.error('[JobResults] Document upload failed');
     }).finally(() => {
       this.uploadingDocuments.update(uploading => ({ ...uploading, [jobId]: undefined }));
     });
   }
 
   downloadFile(file: DownloadFileResponse): void {
-    this.documentGenerationService.download(file, this.authToken()).catch((err) => {
+    this.documentGenerationService.download(file, this.authToken()).catch(() => {
       this.notify.emit({ message: 'Download failed. Please try again.', type: 'error' });
-      console.error('Document download error:', err);
+      console.error('[JobResults] Document download failed');
     });
   }
 
@@ -611,7 +612,7 @@ export class JobResultsComponent implements OnInit {
             [jobId]: { ...(downloads[jobId] ?? {}), cv },
           }));
         },
-        error: (err) => console.warn('Could not restore CV downloads:', err),
+        error: () => console.warn('[JobResults] Could not restore CV downloads'),
       });
 
       this.documentGenerationService.latestFiles(coverLetterDocumentId).subscribe({
@@ -623,7 +624,7 @@ export class JobResultsComponent implements OnInit {
             [jobId]: { ...(downloads[jobId] ?? {}), coverLetter },
           }));
         },
-        error: (err) => console.warn('Could not restore cover letter downloads:', err),
+        error: () => console.warn('[JobResults] Could not restore cover letter downloads'),
       });
     }
   }

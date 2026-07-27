@@ -205,6 +205,73 @@ describe('Job Finder route allowlist', () => {
     expect(init?.body).toBe('{"selectedProviders":["FIXTURE"]}');
   });
 
+  it('preserves approved links and makes unsafe provider links inert', async () => {
+    const upstream = vi.fn<FetchLike>(async () =>
+      new Response(JSON.stringify({
+        jobs: [{
+          description: '<img src=x onerror=alert(1)>',
+          url: 'https://jobs.example.test/1',
+          sourceUrl: 'javascript:alert(1)',
+          sources: [{
+            applyUrl: 'data:text/html,unsafe',
+            listingUrl: 'https://publisher.example.test/1',
+          }],
+        }],
+      }), {
+        headers: {'Content-Type': 'application/json'},
+        status: 200,
+      }));
+    const origin = await startApp(upstream as typeof fetch);
+
+    const response = await fetch(`${origin}/api/jobs/search`, {
+      method: 'POST',
+      headers: {
+        ...sessionHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      jobs: [{
+        description: '<img src=x onerror=alert(1)>',
+        url: 'https://jobs.example.test/1',
+        sourceUrl: null,
+        sources: [{
+          applyUrl: null,
+          listingUrl: 'https://publisher.example.test/1',
+        }],
+      }],
+    });
+  });
+
+  it('fails closed for malformed downstream JSON without echoing it', async () => {
+    const upstream = vi.fn<FetchLike>(async () =>
+      new Response('{"privateSearchText":"not-closed"', {
+        headers: {'Content-Type': 'application/json'},
+        status: 200,
+      }));
+    const origin = await startApp(upstream as typeof fetch);
+
+    const response = await fetch(`${origin}/api/jobs/search`, {
+      method: 'POST',
+      headers: {
+        ...sessionHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+    });
+    const text = await response.text();
+
+    expect(response.status).toBe(502);
+    expect(text).not.toContain('privateSearchText');
+    expect(JSON.parse(text)).toEqual({
+      error: 'INVALID_DOWNSTREAM_RESPONSE',
+      message: 'Job Finder returned an invalid response',
+    });
+  });
+
   it('preserves a reviewed saved-job outcome but no other upstream headers', async () => {
     const upstream = vi.fn(async () =>
       new Response(`{"savedJobId":"${SAVED_JOB_ID}"}`, {

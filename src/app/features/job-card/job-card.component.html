@@ -109,13 +109,34 @@
             }
           </div>
         }
-        <a [href]="primaryApplyUrl()"
-           target="_blank"
-           rel="noopener noreferrer"
-           class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150">
-          <mat-icon class="text-base">open_in_new</mat-icon>
-          View on {{ sourceLabel() }}
-        </a>
+        @if (primaryApplyUrl(); as applyUrl) {
+          <a [href]="applyUrl"
+             target="_blank"
+             rel="noopener noreferrer"
+             [attr.aria-label]="'View on ' + sourceLabel() + ' (opens in a new tab)'"
+             class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150">
+            <mat-icon class="text-base">open_in_new</mat-icon>
+            View on {{ sourceLabel() }}
+          </a>
+          @if (safeSourceLinks().length > 1) {
+            <ul class="mt-3 flex list-none flex-wrap gap-3 p-0 text-sm" aria-label="Other safe job sources">
+              @for (source of safeSourceLinks(); track source.url) {
+                @if (source.url !== applyUrl) {
+                  <li>
+                    <a [href]="source.url"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       [attr.aria-label]="'View ' + source.label + ' listing (opens in a new tab)'">
+                      {{ source.label }}
+                    </a>
+                  </li>
+                }
+              }
+            </ul>
+          }
+        } @else {
+          <p class="m-0 text-sm" role="status">External job link unavailable.</p>
+        }
       </div>
 
       <div class="documents-area mt-5 pt-4">
