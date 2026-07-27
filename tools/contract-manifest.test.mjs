@@ -13,6 +13,7 @@ test('accepts the pinned contract manifest', async () => {
   assert.deepEqual(lock.contracts.map(({id}) => id), [
     'user-management-gateway',
     'location-gateway',
+    'document-generation-gateway',
   ]);
 });
 
@@ -71,6 +72,50 @@ test('pins the token-free UMG browser-session contract', async () => {
   ]);
 });
 
+test('pins the durable document-generation contract without browser job input', async () => {
+  const lock = await verifyContractManifest(rootDir);
+  const gateway = lock.contracts.find(({id}) => id === 'document-generation-gateway');
+  const contract = JSON.parse(await readFile(resolve(rootDir, gateway.path), 'utf8'));
+  const start = contract.paths[
+    '/api/v1/document-generation/saved-jobs/{savedJobId}/operations'
+  ].post;
+  const approve = contract.paths[
+    '/api/v1/document-generation/operations/{operationId}/approve'
+  ].post;
+
+  assert.equal(gateway.version, '1.4.0');
+  assert.equal(gateway.sourceRepository, 'jobseekercopilot/document-generation-gateway');
+  assert.equal(gateway.sourceCommit, '1d03324c2b80fbe44ebb5faccbc158334969464a');
+  assert.equal(gateway.output, 'src/generated/api/document-generation-gateway');
+  assert.equal(contract.info.version, '1.4.0');
+  assert.equal(start.operationId, 'startOperation');
+  assert.equal(start.requestBody, undefined);
+  assert.deepEqual(
+    start.parameters.map(({name, in: location, required}) => ({name, location, required})),
+    [
+      {name: 'savedJobId', location: 'path', required: true},
+      {name: 'Idempotency-Key', location: 'header', required: true},
+    ],
+  );
+  assert.equal(
+    start.parameters.some(({name}) => name.toLowerCase() === 'x-user-id'),
+    false,
+  );
+  assert.equal(approve.operationId, 'approveOperation');
+  assert.deepEqual(
+    contract.components.schemas.ApproveGenerationRequest.required,
+    ['coverLetterDocumentId', 'cvDocumentId'],
+  );
+  assert.ok(
+    contract.components.schemas.GenerationOperationResponse.properties.state.enum
+      .includes('AWAITING_APPROVAL'),
+  );
+  assert.ok(
+    contract.components.schemas.GenerationOperationResponse.properties.state.enum
+      .includes('GENERATION_OUTCOME_UNKNOWN'),
+  );
+});
+
 test('rejects a contract whose content does not match its checksum', async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), 'jsc-contracts-'));
   const lock = JSON.parse(await readFile(resolve(rootDir, 'contracts/contracts.lock.json'), 'utf8'));
@@ -98,5 +143,19 @@ test('rejects an unpinned generator artifact', async () => {
   await assert.rejects(
     verifyContractManifest(fixtureRoot),
     /must pin a Maven generator URL, version, and SHA-256/,
+  );
+});
+
+test('rejects an unpinned producer revision', async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'jsc-producer-'));
+  const lock = JSON.parse(await readFile(resolve(rootDir, 'contracts/contracts.lock.json'), 'utf8'));
+  lock.contracts[0].sourceCommit = 'develop';
+
+  await mkdir(resolve(fixtureRoot, 'contracts'), {recursive: true});
+  await writeFile(resolve(fixtureRoot, 'contracts/contracts.lock.json'), JSON.stringify(lock));
+
+  await assert.rejects(
+    verifyContractManifest(fixtureRoot),
+    /must pin unique ID, producer, revision, paths, and SHA-256/,
   );
 });

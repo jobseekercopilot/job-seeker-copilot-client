@@ -6,13 +6,12 @@ import {fileURLToPath} from 'node:url';
 import {verifyContractManifest} from './contract-manifest.mjs';
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const lock = await verifyContractManifest(rootDir);
 const generatorDir = resolve(rootDir, '.cache/openapi-generator');
-const generator = resolve(generatorDir, `${lock.generator.engineVersion}.jar`);
 
 const sha256 = (contents) => createHash('sha256').update(contents).digest('hex');
 
-async function verifiedGeneratorJar() {
+async function verifiedGeneratorJar(lock) {
+  const generator = resolve(generatorDir, `${lock.generator.engineVersion}.jar`);
   try {
     const cached = await readFile(generator);
     if (sha256(cached) === lock.generator.artifactSha256) return generator;
@@ -38,24 +37,47 @@ async function verifiedGeneratorJar() {
   return generator;
 }
 
-const verifiedGenerator = await verifiedGeneratorJar();
+export async function generateApiClients(outputRoot = rootDir) {
+  const lock = await verifyContractManifest(rootDir);
+  const verifiedGenerator = await verifiedGeneratorJar(lock);
 
-await rm(resolve(rootDir, 'src/app/api'), {recursive: true, force: true});
+  const outputDirectories = [
+    ...new Set(lock.contracts.map(({output}) => resolve(outputRoot, output))),
+  ].sort((left, right) => left.length - right.length);
 
-for (const contract of lock.contracts) {
-  const result = spawnSync('java', [
-    '-jar', verifiedGenerator,
-    'generate',
-    '-i', resolve(rootDir, contract.path),
-    '-g', lock.generator.generatorName,
-    '-o', resolve(rootDir, contract.output),
-    `--additional-properties=${lock.generator.additionalProperties}`,
-  ], {cwd: rootDir, stdio: 'inherit'});
-
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(`OpenAPI generation failed for ${contract.id} with exit code ${result.status}`);
+  for (const outputDirectory of outputDirectories) {
+    await rm(outputDirectory, {recursive: true, force: true});
   }
+
+  for (const contract of lock.contracts) {
+    const result = spawnSync('java', [
+      '-jar', verifiedGenerator,
+      'generate',
+      '-i', resolve(rootDir, contract.path),
+      '-g', lock.generator.generatorName,
+      '-o', resolve(outputRoot, contract.output),
+      `--additional-properties=${lock.generator.additionalProperties}`,
+    ], {cwd: rootDir, stdio: 'inherit'});
+
+    if (result.error) throw result.error;
+    if (result.status !== 0) {
+      throw new Error(`OpenAPI generation failed for ${contract.id} with exit code ${result.status}`);
+    }
+  }
+
+  return lock;
 }
 
-console.log(`Generated ${lock.contracts.length} API clients from verified contracts.`);
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const outputRootArgument = process.argv.find((argument) => argument.startsWith('--output-root='));
+  const outputRoot = outputRootArgument
+    ? resolve(outputRootArgument.slice('--output-root='.length))
+    : rootDir;
+
+  generateApiClients(outputRoot)
+    .then((lock) => console.log(`Generated ${lock.contracts.length} API clients from verified contracts.`))
+    .catch((error) => {
+      console.error(error.message);
+      process.exitCode = 1;
+    });
+}
