@@ -171,3 +171,17 @@
 .job-results-panel p {
   color: var(--text-secondary);
 }
+.provider-mode-badge {
+  border: 1px solid color-mix(in srgb, var(--mat-sys-primary) 35%, transparent);
+  border-radius: 999px;
+  color: var(--mat-sys-primary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  white-space: nowrap;
+}
+
+.provider-mode-partial {
+  border-color: #d97706;
+  color: #b45309;
+}

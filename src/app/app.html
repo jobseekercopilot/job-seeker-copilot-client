@@ -104,8 +104,14 @@
           </div>
           <div class="capability-grid">
             <article data-testid="capability-profile"><span class="capability-state state-available">Available</span><strong>Profile</strong></article>
-            <article data-testid="capability-job-search"><span class="capability-state state-fixture">Fixture-backed</span><strong>Job search</strong></article>
-            <article data-testid="capability-job-details"><span class="capability-state state-fixture">Fixture-backed</span><strong>Job matching &amp; details</strong></article>
+            <article data-testid="capability-job-search"><span class="capability-state"
+              [class.state-fixture]="jobSearchProviderMode() === 'FIXTURE'"
+              [class.state-available]="jobSearchProviderMode() === 'REAL'"
+              [class.state-unavailable]="jobSearchProviderMode() === 'REQUIRED_VALIDATION'">{{ jobSearchProviderModeLabel() }}</span><strong>Job search</strong></article>
+            <article data-testid="capability-job-details"><span class="capability-state"
+              [class.state-fixture]="jobSearchProviderMode() === 'FIXTURE'"
+              [class.state-available]="jobSearchProviderMode() === 'REAL'"
+              [class.state-unavailable]="jobSearchProviderMode() === 'REQUIRED_VALIDATION'">{{ jobSearchProviderModeLabel() }}</span><strong>Job matching &amp; details</strong></article>
             <article data-testid="capability-applications"><span class="capability-state state-available">Available</span><strong>Application tracking</strong></article>
             <article data-testid="capability-generation"><span class="capability-state state-next">Coming next</span><strong>CV &amp; cover-letter generation</strong></article>
             <article data-testid="capability-documents"><span class="capability-state state-unavailable">Temporarily unavailable</span><strong>Documents &amp; export</strong></article>
@@ -179,7 +185,12 @@
 
           <div data-testid="workspace-panel-search" [hidden]="activeWorkspaceTab() !== 'search'">
             <div class="workspace-status-line">
-              <span class="capability-state state-fixture">Fixture-backed</span>
+              <span class="capability-state"
+                    [class.state-fixture]="jobSearchProviderMode() === 'FIXTURE'"
+                    [class.state-available]="jobSearchProviderMode() === 'REAL'"
+                    [class.state-unavailable]="jobSearchProviderMode() === 'REQUIRED_VALIDATION'">
+                {{ jobSearchProviderModeLabel() }}
+              </span>
               <strong>Job search, matching and details</strong>
             </div>
             <app-job-results #jobResults
@@ -187,6 +198,7 @@
               [experience]="profileExperience()"
               [aspirations]="profileAspirations()"
               [workPrefs]="profileWorkPrefs()"
+              [providerMode]="jobSearchProviderMode()"
               [applicationTrackingAvailable]="true"
               [applicationToolsAvailable]="false"
               (notify)="showToast($event.message, $event.type)"

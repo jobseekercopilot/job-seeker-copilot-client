@@ -6,6 +6,11 @@
       <div class="flex items-center gap-3">
         <mat-icon class="panel-icon">work</mat-icon>
         <h2 class="text-lg font-semibold m-0">Job Matches</h2>
+        <span class="provider-mode-badge"
+              [class.provider-mode-partial]="providerDegraded()"
+              data-testid="job-search-provider-mode">
+          {{ providerModeLabel() }}
+        </span>
       </div>
     </div>
     <div class="flex flex-wrap items-center gap-2">

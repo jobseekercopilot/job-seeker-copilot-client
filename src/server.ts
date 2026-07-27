@@ -18,6 +18,7 @@ import {callUserManagement} from './server/user-management-proxy';
 import {installGracefulShutdown} from './server/graceful-shutdown';
 import {registerJobFinderRoutes} from './server/job-finder-proxy';
 import {callTrustedPaymentGateway, paymentProxyFailure} from './server/payment-proxy';
+import {jobSearchProviderMode} from './server/runtime-configuration';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 const bffConfig = loadBffConfig();
@@ -44,6 +45,11 @@ const REPORTING_GATEWAY_URL = process.env['REPORTING_GATEWAY_URL'] || 'http://lo
 const PAYMENT_GATEWAY_URL = process.env['PAYMENT_GATEWAY_URL'] || 'http://localhost:8098';
 
 const angularApp = new AngularNodeAppEngine({ allowedHosts: bffConfig.allowedHosts });
+
+app.get('/api/runtime/job-search-mode', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({mode: jobSearchProviderMode()});
+});
 
 app.get('/api/auth/csrf', async (req, res) => {
   await proxyUserManagementRequest('/api/auth/csrf', 'GET', req, res);

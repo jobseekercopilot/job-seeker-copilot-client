@@ -12,6 +12,7 @@ import {
 } from '../../api/document-generation-gateway';
 import {logMalformedProviderResult} from '../../../shared/provider-content-policy';
 import {ApplicationTrackerService} from '../../services/application-tracker.service';
+import type {JobSearchProviderMode} from '../../services/runtime-configuration.service';
 
 type StatusUpdateTarget =
   | 'DOCUMENTS_GENERATED'
@@ -49,6 +50,7 @@ export class JobResultsComponent implements OnInit {
   userId = input<string>('');
   applicationToolsAvailable = input(false);
   applicationTrackingAvailable = input(false);
+  providerMode = input<JobSearchProviderMode>('REQUIRED_VALIDATION');
 
   // Output to notify parent to show a toast
   notify = output<{ message: string; type: 'success' | 'info' | 'error' }>();
@@ -62,6 +64,15 @@ export class JobResultsComponent implements OnInit {
   selectedSort = signal<SortOption>('MOST_RELEVANT');
   filtersOpen = signal(false);
   providerWarnings = signal<string[]>([]);
+  providerDegraded = signal(false);
+  providerModeLabel = computed(() => {
+    if (this.providerDegraded()) return 'Partial provider availability';
+    switch (this.providerMode()) {
+      case 'FIXTURE': return 'Fixture-backed';
+      case 'REAL': return 'Real providers';
+      default: return 'Required validation';
+    }
+  });
   currentPage = signal(1);
   totalResults = signal(0);
   loading = signal(false);
@@ -213,9 +224,15 @@ export class JobResultsComponent implements OnInit {
         this.filtersOpen.set(false);
         this.currentPage.set(1);
         this.totalResults.set(validJobs.length);
-        this.providerWarnings.set((response.providerResults ?? [])
-          .filter(result => result.status === 'UNAVAILABLE')
-          .map(result => `${result.provider} was temporarily unavailable. Results from other job sites are still shown.`));
+        const degradedResults = (response.providerResults ?? [])
+          .filter(result => result.status !== 'SUCCESS' && result.status !== 'DISABLED');
+        this.providerDegraded.set(degradedResults.length > 0);
+        this.providerWarnings.set(Array.from(new Set(
+          degradedResults.map(result => this.providerWarning(
+            result.provider ?? 'A job provider',
+            result.status ?? 'UNAVAILABLE',
+          )),
+        )));
         this.reconcileGeneratedState(validJobs);
         this.rehydrateGeneratedDownloads(validJobs);
         this.loading.set(false);
@@ -261,6 +278,24 @@ export class JobResultsComponent implements OnInit {
 
   refresh(): void {
     this.search();
+  }
+
+  private providerWarning(provider: string, status: string): string {
+    const providerName = provider || 'A job provider';
+    switch (status) {
+      case 'RATE_LIMITED':
+        return `${providerName} has reached its current request limit. Results from other job sites are still shown.`;
+      case 'CONFIGURATION_ERROR':
+        return `${providerName} needs provider-account validation. Results from other job sites are still shown.`;
+      case 'TIMED_OUT':
+        return `${providerName} timed out. Results from other job sites are still shown.`;
+      case 'SATURATED':
+        return `${providerName} is currently at capacity. Results from other job sites are still shown.`;
+      case 'REJECTED':
+        return `${providerName} rejected this search. Results from other job sites are still shown.`;
+      default:
+        return `${providerName} was temporarily unavailable. Results from other job sites are still shown.`;
+    }
   }
 
   selectTargetRole(targetRole: string): void {

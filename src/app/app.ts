@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, effect, OnInit, signal, PLATFORM_ID, inject, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, OnInit, signal, PLATFORM_ID, inject, ViewChild } from '@angular/core';
 import { isPlatformBrowser, CommonModule } from '@angular/common';
 import { NavigationEnd, Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
@@ -17,6 +17,10 @@ import { normaliseProfile, profileToSearchText } from './models/user-profile.mod
 import { FALLBACK_PENCE_PER_TOKEN, pencePerTokenFromPlans } from './utils/ai-credit';
 import {removeLegacySessionData} from './services/browser-storage';
 import {BrowserSessionService} from './services/browser-session.service';
+import {
+  JobSearchProviderMode,
+  RuntimeConfigurationService,
+} from './services/runtime-configuration.service';
 
 type WorkspaceTab = 'search' | 'applications' | 'documents';
 
@@ -40,6 +44,7 @@ export class App implements OnInit {
   private router = inject(Router);
   private paymentService = inject(PaymentService);
   private browserSession = inject(BrowserSessionService);
+  private runtimeConfiguration = inject(RuntimeConfigurationService);
   readonly sessionStatus = this.browserSession.status;
 
   // User Onboarding & Auth Details
@@ -66,6 +71,14 @@ export class App implements OnInit {
   searchLocation = signal('');
   searchSector = signal('');
   isSearching = signal(false);
+  jobSearchProviderMode = signal<JobSearchProviderMode>('REQUIRED_VALIDATION');
+  jobSearchProviderModeLabel = computed(() => {
+    switch (this.jobSearchProviderMode()) {
+      case 'FIXTURE': return 'Fixture-backed';
+      case 'REAL': return 'Real providers';
+      default: return 'Required validation';
+    }
+  });
   activeWorkspaceTab = signal<WorkspaceTab>('search');
   selectedApplicationId = signal<string | null>(null);
 
@@ -117,6 +130,18 @@ export class App implements OnInit {
         console.warn('Unable to remove legacy browser session data.');
       }
       void this.retrySession();
+      void this.loadJobSearchProviderMode();
+    }
+  }
+
+  private async loadJobSearchProviderMode(): Promise<void> {
+    try {
+      const response = await firstValueFrom(
+        this.runtimeConfiguration.jobSearchMode(),
+      );
+      this.jobSearchProviderMode.set(response.mode);
+    } catch {
+      this.jobSearchProviderMode.set('REQUIRED_VALIDATION');
     }
   }
 
