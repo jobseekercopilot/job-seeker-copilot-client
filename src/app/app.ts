@@ -75,7 +75,7 @@ export class App implements OnInit {
   jobSearchProviderModeLabel = computed(() => {
     switch (this.jobSearchProviderMode()) {
       case 'FIXTURE': return 'Fixture-backed';
-      case 'REAL': return 'Real providers';
+      case 'REAL_PROVIDERS': return 'Real providers';
       default: return 'Required validation';
     }
   });

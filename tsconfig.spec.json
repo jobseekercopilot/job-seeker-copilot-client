@@ -14,6 +14,7 @@
     "src/app/features/beta-job-search/beta-job-search.spec.ts",
     "src/app/features/claimant-profile/claimant-profile.spec.ts",
     "src/app/features/job-card/job-card.component.spec.ts",
+    "src/app/features/job-results/job-results.component.spec.ts",
     "src/app/features/landing-auth/landing-auth.spec.ts",
     "src/app/gateways/**/*.spec.ts",
     "src/app/services/**/*.spec.ts",

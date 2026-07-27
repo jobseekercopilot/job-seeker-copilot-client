@@ -137,7 +137,7 @@
     @if (!loading() && !error() && filteredJobs().length === 0) {
       <div class="flex flex-col items-center justify-center py-12 text-center">
         <mat-icon class="empty-icon text-5xl mb-4">search_off</mat-icon>
-        <p class="text-sm m-0">No job matches found based on your current profile.</p>
+        <p class="text-sm m-0">{{ emptyStateMessage() }}</p>
         <p class="text-xs mt-1">Try updating your skills, aspirations, or work preferences.</p>
       </div>
     }

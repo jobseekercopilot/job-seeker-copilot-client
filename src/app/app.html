@@ -106,11 +106,11 @@
             <article data-testid="capability-profile"><span class="capability-state state-available">Available</span><strong>Profile</strong></article>
             <article data-testid="capability-job-search"><span class="capability-state"
               [class.state-fixture]="jobSearchProviderMode() === 'FIXTURE'"
-              [class.state-available]="jobSearchProviderMode() === 'REAL'"
+              [class.state-available]="jobSearchProviderMode() === 'REAL_PROVIDERS'"
               [class.state-unavailable]="jobSearchProviderMode() === 'REQUIRED_VALIDATION'">{{ jobSearchProviderModeLabel() }}</span><strong>Job search</strong></article>
             <article data-testid="capability-job-details"><span class="capability-state"
               [class.state-fixture]="jobSearchProviderMode() === 'FIXTURE'"
-              [class.state-available]="jobSearchProviderMode() === 'REAL'"
+              [class.state-available]="jobSearchProviderMode() === 'REAL_PROVIDERS'"
               [class.state-unavailable]="jobSearchProviderMode() === 'REQUIRED_VALIDATION'">{{ jobSearchProviderModeLabel() }}</span><strong>Job matching &amp; details</strong></article>
             <article data-testid="capability-applications"><span class="capability-state state-available">Available</span><strong>Application tracking</strong></article>
             <article data-testid="capability-generation"><span class="capability-state state-next">Coming next</span><strong>CV &amp; cover-letter generation</strong></article>
@@ -187,7 +187,7 @@
             <div class="workspace-status-line">
               <span class="capability-state"
                     [class.state-fixture]="jobSearchProviderMode() === 'FIXTURE'"
-                    [class.state-available]="jobSearchProviderMode() === 'REAL'"
+                    [class.state-available]="jobSearchProviderMode() === 'REAL_PROVIDERS'"
                     [class.state-unavailable]="jobSearchProviderMode() === 'REQUIRED_VALIDATION'">
                 {{ jobSearchProviderModeLabel() }}
               </span>

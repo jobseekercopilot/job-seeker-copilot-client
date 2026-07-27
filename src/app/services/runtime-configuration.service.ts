@@ -4,7 +4,7 @@ import {Observable} from 'rxjs';
 
 export type JobSearchProviderMode =
   | 'FIXTURE'
-  | 'REAL'
+  | 'REAL_PROVIDERS'
   | 'REQUIRED_VALIDATION';
 
 interface JobSearchModeResponse {

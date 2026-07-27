@@ -6,7 +6,9 @@ describe('job-search runtime mode', () => {
   });
 
   it('accepts only the two explicit runtime modes', () => {
-    expect(jobSearchProviderMode({JOB_SEARCH_PROVIDER_MODE: 'real'})).toBe('REAL');
+    expect(jobSearchProviderMode({JOB_SEARCH_PROVIDER_MODE: 'real'})).toBe('REAL_PROVIDERS');
+    expect(jobSearchProviderMode({JOB_SEARCH_PROVIDER_MODE: 'REAL_PROVIDERS'}))
+      .toBe('REAL_PROVIDERS');
     expect(jobSearchProviderMode({JOB_SEARCH_PROVIDER_MODE: 'FIXTURE'})).toBe('FIXTURE');
   });
 

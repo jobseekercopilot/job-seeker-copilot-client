@@ -64,14 +64,45 @@ export class JobResultsComponent implements OnInit {
   selectedSort = signal<SortOption>('MOST_RELEVANT');
   filtersOpen = signal(false);
   providerWarnings = signal<string[]>([]);
-  providerDegraded = signal(false);
+  providerStatuses = signal<string[]>([]);
+  providerDegraded = computed(() => {
+    const statuses = this.providerStatuses();
+    return statuses.some(status => status !== 'SUCCESS' && status !== 'DISABLED');
+  });
   providerModeLabel = computed(() => {
-    if (this.providerDegraded()) return 'Partial provider availability';
-    switch (this.providerMode()) {
-      case 'FIXTURE': return 'Fixture-backed';
-      case 'REAL': return 'Real providers';
-      default: return 'Required validation';
+    if (this.providerMode() === 'FIXTURE') return 'Fixture-backed';
+    if (this.providerMode() === 'REQUIRED_VALIDATION') return 'Required validation';
+    const statuses = this.providerStatuses().filter(status => status !== 'DISABLED');
+    const hasSuccess = statuses.includes('SUCCESS');
+    if (statuses.includes('CONFIGURATION_ERROR') && !hasSuccess) {
+      return 'Real-provider configuration error';
     }
+    if (statuses.length > 0 && !hasSuccess) {
+      return 'Real providers temporarily unavailable';
+    }
+    if (this.providerDegraded()) return 'Real providers — partial availability';
+    return 'Real providers';
+  });
+  emptyStateMessage = computed(() => {
+    if (this.providerMode() !== 'REAL_PROVIDERS') {
+      return 'No job matches found based on your current profile.';
+    }
+    const statuses = this.providerStatuses().filter(status => status !== 'DISABLED');
+    const hasSuccess = statuses.includes('SUCCESS');
+    const hasFailure = statuses.some(status => status !== 'SUCCESS');
+    if (statuses.includes('CONFIGURATION_ERROR') && !hasSuccess) {
+      return 'Real-provider configuration is incomplete. No fixture results were substituted.';
+    }
+    if (!hasSuccess && statuses.includes('RATE_LIMITED')) {
+      return 'All available real providers are currently rate limited. Please try again later.';
+    }
+    if (statuses.length > 0 && !hasSuccess) {
+      return 'Real job providers are temporarily unavailable. Please try again later.';
+    }
+    if (hasSuccess && hasFailure) {
+      return 'Available providers returned no matches; some real providers were unavailable.';
+    }
+    return 'No job matches found based on your current profile.';
   });
   currentPage = signal(1);
   totalResults = signal(0);
@@ -226,7 +257,9 @@ export class JobResultsComponent implements OnInit {
         this.totalResults.set(validJobs.length);
         const degradedResults = (response.providerResults ?? [])
           .filter(result => result.status !== 'SUCCESS' && result.status !== 'DISABLED');
-        this.providerDegraded.set(degradedResults.length > 0);
+        this.providerStatuses.set(
+          (response.providerResults ?? []).map(result => result.status ?? 'UNAVAILABLE')
+        );
         this.providerWarnings.set(Array.from(new Set(
           degradedResults.map(result => this.providerWarning(
             result.provider ?? 'A job provider',
@@ -243,6 +276,7 @@ export class JobResultsComponent implements OnInit {
       },
       error: (err) => {
         this.loading.set(false);
+        this.providerStatuses.set(['UNAVAILABLE']);
         const status = err.status;
 
         if (status === 503) {
