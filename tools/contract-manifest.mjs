@@ -20,7 +20,19 @@ export async function verifyContractManifest(rootDir = defaultRoot) {
     throw new Error('contracts.lock.json must pin a Maven generator URL, version, and SHA-256');
   }
 
+  const contractIds = new Set();
   for (const contract of lock.contracts) {
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(contract.id ?? '') ||
+        contractIds.has(contract.id) ||
+        !/^jobseekercopilot\/[a-z0-9][a-z0-9.-]*$/.test(contract.sourceRepository ?? '') ||
+        !/^[a-f0-9]{40}$/.test(contract.sourceCommit ?? '') ||
+        !/^contracts\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.json$/.test(contract.path ?? '') ||
+        !/^src\/(?!.*(?:^|\/)\.\.(?:\/|$)).+/.test(contract.output ?? '') ||
+        !/^[a-f0-9]{64}$/.test(contract.sha256 ?? '')) {
+      throw new Error(`${contract.id ?? 'unknown contract'} must pin unique ID, producer, revision, paths, and SHA-256`);
+    }
+    contractIds.add(contract.id);
+
     const contractPath = resolve(rootDir, contract.path);
     const contents = await readFile(contractPath);
     const actualHash = sha256(contents);
