@@ -7,6 +7,103 @@ const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const sha256 = (contents) => createHash('sha256').update(contents).digest('hex');
 
+function hasBearerSecurity(operation, document) {
+  const security = operation?.security ?? document.security;
+  return security?.some((requirement) =>
+    Object.hasOwn(requirement, 'bearerAuth'));
+}
+
+function validateJobFinderContract(document) {
+  const operations = [
+    ['/api/jobs/search', 'post', 'searchJobs'],
+    ['/api/jobs/saved', 'post', 'save'],
+    ['/api/jobs/saved', 'get', 'list'],
+    ['/api/jobs/saved/{savedJobId}', 'get', 'get'],
+    ['/api/jobs/saved/{savedJobId}', 'delete', 'unsave'],
+  ];
+
+  for (const [path, method, operationId] of operations) {
+    const operation = document.paths?.[path]?.[method];
+    if (operation?.operationId !== operationId) {
+      throw new Error(
+        `job-finder-gateway must preserve ${method.toUpperCase()} ${path} as ${operationId}`,
+      );
+    }
+    if (!hasBearerSecurity(operation, document)) {
+      throw new Error(
+        `job-finder-gateway ${operationId} must require bearerAuth`,
+      );
+    }
+    const parameters = [
+      ...(document.paths[path].parameters ?? []),
+      ...(operation.parameters ?? []),
+    ];
+    if (parameters.some(({name}) => name?.toLowerCase() === 'x-user-id')) {
+      throw new Error(
+        `job-finder-gateway ${operationId} must not accept X-User-Id`,
+      );
+    }
+  }
+
+  const bearer = document.components?.securitySchemes?.bearerAuth;
+  if (bearer?.type !== 'http' || bearer?.scheme !== 'bearer') {
+    throw new Error(
+      'job-finder-gateway must preserve its HTTP Bearer security scheme',
+    );
+  }
+
+  const savedJobProperties =
+    document.components?.schemas?.SavedJobResponse?.properties ?? {};
+  const requiredSavedJobProperties = [
+    'savedJobId',
+    'canonicalJobId',
+    'canonicalSchemaVersion',
+    'snapshotVersion',
+    'contentVersion',
+    'contentSha256',
+    'capturedAt',
+    'sourceRetrievedAt',
+    'sourceState',
+    'savedAt',
+    'updatedAt',
+    'job',
+  ];
+  for (const property of requiredSavedJobProperties) {
+    if (!savedJobProperties[property]) {
+      throw new Error(
+        `job-finder-gateway SavedJobResponse is missing ${property}`,
+      );
+    }
+  }
+  if (savedJobProperties.savedJobId.format !== 'uuid' ||
+      savedJobProperties.snapshotVersion.format !== 'int64' ||
+      savedJobProperties.job.$ref !== '#/components/schemas/Job') {
+    throw new Error(
+      'job-finder-gateway must preserve saved-job identity, version and snapshot types',
+    );
+  }
+  const sourceStates = savedJobProperties.sourceState.enum ?? [];
+  if (!sourceStates.includes('SNAPSHOT') ||
+      !sourceStates.includes('EXPIRED_SNAPSHOT')) {
+    throw new Error(
+      'job-finder-gateway must preserve saved-job source-state semantics',
+    );
+  }
+
+  const saveResponses = document.paths['/api/jobs/saved'].post.responses;
+  const createdOutcomes =
+    saveResponses?.['201']?.headers?.['X-Saved-Job-Outcome']?.schema?.enum;
+  const replayOutcomes =
+    saveResponses?.['200']?.headers?.['X-Saved-Job-Outcome']?.schema?.enum;
+  if (JSON.stringify(createdOutcomes) !== JSON.stringify(['CREATED']) ||
+      !['REPLAYED', 'UPDATED', 'REACTIVATED']
+        .every((outcome) => replayOutcomes?.includes(outcome))) {
+    throw new Error(
+      'job-finder-gateway must preserve saved-job outcome semantics',
+    );
+  }
+}
+
 export async function verifyContractManifest(rootDir = defaultRoot) {
   const lockPath = resolve(rootDir, 'contracts/contracts.lock.json');
   const lock = JSON.parse(await readFile(lockPath, 'utf8'));
@@ -48,6 +145,9 @@ export async function verifyContractManifest(rootDir = defaultRoot) {
       if (!document.paths?.[requiredPath]) {
         throw new Error(`${contract.id} is missing required path ${requiredPath}`);
       }
+    }
+    if (contract.id === 'job-finder-gateway') {
+      validateJobFinderContract(document);
     }
   }
 

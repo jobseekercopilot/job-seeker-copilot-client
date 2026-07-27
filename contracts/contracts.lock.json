@@ -39,6 +39,20 @@
       ]
     },
     {
+      "id": "job-finder-gateway",
+      "version": "1.2.0",
+      "sourceRepository": "jobseekercopilot/job-finder-gateway",
+      "sourceCommit": "3effd28429fe10eb56921beb9098b97ffcb3a7b5",
+      "path": "contracts/job-finder-gateway/1.2.0/openapi.json",
+      "sha256": "869c0818043bc70f8db408a16c6d93026836a871a8dc28f54b8a49500fb2f9a8",
+      "output": "src/app/api/job-finder",
+      "requiredPaths": [
+        "/api/jobs/search",
+        "/api/jobs/saved",
+        "/api/jobs/saved/{savedJobId}"
+      ]
+    },
+    {
       "id": "document-generation-gateway",
       "version": "1.4.0",
       "sourceRepository": "jobseekercopilot/document-generation-gateway",

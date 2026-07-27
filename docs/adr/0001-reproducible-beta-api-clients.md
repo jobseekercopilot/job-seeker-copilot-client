@@ -12,6 +12,10 @@ The User Management beta needs only the user-management and location contracts.
 There is no authoritative private owner repository from which to publish the
 currently imported job-finder, document-generation, or reporting contracts.
 
+Job Finder and Document Generation later established authoritative contracts;
+their selected consumer decisions are recorded in ADR 0004 and ADR 0003
+respectively. Reporting remains outside this decision.
+
 ## Decision
 
 Version the owning backends' tested OpenAPI documents under `contracts/`, recording

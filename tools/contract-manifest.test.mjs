@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {mkdtemp, mkdir, readFile, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
@@ -8,11 +9,35 @@ import {verifyContractManifest} from './contract-manifest.mjs';
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
+async function contractFixture(contractId, mutate) {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), `jsc-${contractId}-`));
+  const lock = JSON.parse(
+    await readFile(resolve(rootDir, 'contracts/contracts.lock.json'), 'utf8'),
+  );
+  const selected = lock.contracts.find(({id}) => id === contractId);
+  const document = JSON.parse(
+    await readFile(resolve(rootDir, selected.path), 'utf8'),
+  );
+  mutate(document);
+  const contents = JSON.stringify(document);
+  selected.sha256 = createHash('sha256').update(contents).digest('hex');
+  lock.contracts = [selected];
+
+  await mkdir(dirname(resolve(fixtureRoot, selected.path)), {recursive: true});
+  await writeFile(
+    resolve(fixtureRoot, 'contracts/contracts.lock.json'),
+    JSON.stringify(lock),
+  );
+  await writeFile(resolve(fixtureRoot, selected.path), contents);
+  return fixtureRoot;
+}
+
 test('accepts the pinned contract manifest', async () => {
   const lock = await verifyContractManifest(rootDir);
   assert.deepEqual(lock.contracts.map(({id}) => id), [
     'user-management-gateway',
     'location-gateway',
+    'job-finder-gateway',
     'document-generation-gateway',
   ]);
 });
@@ -70,6 +95,103 @@ test('pins the token-free UMG browser-session contract', async () => {
     '/api/auth/refresh',
     '/api/auth/register',
   ]);
+});
+
+test('pins the owner-scoped Job Finder search and saved-job contract', async () => {
+  const lock = await verifyContractManifest(rootDir);
+  const gateway = lock.contracts.find(({id}) => id === 'job-finder-gateway');
+  const contract = JSON.parse(
+    await readFile(resolve(rootDir, gateway.path), 'utf8'),
+  );
+  const savedJob = contract.components.schemas.SavedJobResponse.properties;
+
+  assert.equal(gateway.version, '1.2.0');
+  assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
+  assert.equal(
+    gateway.sourceCommit,
+    '3effd28429fe10eb56921beb9098b97ffcb3a7b5',
+  );
+  assert.equal(gateway.output, 'src/app/api/job-finder');
+  assert.deepEqual(gateway.requiredPaths, [
+    '/api/jobs/search',
+    '/api/jobs/saved',
+    '/api/jobs/saved/{savedJobId}',
+  ]);
+  assert.equal(contract.info.version, '1.2.0');
+  assert.equal(savedJob.savedJobId.format, 'uuid');
+  assert.equal(savedJob.snapshotVersion.format, 'int64');
+  assert.equal(savedJob.contentSha256.type, 'string');
+  assert.equal(savedJob.job.$ref, '#/components/schemas/Job');
+  assert.deepEqual(
+    contract.paths['/api/jobs/saved'].post.responses['201']
+      .headers['X-Saved-Job-Outcome'].schema.enum,
+    ['CREATED'],
+  );
+  assert.deepEqual(
+    contract.paths['/api/jobs/saved'].post.responses['200']
+      .headers['X-Saved-Job-Outcome'].schema.enum,
+    ['REPLAYED', 'UPDATED', 'REACTIVATED'],
+  );
+});
+
+test('rejects unsafe or incomplete Job Finder saved-job drift', async (context) => {
+  const cases = [
+    [
+      'missing unsave operation',
+      (contract) => {
+        delete contract.paths['/api/jobs/saved/{savedJobId}'].delete;
+      },
+      /must preserve DELETE .* as unsave/,
+    ],
+    [
+      'missing Bearer boundary',
+      (contract) => {
+        contract.paths['/api/jobs/saved'].get.security = [];
+      },
+      /list must require bearerAuth/,
+    ],
+    [
+      'browser-selected owner header',
+      (contract) => {
+        contract.paths['/api/jobs/saved'].parameters = [{
+          name: 'X-User-Id',
+          in: 'header',
+        }];
+      },
+      /save must not accept X-User-Id/,
+    ],
+    [
+      'missing immutable digest',
+      (contract) => {
+        delete contract.components.schemas.SavedJobResponse
+          .properties.contentSha256;
+      },
+      /SavedJobResponse is missing contentSha256/,
+    ],
+    [
+      'weakened source state',
+      (contract) => {
+        contract.components.schemas.SavedJobResponse
+          .properties.sourceState.enum = ['SNAPSHOT'];
+      },
+      /must preserve saved-job source-state semantics/,
+    ],
+    [
+      'missing save outcome',
+      (contract) => {
+        delete contract.paths['/api/jobs/saved'].post.responses['201']
+          .headers['X-Saved-Job-Outcome'];
+      },
+      /must preserve saved-job outcome semantics/,
+    ],
+  ];
+
+  for (const [name, mutate, expected] of cases) {
+    await context.test(name, async () => {
+      const fixtureRoot = await contractFixture('job-finder-gateway', mutate);
+      await assert.rejects(verifyContractManifest(fixtureRoot), expected);
+    });
+  }
 });
 
 test('pins the durable document-generation contract without browser job input', async () => {

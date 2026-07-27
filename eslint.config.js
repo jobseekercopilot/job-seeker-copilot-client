@@ -8,6 +8,7 @@ module.exports = defineConfig([
   {
     ignores: [
       'src/app/api/**',
+      'src/generated/**',
       'src/app/app.ts',
       'src/app/app.html',
       'src/app/features/documents-workspace/**',
