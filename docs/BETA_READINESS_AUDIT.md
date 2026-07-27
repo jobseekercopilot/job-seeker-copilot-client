@@ -1,6 +1,7 @@
 # Beta-readiness audit: client
 
 Audit date: 18 July 2026
+Contract-policy refresh: 27 July 2026
 
 Status: **Not beta-ready.** The current UI demonstrates registration, login,
 profile editing and postcode lookup. Reproducible builds, dependency Highs,
@@ -16,10 +17,13 @@ services directly. Generated TypeScript clients are compile-time dependencies.
 
 ## Current baseline
 
-- `npm test -- --watch=false`: deterministic contract generation and validation
-  passed, followed by 93 tests in 13 Angular/Vitest files, including component
-  axe, keyboard, focus, resilience and duplicate-submit coverage.
-- `npm run lint`: passed for handwritten sources and the generated API clients.
+- `npm test -- --watch=false`: four pinned contracts generated and validated,
+  followed by 14 contract-policy tests and 102 tests in 14 Angular/Vitest
+  files, including component axe, keyboard, focus, resilience and
+  duplicate-submit coverage.
+- `npm run lint`: passed for handwritten sources. Ignored generated API clients
+  are checksum/policy verified, regenerated deterministically and TypeScript
+  compiled separately.
 - `npm run build`: passed from repository-owned contract snapshots with one
   existing component-style budget warning (`app.css`, 4.44 kB against 4.00 kB).
 - `npm audit --omit=dev --audit-level=moderate`: 0 production findings.
