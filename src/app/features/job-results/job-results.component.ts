@@ -9,7 +9,7 @@ import { ApplicationRecordResponse, UpdateApplicationStatusRequest } from '../..
 import {
   DownloadFileResponse,
   GenerationDownloadsResponse,
-} from '../../../generated/api/document-generation-gateway';
+} from '../../api/document-generation-gateway';
 
 type StatusUpdateTarget = UpdateApplicationStatusRequest['status'];
 type SortOption = 'MOST_RELEVANT' | 'CLOSEST' | 'HIGHEST_SALARY' | 'NEWEST_POSTED' | 'OLDEST_POSTED' | 'COMPANY_AZ' | 'JOB_TITLE_AZ';

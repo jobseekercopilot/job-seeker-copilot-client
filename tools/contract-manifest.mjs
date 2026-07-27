@@ -124,9 +124,9 @@ export async function verifyContractManifest(rootDir = defaultRoot) {
         !/^jobseekercopilot\/[a-z0-9][a-z0-9.-]*$/.test(contract.sourceRepository ?? '') ||
         !/^[a-f0-9]{40}$/.test(contract.sourceCommit ?? '') ||
         !/^contracts\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.json$/.test(contract.path ?? '') ||
-        !/^src\/(?!.*(?:^|\/)\.\.(?:\/|$)).+/.test(contract.output ?? '') ||
+        !/^src\/app\/api(?:\/[a-z0-9][a-z0-9-]*)*$/.test(contract.output ?? '') ||
         !/^[a-f0-9]{64}$/.test(contract.sha256 ?? '')) {
-      throw new Error(`${contract.id ?? 'unknown contract'} must pin unique ID, producer, revision, paths, and SHA-256`);
+      throw new Error(`${contract.id ?? 'unknown contract'} must pin unique ID, producer, revision, canonical generated output, paths, and SHA-256`);
     }
     contractIds.add(contract.id);
 

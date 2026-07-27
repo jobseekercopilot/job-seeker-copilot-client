@@ -13,7 +13,7 @@ import {
   DocumentDownloadsResponse,
   DownloadFileResponse,
   GenerationDownloadsResponse,
-} from '../../../generated/api/document-generation-gateway';
+} from '../../api/document-generation-gateway';
 
 type StatusUpdateTarget = UpdateApplicationStatusRequest['status'];
 

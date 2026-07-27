@@ -13,7 +13,7 @@ import {
 import {
   DocumentDownloadsResponse,
   DownloadFileResponse,
-} from '../../../generated/api/document-generation-gateway';
+} from '../../api/document-generation-gateway';
 
 type DocumentFilter = 'ALL' | 'CV' | 'COVER_LETTER';
 type DocumentSort = 'NEWEST' | 'OLDEST' | 'JOB_TITLE' | 'COMPANY' | 'STATUS';

@@ -208,7 +208,7 @@ test('pins the durable document-generation contract without browser job input', 
   assert.equal(gateway.version, '1.4.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/document-generation-gateway');
   assert.equal(gateway.sourceCommit, '1d03324c2b80fbe44ebb5faccbc158334969464a');
-  assert.equal(gateway.output, 'src/generated/api/document-generation-gateway');
+  assert.equal(gateway.output, 'src/app/api/document-generation-gateway');
   assert.equal(contract.info.version, '1.4.0');
   assert.equal(start.operationId, 'startOperation');
   assert.equal(start.requestBody, undefined);
@@ -268,6 +268,25 @@ test('rejects an unpinned generator artifact', async () => {
   );
 });
 
+test('rejects generated output outside the canonical Angular API root', async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'jsc-output-root-'));
+  const lock = JSON.parse(
+    await readFile(resolve(rootDir, 'contracts/contracts.lock.json'), 'utf8'),
+  );
+  lock.contracts[0].output = 'src/generated/api/user-management-gateway';
+
+  await mkdir(resolve(fixtureRoot, 'contracts'), {recursive: true});
+  await writeFile(
+    resolve(fixtureRoot, 'contracts/contracts.lock.json'),
+    JSON.stringify(lock),
+  );
+
+  await assert.rejects(
+    verifyContractManifest(fixtureRoot),
+    /canonical generated output/,
+  );
+});
+
 test('rejects an unpinned producer revision', async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), 'jsc-producer-'));
   const lock = JSON.parse(await readFile(resolve(rootDir, 'contracts/contracts.lock.json'), 'utf8'));
@@ -278,6 +297,6 @@ test('rejects an unpinned producer revision', async () => {
 
   await assert.rejects(
     verifyContractManifest(fixtureRoot),
-    /must pin unique ID, producer, revision, paths, and SHA-256/,
+    /must pin unique ID, producer, revision, canonical generated output, paths, and SHA-256/,
   );
 });
