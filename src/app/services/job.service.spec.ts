@@ -75,7 +75,10 @@ describe('JobService', () => {
 
     expect(searchJobs).toHaveBeenCalledWith(
       expect.objectContaining({
-        aspirations: expect.objectContaining({locations: ['Reading', 'RG1 1AA']}),
+        aspirations: expect.objectContaining({
+          locations: ['Reading', 'RG1 1AA'],
+          salaryExpectation: {currency: 'GBP'},
+        }),
         homeLocation: expect.objectContaining({
           postcode: 'RG1 1AA',
           latitude: 51.4543,

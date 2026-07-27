@@ -107,8 +107,6 @@ export class JobService {
         desiredRoles,
         industries: [],
         salaryExpectation: {
-          min: 0,
-          max: 0,
           currency: 'GBP'
         },
         locations
