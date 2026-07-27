@@ -14,6 +14,9 @@ describe('BFF runtime configuration', () => {
   it('loads safe bounded defaults', () => {
     expect(loadBffConfig({})).toEqual({
       userManagementGatewayOrigin: 'http://localhost:8083',
+      jobFinderGatewayOrigin: 'http://localhost:8080',
+      sessionAccessCookieName: 'jsc-access-local',
+      sessionCsrfCookieName: 'jsc-csrf-local',
       allowedHosts: ['localhost', '127.0.0.1', 'job-seeker-copilot-client'],
       host: '0.0.0.0',
       port: 3000,
@@ -28,6 +31,8 @@ describe('BFF runtime configuration', () => {
   it('normalises an explicit origin and de-duplicates allowed hosts', () => {
     const config = loadBffConfig({
       USER_MANAGEMENT_GATEWAY_URL: 'https://gateway.example.test:8443',
+      JOB_FINDER_GATEWAY_URL: 'https://jobs.example.test:9443',
+      BFF_SESSION_COOKIE_PROFILE: 'production',
       NG_ALLOWED_HOSTS: 'client.example.test, client.example.test,::1',
       HOST: '::',
       PORT: '8443',
@@ -39,6 +44,9 @@ describe('BFF runtime configuration', () => {
     });
 
     expect(config.userManagementGatewayOrigin).toBe('https://gateway.example.test:8443');
+    expect(config.jobFinderGatewayOrigin).toBe('https://jobs.example.test:9443');
+    expect(config.sessionAccessCookieName).toBe('__Host-jsc-access');
+    expect(config.sessionCsrfCookieName).toBe('__Host-jsc-csrf');
     expect(config.allowedHosts).toEqual(['client.example.test', '::1']);
     expect(config.port).toBe(8443);
   });
@@ -50,6 +58,9 @@ describe('BFF runtime configuration', () => {
     [{USER_MANAGEMENT_GATEWAY_URL: 'https://gateway.test/api'}, 'USER_MANAGEMENT_GATEWAY_URL'],
     [{USER_MANAGEMENT_GATEWAY_URL: 'https://gateway.test?debug=true'}, 'USER_MANAGEMENT_GATEWAY_URL'],
     [{USER_MANAGEMENT_GATEWAY_URL: 'https://gateway.test#'}, 'USER_MANAGEMENT_GATEWAY_URL'],
+    [{JOB_FINDER_GATEWAY_URL: 'https://jobs.test/api'}, 'JOB_FINDER_GATEWAY_URL'],
+    [{JOB_FINDER_GATEWAY_URL: 'https://user:secret@jobs.test'}, 'JOB_FINDER_GATEWAY_URL'],
+    [{BFF_SESSION_COOKIE_PROFILE: 'preview'}, 'BFF_SESSION_COOKIE_PROFILE'],
     [{NG_ALLOWED_HOSTS: '*'}, 'NG_ALLOWED_HOSTS'],
     [{NG_ALLOWED_HOSTS: 'valid.test,bad host'}, 'NG_ALLOWED_HOSTS'],
     [{HOST: 'https://client.test'}, 'HOST'],

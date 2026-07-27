@@ -2,7 +2,9 @@
 
 Angular 21 browser application with an Express SSR/BFF layer. In the selected
 beta path it proxies authentication/profile requests to user-management-gateway
-and postcode requests to location-gateway.
+and postcode requests to location-gateway. Its narrow Job Finder boundary
+proxies authenticated search and saved-job operations, but the Angular Job
+Search journey remains disabled.
 
 > Beta status: not beta-ready. Reproducible builds, browser token custody, and
 > client session lifecycle are in place, while end-to-end readiness work
@@ -17,7 +19,8 @@ root are defined in the Infrastructure
 - Node.js 24 (CI baseline)
 - Java 17 or newer (OpenAPI Generator runtime)
 - npm and the committed `package-lock.json`
-- user-management-gateway on port 8083 and location-gateway on port 8081
+- user-management-gateway on port 8083, job-finder-gateway on port 8080 and
+  location-gateway on port 8081
 
 Runtime configuration is supplied to the SSR process, not committed:
 
@@ -26,10 +29,12 @@ Runtime configuration is supplied to the SSR process, not committed:
 | `PORT` | `3000` | SSR listen port |
 | `HOST` | `0.0.0.0` | SSR listen host |
 | `USER_MANAGEMENT_GATEWAY_URL` | `http://localhost:8083` | Auth/profile gateway |
+| `JOB_FINDER_GATEWAY_URL` | `http://localhost:8080` | Job Finder gateway |
 | `LOCATION_GATEWAY_URL` | `http://location-gateway:8081` | Location gateway |
+| `BFF_SESSION_COOKIE_PROFILE` | `local` | UMG-owned fixed local/production access and CSRF cookie names; production deployment must explicitly select `production` |
 | `NG_ALLOWED_HOSTS` | local/container hosts | Comma-separated SSR hosts |
 | `BFF_JSON_BODY_LIMIT_BYTES` | `65536` | Maximum parsed JSON request body (max 1 MiB) |
-| `BFF_DOWNSTREAM_TIMEOUT_MS` | `5000` | UMG proxy deadline (max 60 seconds) |
+| `BFF_DOWNSTREAM_TIMEOUT_MS` | `5000` | UMG and Job Finder proxy deadline (max 60 seconds) |
 | `BFF_REQUEST_TIMEOUT_MS` | `15000` | Node request timeout (max 120 seconds) |
 | `BFF_HEADERS_TIMEOUT_MS` | `10000` | Node header timeout; cannot exceed request timeout |
 | `BFF_KEEP_ALIVE_TIMEOUT_MS` | `5000` | Node idle keep-alive timeout (max 60 seconds) |
@@ -38,10 +43,12 @@ Runtime configuration is supplied to the SSR process, not committed:
 Never place provider or production credentials in Angular environment files;
 browser bundles cannot keep a secret.
 
-The SSR process validates these values before listening. The UMG setting must be
-an HTTP(S) origin without credentials, a path, query or fragment. Hosts must be
-explicit IP addresses or DNS names; wildcard host allowlists are rejected. All
-numeric limits are positive bounded integers. Invalid configuration terminates
+The SSR process validates these values before listening. Gateway settings must
+be HTTP(S) origins without credentials, a path, query or fragment. Hosts must
+be explicit IP addresses or DNS names; wildcard host allowlists are rejected.
+All numeric limits are positive bounded integers. The default cookie profile is
+the explicit local HTTP developer boundary, not a production configuration;
+production deployment must select `production`. Invalid configuration terminates
 startup without printing the rejected value.
 
 ## Build and test
@@ -66,27 +73,30 @@ into `.cache/`; its locked SHA-256 is verified before execution. See the
 [dependency security baseline](docs/dependency-security.md) for audit policy and
 current residual findings.
 
-The selected User Management beta enables authentication, profile, and location
-lookup only. Job finder, document generation, reporting, and payment UI source is
-retained but disabled pending each capability's complete dependency set and
-separate approval. The Job Finder Gateway 1.2.0 search/saved-job boundary and
-durable Document Generation Gateway 1.4.0 boundary are reproducible but are not
-enabled. See
+The selected beta enables authentication, profile, location lookup and a narrow
+server-side Job Finder search/saved-job boundary. Job Search UI, document
+generation, reporting, and payment UI source remains disabled pending each
+capability's complete dependency set and separate approval. The Job Finder
+Gateway 1.2.0 and durable Document Generation Gateway 1.4.0 contracts are
+reproducible. See
 [ADR 0001](docs/adr/0001-reproducible-beta-api-clients.md) and the
 [browser-session ADR](docs/adr/0002-browser-session-client.md), plus the
 [document-generation contract ADR](docs/adr/0003-document-generation-typescript-contract.md)
 and [Job Finder contract ADR](docs/adr/0004-job-finder-typescript-contract.md).
+The [Job Finder BFF ADR](docs/adr/0005-session-bound-job-finder-bff.md)
+defines its server-only session translation and route allowlist.
 The
 [accessibility baseline](docs/accessibility.md) documents the WCAG interaction
 contract, automated evidence and release checklist. The
 [credential-validation guide](docs/credential-validation.md) records the
 registration and sign-in boundaries and password handling rules.
 
-Express also fails closed before every retained legacy handler for `/api/jobs`,
-`/api/v1/applications`, `/api/v1/document-generation`, `/api/v1/documents`,
-`/api/v1/reports` and `/api/v1/payment`. These prefixes and all child paths return
-the stable `404 FEATURE_NOT_AVAILABLE` beta response, regardless of method or
-browser-supplied identity headers; no downstream request is made.
+Express registers only POST `/api/jobs/search`, POST/GET `/api/jobs/saved`, and
+GET/DELETE `/api/jobs/saved/{savedJobId}` before its fail-closed boundary.
+Every other `/api/jobs` route, plus all `/api/v1/applications`,
+`/api/v1/document-generation`, `/api/v1/documents`, `/api/v1/reports` and
+`/api/v1/payment` routes, returns the stable `404 FEATURE_NOT_AVAILABLE` beta
+response before retained handlers can run.
 
 The retained payment proxy is hardened for its future enablement: it resolves
 the stable owner through UMG's HttpOnly browser session profile, ignores browser
@@ -107,9 +117,17 @@ Angular state, browser storage, response models, logs, or generated source.
 Registration, login, profile update, and logout first bootstrap CSRF through
 `GET /api/auth/csrf`. Angular validates the fixed header name and holds the
 random value only in application memory. Local HTTP cookie names and production
-Secure `__Host-` names are owned by UMG; the client must not read them. On first
+Secure `__Host-` names are owned by UMG; Angular must not read them. On first
 load the beta shell deletes all obsolete `jc_*` session/profile values from both
 `localStorage` and `sessionStorage`.
+
+For the reviewed Job Finder routes, the server BFF selects UMG's fixed local or
+production access-cookie name, validates a compact access JWT, and creates the
+downstream Bearer header only in request memory. Browser `Authorization`,
+`X-User-Id`, forwarding and unrelated headers are ignored. POST and DELETE
+routes additionally compare the CSRF cookie/header in constant time. Missing,
+duplicate or malformed credentials fail before any downstream call, and a
+reflected credential fails closed rather than reaching the browser.
 
 UMG/Spring Security can replace the CSRF cookie when an authenticated security
 context is established. After authentication, profile writes, and logout, the
@@ -132,10 +150,11 @@ the same central session decision and add guard coverage.
 
 Express accepts at most 64 KiB of JSON by default. Oversized and malformed input
 returns stable `413` or `400` JSON without echoing input or parser details. Every
-selected UMG request has a five-second default deadline: expiry aborts the fetch
-and returns `504`; other network failure returns `503`. Logs contain only the
-service name and stable `timeout`/`unavailable` category. They do not contain the
-upstream URL, exception text, request body, cookies or tokens.
+selected UMG and Job Finder request has a five-second default deadline: expiry
+aborts the fetch and returns `504`; other network failure returns `503`. Logs
+contain only the service name and stable `timeout`/`unavailable` category. They
+do not contain the upstream URL, exception text, request body, cookies or
+tokens.
 
 API, static and SSR responses receive CSP, clickjacking, MIME-sniffing, referrer,
 permissions and cross-origin opener protections. The CSP permits scripts and

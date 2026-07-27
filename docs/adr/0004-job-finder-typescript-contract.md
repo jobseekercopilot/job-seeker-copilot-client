@@ -34,12 +34,11 @@ compiles both the Job Finder and Document Generation consumers.
 ## Consequences
 
 The clean client can reproduce the reviewed Job Finder boundary without a
-sibling repository or committed generated output. This does not enable the
-fail-closed `/api/jobs` or `/api/v1/document-generation` BFF prefixes and does
-not claim SEARCH-12, GW-02 or DOCGEN-16 complete.
+sibling repository or committed generated output. ADR 0005 subsequently
+activated only the server-side search and saved-job routes through the HttpOnly
+session BFF. Every retained Job Finder application route and the complete
+`/api/v1/document-generation` prefix remains fail-closed.
 
-Before activation, the BFF must adopt the token-free HttpOnly session model,
-ignore browser `Authorization` and owner headers, and expose only the reviewed
-saved-job and durable-generation routes. The Angular journey must then save the
-selected result, start/recover the durable operation, preview drafts and require
-explicit approval.
+This does not claim SEARCH-12, GW-02 or DOCGEN-16 complete. The Angular journey
+must still save the selected result, start/recover the durable operation,
+preview drafts and require explicit approval.

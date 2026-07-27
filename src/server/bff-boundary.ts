@@ -3,6 +3,9 @@ import { isIP } from 'node:net';
 
 export interface BffConfig {
   userManagementGatewayOrigin: string;
+  jobFinderGatewayOrigin: string;
+  sessionAccessCookieName: string;
+  sessionCsrfCookieName: string;
   allowedHosts: string[];
   host: string;
   port: number;
@@ -56,13 +59,17 @@ function parseAllowedHosts(environment: RuntimeEnvironment): string[] {
   return [...new Set(hosts)];
 }
 
-function parseOrigin(environment: RuntimeEnvironment): string {
-  const raw = environment['USER_MANAGEMENT_GATEWAY_URL'] || 'http://localhost:8083';
+function parseOrigin(
+  environment: RuntimeEnvironment,
+  name: string,
+  fallback: string,
+): string {
+  const raw = environment[name] || fallback;
   let url: URL;
   try {
     url = new URL(raw);
   } catch {
-    throw new Error('USER_MANAGEMENT_GATEWAY_URL must be a valid HTTP(S) origin');
+    throw new Error(`${name} must be a valid HTTP(S) origin`);
   }
 
   if (
@@ -75,14 +82,43 @@ function parseOrigin(environment: RuntimeEnvironment): string {
     || raw.includes('?')
     || raw.includes('#')
   ) {
-    throw new Error('USER_MANAGEMENT_GATEWAY_URL must be an HTTP(S) origin without credentials, path, query or fragment');
+    throw new Error(
+      `${name} must be an HTTP(S) origin without credentials, path, query or fragment`,
+    );
   }
   return url.origin;
 }
 
+function sessionCookieNames(environment: RuntimeEnvironment): {
+  access: string;
+  csrf: string;
+} {
+  const profile = environment['BFF_SESSION_COOKIE_PROFILE'] || 'local';
+  if (!['local', 'production'].includes(profile)) {
+    throw new Error(
+      'BFF_SESSION_COOKIE_PROFILE must be local or production',
+    );
+  }
+  return profile === 'production'
+    ? {access: '__Host-jsc-access', csrf: '__Host-jsc-csrf'}
+    : {access: 'jsc-access-local', csrf: 'jsc-csrf-local'};
+}
+
 export function loadBffConfig(environment: RuntimeEnvironment = process.env): BffConfig {
+  const cookies = sessionCookieNames(environment);
   const config: BffConfig = {
-    userManagementGatewayOrigin: parseOrigin(environment),
+    userManagementGatewayOrigin: parseOrigin(
+      environment,
+      'USER_MANAGEMENT_GATEWAY_URL',
+      'http://localhost:8083',
+    ),
+    jobFinderGatewayOrigin: parseOrigin(
+      environment,
+      'JOB_FINDER_GATEWAY_URL',
+      'http://localhost:8080',
+    ),
+    sessionAccessCookieName: cookies.access,
+    sessionCsrfCookieName: cookies.csrf,
     allowedHosts: parseAllowedHosts(environment),
     host: parseHost(environment),
     port: positiveInteger(environment, 'PORT', 3000, 65_535),

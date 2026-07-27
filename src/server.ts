@@ -16,6 +16,7 @@ import {
 } from './server/bff-boundary';
 import {callUserManagement} from './server/user-management-proxy';
 import {installGracefulShutdown} from './server/graceful-shutdown';
+import {registerJobFinderRoutes} from './server/job-finder-proxy';
 import {callTrustedPaymentGateway, paymentProxyFailure} from './server/payment-proxy';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
@@ -32,8 +33,7 @@ const locationGateway = new LocationGateway();
 // User management gateway URL - configurable via environment variable
 const USER_MANAGEMENT_GATEWAY_URL = bffConfig.userManagementGatewayOrigin;
 
-// Job finder gateway URL - configurable via environment variable
-const JOB_FINDER_GATEWAY_URL = process.env['JOB_FINDER_GATEWAY_URL'] || 'http://localhost:8080';
+const JOB_FINDER_GATEWAY_URL = bffConfig.jobFinderGatewayOrigin;
 
 const DOCUMENT_GENERATION_GATEWAY_URL = process.env['DOCUMENT_GENERATION_GATEWAY_URL'] || 'http://localhost:8092';
 
@@ -147,43 +147,17 @@ app.get('/api/postcodes/:postcode', async (req, res) => {
   res.status(result.statusCode).json(result);
 });
 
-// These capabilities have no authoritative private contract in the selected
-// User Management beta. Register the fail-closed boundary before their retained
-// legacy proxy handlers so they cannot be reached accidentally.
-app.use(BETA_DISABLED_API_PREFIXES, rejectBetaDisabledCapability);
-
-/**
- * API Route: Search Jobs via Job Finder Gateway
- * Proxies POST requests from the Angular frontend to the Java job-finder-gateway.
- * Forwards the Authorization header (JWT Bearer token) for authentication.
- */
-app.post('/api/jobs/search', async (req, res) => {
-  try {
-    const token = req.headers['authorization'] as string;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    if (token) headers['Authorization'] = token;
-    const userId = req.headers['x-user-id'];
-    if (typeof userId === 'string') headers['X-User-Id'] = userId;
-
-    const response = await fetch(`${JOB_FINDER_GATEWAY_URL}/api/jobs/search`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(req.body),
-    });
-
-    const data = await response.text();
-    res.status(response.status).send(data);
-  } catch (error: unknown) {
-    console.error('Job search proxy error:', error);
-    res.status(503).json({
-      error: 'SERVICE_UNAVAILABLE',
-      message: 'Job search service is currently unavailable',
-    });
-  }
+registerJobFinderRoutes(app, {
+  accessCookieName: bffConfig.sessionAccessCookieName,
+  csrfCookieName: bffConfig.sessionCsrfCookieName,
+  origin: bffConfig.jobFinderGatewayOrigin,
+  timeoutMs: bffConfig.downstreamTimeoutMs,
 });
+
+// These capabilities have no authoritative private contract in the selected
+// beta, except for the narrow Job Finder routes registered above. Keep this
+// boundary before retained legacy proxy handlers so they cannot be reached.
+app.use(BETA_DISABLED_API_PREFIXES, rejectBetaDisabledCapability);
 
 app.get('/api/jobs/applications/user/:userId', async (req, res) => {
   await proxyJobFinderRequest(
