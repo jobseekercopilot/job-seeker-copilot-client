@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { JobCardComponent } from './job-card.component';
 import { Job } from '../../models/job-search.model';
-import { DownloadFileResponse, GenerationDownloadsResponse } from '../../../generated/api/document-generation-gateway';
+import { DownloadFileResponse, GenerationDownloadsResponse } from '../../api/document-generation-gateway';
 
 describe('JobCardComponent', () => {
   const job: Job = {

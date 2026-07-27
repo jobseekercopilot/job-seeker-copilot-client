@@ -6,7 +6,7 @@ import { UpdateApplicationStatusRequest } from '../../api/job-finder';
 import {
   DownloadFileResponse,
   GenerationDownloadsResponse,
-} from '../../../generated/api/document-generation-gateway';
+} from '../../api/document-generation-gateway';
 
 type UploadDocumentKind = 'CV' | 'COVER_LETTER';
 type ApplicationStatus = NonNullable<Job['applicationStatus']>;

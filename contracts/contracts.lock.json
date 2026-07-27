@@ -59,7 +59,7 @@
       "sourceCommit": "1d03324c2b80fbe44ebb5faccbc158334969464a",
       "path": "contracts/document-generation-gateway/1.4.0/openapi.json",
       "sha256": "91e922123fa788cb71f6c4a9b16247dc8fd8891fd064de25d9b4c6af49688457",
-      "output": "src/generated/api/document-generation-gateway",
+      "output": "src/app/api/document-generation-gateway",
       "requiredPaths": [
         "/api/v1/document-generation/saved-jobs/{savedJobId}/operations",
         "/api/v1/document-generation/operations/{operationId}",

@@ -7,6 +7,9 @@ import {verifyContractManifest} from './contract-manifest.mjs';
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const generatorDir = resolve(rootDir, '.cache/openapi-generator');
+const retiredOutputDirectories = [
+  'src/generated/api/document-generation-gateway',
+];
 
 const sha256 = (contents) => createHash('sha256').update(contents).digest('hex');
 
@@ -47,6 +50,9 @@ export async function generateApiClients(outputRoot = rootDir) {
 
   for (const outputDirectory of outputDirectories) {
     await rm(outputDirectory, {recursive: true, force: true});
+  }
+  for (const retiredOutput of retiredOutputDirectories) {
+    await rm(resolve(outputRoot, retiredOutput), {recursive: true, force: true});
   }
 
   for (const contract of lock.contracts) {

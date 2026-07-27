@@ -8,7 +8,7 @@ import {
   DocumentGenerationControllerApi,
   DownloadFileResponse,
   Job as GenerationJob,
-} from '../../generated/api/document-generation-gateway';
+} from '../api/document-generation-gateway';
 
 export type DocumentKind = 'CV' | 'COVER_LETTER';
 export type UploadFormat = 'DOCX' | 'PDF';
