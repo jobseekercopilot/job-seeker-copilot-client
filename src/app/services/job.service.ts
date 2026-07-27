@@ -81,10 +81,13 @@ export class JobService {
       }
       if (prefs.region) {
         homeDisplayName = String(prefs.region).trim();
-        const primaryRegion = homeDisplayName.split(',', 1)[0]?.trim();
-        if (primaryRegion) {
-          locations.push(primaryRegion);
-        }
+      }
+      const adminDistrict = prefs.adminDistrict
+        ? String(prefs.adminDistrict).trim()
+        : '';
+      const searchableLocation = adminDistrict || homeDisplayName?.split(',', 1)[0]?.trim();
+      if (searchableLocation) {
+        locations.push(searchableLocation);
       }
       if (homePostcode) {
         locations.push(homePostcode);

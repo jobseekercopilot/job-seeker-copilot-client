@@ -69,7 +69,11 @@ describe('JobService', () => {
         'Java',
         '',
         'Software Developer',
-        JSON.stringify({postcode: 'RG1 1AA', region: 'Reading, South East'}),
+        JSON.stringify({
+          postcode: 'RG1 1AA',
+          region: 'South East',
+          adminDistrict: 'Reading',
+        }),
       )
       .subscribe();
 
