@@ -5,20 +5,22 @@ Contract-policy refresh: 27 July 2026
 
 Status: **Not beta-ready.** The current UI demonstrates registration, login,
 profile editing and postcode lookup. Reproducible builds, dependency Highs,
-browser token custody, and client session lifecycle are remediated, but location
-search, negative-path coverage and durable browser E2E evidence remain incomplete.
+browser token custody, and client session lifecycle are remediated, but the Job
+Search user journey, negative-path coverage and durable browser E2E evidence
+remain incomplete.
 
 ## Verified role
 
 The Angular application is served by an Express SSR/BFF process. Browser calls
-to `/api/auth/*` and `/api/postcodes/*` are proxied by `src/server.ts` to the
-user-management and location gateways. The browser does not call those Java
-services directly. Generated TypeScript clients are compile-time dependencies.
+to `/api/auth/*`, `/api/postcodes/*` and the narrow reviewed Job Finder routes
+are proxied by `src/server.ts` to the user-management, location and Job Finder
+gateways. The browser does not call those Java services directly. Generated
+TypeScript clients are compile-time dependencies.
 
 ## Current baseline
 
 - `npm test -- --watch=false`: four pinned contracts generated and validated,
-  followed by 14 contract-policy tests and 102 tests in 14 Angular/Vitest
+  followed by 14 contract-policy tests and 134 tests in 15 Angular/Vitest
   files, including component axe, keyboard, focus, resilience and
   duplicate-submit coverage.
 - `npm run lint`: passed for handwritten sources. Ignored generated API clients
@@ -50,9 +52,12 @@ services directly. Generated TypeScript clients are compile-time dependencies.
 | [CLIENT-11](https://github.com/jobseekercopilot/job-seeker-copilot-client/issues/11) | Bring production bundles within agreed budgets | Current production build warns that the initial bundle is 656.07 kB against a 500 kB warning budget and six component styles exceed their warning budgets. | **Medium / P2 frontend:** slower startup and growing CSS can degrade beta UX, especially on constrained devices. | Profile the selected path, remove/defer unused code and styles, agree realistic budgets, and make the build warning-free without hiding regressions. | CLIENT-01. | No | M |
 | [CLIENT-12](https://github.com/jobseekercopilot/job-seeker-copilot-client/issues/17) | Fail closed for beta-disabled payment proxy routes | **Remediated:** payment joins the explicit fail-closed prefix boundary before all retained handlers; GET/POST coverage proves wallet, transactions, pricing, purchase, checkout and unknown children return the stable beta 404 without reaching downstream logic. | **High / P1 security/scope-control, mitigated in repository:** browser-selected identity headers and payment bodies cannot leave the BFF on disabled routes. | Retain the explicit prefix inventory and no-later-handler coverage until legacy handlers are separately removed or approved. | CLIENT-01 and CLIENT-04 complete. | No | S |
 | [CLIENT-13](https://github.com/jobseekercopilot/job-seeker-copilot-client/issues/26) | Correct anonymous beta heading and contrast violations | **Remediated in repository:** the anonymous page uses a single H1 with sequential H2 section headings; inactive tabs and small instructional text use contrast-safe foreground classes verified by component assertions and the authoritative built-browser axe profile. | **Medium / P1 accessibility risk mitigated in repository:** browser-computed evidence no longer reports the serious contrast or missing-H1 violations found after CLIENT-08. | Retain create/sign-in semantic and class assertions plus the E2E registration axe checkpoints. | CLIENT-08 complete; blocks E2E-05 until the browser profile passes. | Yes | S |
+| [SEARCH-12B](https://github.com/jobseekercopilot/job-seeker-copilot-client/issues/41) | Add a session-bound Job Finder BFF proxy | **Remediated in repository:** the BFF maps only the UMG-owned HttpOnly access cookie to downstream Bearer identity for five allowlisted search/saved-job operations, applies CSRF to POST/DELETE, validates UUID/paging, bounds deadlines, strips caller identity and keeps all retained routes blocked. | **Critical / P0 identity and CSRF risk mitigated in repository:** Angular never receives a token and a caller cannot select another owner or use the retained unsafe proxy. | Retain local/production config, credential forgery, CSRF, route allowlist, timeout, response-redaction and fail-closed tests; complete SEARCH-12 Angular and browser evidence before exposing the feature. | CLIENT-02/03/04, SEARCH-11A and SEARCH-12A complete. | No | M |
 
 ## Scope not audited
 
-Job finding, documents, reporting, payment, AI-provider behaviour, landing-page
-deployment and AWS configuration were inspected only where they affected this
-client's build. They were not functionally or security audited.
+The Job Finder session/BFF boundary was audited under SEARCH-12B. The user-facing
+Job Search journey, documents, reporting, payment, AI-provider behaviour,
+landing-page deployment and AWS configuration were inspected only where they
+affected this client's build. They were not otherwise functionally or security
+audited.
