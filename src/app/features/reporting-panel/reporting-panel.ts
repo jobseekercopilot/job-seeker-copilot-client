@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
-import { ReportingSummaryResponse } from '../../../generated/api/reporting-gateway';
+import { ReportingSummaryResponse } from '../../api/reporting-gateway';
 import { ReportingService } from '../../services/reporting.service';
 import {
   ApplicationEvent,

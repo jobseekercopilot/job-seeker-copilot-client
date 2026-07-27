@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, OnInit, signal, PLATFORM_ID, inject, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, OnInit, signal, PLATFORM_ID, inject, ViewChild } from '@angular/core';
 import { isPlatformBrowser, CommonModule } from '@angular/common';
 import { NavigationEnd, Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
+import {firstValueFrom} from 'rxjs';
 import { ClaimantProfileComponent } from './features/claimant-profile/claimant-profile';
 import { NavigationBar } from './features/navigation-bar/navigation-bar';
 import { LandingAuthComponent } from './features/landing-auth/landing-auth';
@@ -15,6 +16,7 @@ import type { GatewayResponse, UserProfile } from './api';
 import { normaliseProfile, profileToSearchText } from './models/user-profile.model';
 import { FALLBACK_PENCE_PER_TOKEN, pencePerTokenFromPlans } from './utils/ai-credit';
 import {removeLegacySessionData} from './services/browser-storage';
+import {BrowserSessionService} from './services/browser-session.service';
 
 type WorkspaceTab = 'search' | 'applications' | 'documents';
 
@@ -27,11 +29,7 @@ type WorkspaceTab = 'search' | 'applications' | 'documents';
     ClaimantProfileComponent,
     NavigationBar,
     LandingAuthComponent,
-    JobResultsComponent,
-    ReportingPanelComponent,
-    PaymentPanelComponent,
-    MyApplicationsComponent,
-    DocumentsWorkspaceComponent
+    JobResultsComponent
   ],
   templateUrl: './app.html',
   styleUrl: './app.css',
@@ -40,6 +38,8 @@ export class App implements OnInit {
   private platformId = inject(PLATFORM_ID);
   private router = inject(Router);
   private paymentService = inject(PaymentService);
+  private browserSession = inject(BrowserSessionService);
+  readonly sessionStatus = this.browserSession.status;
 
   // User Onboarding & Auth Details
   isLoggedIn = signal(false);
@@ -77,6 +77,27 @@ export class App implements OnInit {
   toastMessage = signal<string | null>(null);
   toastType = signal<'success' | 'info' | 'error'>('success');
 
+  constructor() {
+    effect(() => {
+      const user = this.browserSession.user();
+      if (user) {
+        this.profileName.set(user.name ?? '');
+        this.profileEmail.set(user.email ?? '');
+        this.structuredProfile.set(user.profile ?? null);
+        const searchText = profileToSearchText(user.profile ?? {});
+        this.profileSkills.set(searchText.skills);
+        this.profileExperience.set(searchText.experience);
+        this.profileAspirations.set(searchText.aspirations);
+        this.profileWorkPrefs.set(searchText.workPrefs);
+        this.isLoggedIn.set(true);
+        return;
+      }
+      if (this.sessionStatus() === 'anonymous') {
+        this.clearAuthenticatedView();
+      }
+    });
+  }
+
   ngOnInit() {
     // Only run this logic if we are actually in a browser
     if (isPlatformBrowser(this.platformId)) {
@@ -94,7 +115,12 @@ export class App implements OnInit {
       } catch {
         console.warn('Unable to remove legacy browser session data.');
       }
+      void this.retrySession();
     }
+  }
+
+  async retrySession(): Promise<void> {
+    await firstValueFrom(this.browserSession.restore());
   }
 
   paymentReturnTitle(): string {
@@ -166,6 +192,7 @@ export class App implements OnInit {
     this.profileWorkPrefs.set(searchText.workPrefs);
 
     if (event.apiResult?.success) {
+      this.browserSession.updateCurrentProfile(normaliseProfile(profile));
       this.saveProfile(false);
       this.showToast('Profile updated on server!', 'success');
     } else if (event.apiError) {
@@ -175,7 +202,7 @@ export class App implements OnInit {
       this.saveProfile(false);
       const status = this.httpStatus(event.apiError);
       if (status === 401 || status === 403 || status === 404) {
-        this.logout();
+        this.browserSession.handleAuthenticatedError(event.apiError);
         this.showToast('Your session is no longer valid. Please sign in or register again.', 'error');
       } else {
         this.showToast(this.httpErrorMessage(event.apiError, 'Unable to save profile to the server.'), 'error');
@@ -202,28 +229,42 @@ export class App implements OnInit {
   }
 
   handleOnboarded(data: { profile: UserProfile; name: string; email: string }) {
-    this.profileName.set(data.name);
-    this.profileEmail.set(data.email);
-    this.structuredProfile.set(data.profile);
-
-    // Convert structured profile to search text for backward compatibility
-    const searchText = profileToSearchText(data.profile);
-    this.profileSkills.set(searchText.skills);
-    this.profileExperience.set(searchText.experience);
-    this.profileAspirations.set(searchText.aspirations);
-    this.profileWorkPrefs.set(searchText.workPrefs);
-
-    this.isLoggedIn.set(true);
+    this.browserSession.acceptAuthenticatedUser({
+      name: data.name,
+      email: data.email,
+      profile: normaliseProfile(data.profile),
+    });
     this.saveProfile();
-    this.refreshAiTokenBalance();
-    this.refreshAiCreditPricing();
     this.showToast(`Welcome, ${data.name}! Your Jobseeker Copilot workspace is initialized.`, 'success');
   }
 
-  logout() {
-    this.isLoggedIn.set(false);
-    this.userAccountId.set('');
+  async logout(): Promise<void> {
+    try {
+      const response = await firstValueFrom(this.browserSession.logout());
+      if (!response.success) {
+        this.showToast('The session could not be ended. Please try again.', 'error');
+        return;
+      }
+    } catch {
+      if (this.sessionStatus() !== 'anonymous') {
+        this.showToast('The session could not be ended. Please try again.', 'error');
+        return;
+      }
+    }
+    this.clearAuthenticatedView();
     this.showToast('Logged out of claimant session securely.', 'info');
+  }
+
+  private clearAuthenticatedView(): void {
+    this.isLoggedIn.set(false);
+    this.profileName.set('');
+    this.profileEmail.set('');
+    this.structuredProfile.set(null);
+    this.profileSkills.set('');
+    this.profileExperience.set('');
+    this.profileAspirations.set('');
+    this.profileWorkPrefs.set('');
+    this.userAccountId.set('');
   }
 
   triggerJobSearch() {

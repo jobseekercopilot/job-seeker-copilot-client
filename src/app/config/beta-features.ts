@@ -1,7 +1,7 @@
 export const betaFeatures = {
   userManagement: true,
   locationLookup: true,
-  jobFinder: false,
+  jobFinder: true,
   documentGeneration: false,
   reporting: false,
   payments: false,

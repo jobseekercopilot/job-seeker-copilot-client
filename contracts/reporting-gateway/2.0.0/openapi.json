@@ -1,0 +1,227 @@
+{
+  "openapi" : "3.0.1",
+  "info" : {
+    "title" : "Jobseeker Copilot - Reporting Gateway API",
+    "description" : "Frontend-facing reporting gateway.",
+    "version" : "2.0.0"
+  },
+  "servers" : [ {
+    "url" : "http://localhost",
+    "description" : "Generated server url"
+  } ],
+  "security" : [ {
+    "bearerAuth" : [ ]
+  } ],
+  "paths" : {
+    "/api/v1/reports/uc-journal" : {
+      "get" : {
+        "tags" : [ "reporting-gateway-controller" ],
+        "summary" : "Get deterministic Universal Credit journal text",
+        "operationId" : "ucJournal",
+        "responses" : {
+          "502" : {
+            "description" : "Reporting service failed",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UcJournalResponse"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "UC journal text returned",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UcJournalResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Valid access token required",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UcJournalResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/summary" : {
+      "get" : {
+        "tags" : [ "reporting-gateway-controller" ],
+        "summary" : "Get reporting summary",
+        "operationId" : "summary",
+        "responses" : {
+          "502" : {
+            "description" : "Reporting service failed",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ReportingSummaryResponse"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "Reporting summary returned",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ReportingSummaryResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Valid access token required",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ReportingSummaryResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "UcJournalResponse" : {
+        "type" : "object",
+        "properties" : {
+          "userId" : {
+            "type" : "string"
+          },
+          "journalText" : {
+            "type" : "string"
+          }
+        }
+      },
+      "ActivityTimelineItem" : {
+        "type" : "object",
+        "properties" : {
+          "occurredAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "jobTitle" : {
+            "type" : "string"
+          },
+          "companyName" : {
+            "type" : "string"
+          },
+          "text" : {
+            "type" : "string"
+          }
+        }
+      },
+      "ApplicationSummary" : {
+        "type" : "object",
+        "properties" : {
+          "documentsGenerated" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "applied" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "interview" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "unsuccessful" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "offer" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "accepted" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "rejectedByUser" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "total" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }
+      },
+      "CommitmentProgress" : {
+        "type" : "object",
+        "properties" : {
+          "requiredHours" : {
+            "type" : "number"
+          },
+          "completedHours" : {
+            "type" : "number"
+          },
+          "remainingHours" : {
+            "type" : "number"
+          },
+          "percentageComplete" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "periodStart" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "periodEnd" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "remainingText" : {
+            "type" : "string"
+          }
+        }
+      },
+      "ReportingSummaryResponse" : {
+        "type" : "object",
+        "properties" : {
+          "userId" : {
+            "type" : "string"
+          },
+          "applicationSummary" : {
+            "$ref" : "#/components/schemas/ApplicationSummary"
+          },
+          "activityTimeline" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ActivityTimelineItem"
+            }
+          },
+          "commitmentProgress" : {
+            "$ref" : "#/components/schemas/CommitmentProgress"
+          },
+          "ucJournalPreview" : {
+            "type" : "string"
+          }
+        }
+      }
+    },
+    "securitySchemes" : {
+      "bearerAuth" : {
+        "type" : "http",
+        "scheme" : "bearer",
+        "bearerFormat" : "JWT"
+      }
+    }
+  }
+}

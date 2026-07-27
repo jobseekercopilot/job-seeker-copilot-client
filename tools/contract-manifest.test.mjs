@@ -39,7 +39,31 @@ test('accepts the pinned contract manifest', async () => {
     'location-gateway',
     'job-finder-gateway',
     'document-generation-gateway',
+    'reporting-gateway',
   ]);
+});
+
+test('pins the reporting summary and evidence contract', async () => {
+  const lock = await verifyContractManifest(rootDir);
+  const reporting = lock.contracts.find(({id}) => id === 'reporting-gateway');
+  const contract = JSON.parse(
+    await readFile(resolve(rootDir, reporting.path), 'utf8'),
+  );
+
+  assert.equal(reporting.version, '2.0.0');
+  assert.equal(reporting.sourceRepository, 'jobseekercopilot/reporting-gateway');
+  assert.equal(
+    reporting.sourceCommit,
+    '5abc402b9264dd03a6cd85fc019bd7f57db18172',
+  );
+  assert.equal(reporting.output, 'src/app/api/reporting-gateway');
+  assert.deepEqual(reporting.requiredPaths, [
+    '/api/v1/reports/summary',
+    '/api/v1/reports/uc-journal',
+  ]);
+  assert.equal(contract.info.version, '2.0.0');
+  assert.ok(contract.components.schemas.ReportingSummaryResponse);
+  assert.ok(contract.components.schemas.UcJournalResponse);
 });
 
 test('pins the token-free UMG browser-session contract', async () => {

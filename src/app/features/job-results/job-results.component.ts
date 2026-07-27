@@ -5,14 +5,22 @@ import { DocumentUploadRequest, JobCardComponent } from '../job-card/job-card.co
 import { JobService } from '../../services/job.service';
 import { DocumentGenerationService } from '../../services/document-generation.service';
 import { Job } from '../../models/job-search.model';
-import { ApplicationRecordResponse, UpdateApplicationStatusRequest } from '../../api/job-finder';
+import { ApplicationRecordResponse } from '../../api/job-finder';
 import {
   DownloadFileResponse,
   GenerationDownloadsResponse,
 } from '../../api/document-generation-gateway';
 import {logMalformedProviderResult} from '../../../shared/provider-content-policy';
 
-type StatusUpdateTarget = UpdateApplicationStatusRequest['status'];
+type StatusUpdateTarget =
+  | 'DOCUMENTS_GENERATED'
+  | 'APPLIED'
+  | 'INTERVIEW'
+  | 'UNSUCCESSFUL'
+  | 'OFFER'
+  | 'ACCEPTED'
+  | 'REJECTED_BY_USER'
+  | 'WITHDRAWN';
 type SortOption = 'MOST_RELEVANT' | 'CLOSEST' | 'HIGHEST_SALARY' | 'NEWEST_POSTED' | 'OLDEST_POSTED' | 'COMPANY_AZ' | 'JOB_TITLE_AZ';
 
 @Component({
@@ -37,6 +45,7 @@ export class JobResultsComponent implements OnInit {
   workPrefs = input<string>('');
   authToken = input<string>('');
   userId = input<string>('');
+  applicationToolsAvailable = input(false);
 
   // Output to notify parent to show a toast
   notify = output<{ message: string; type: 'success' | 'info' | 'error' }>();
@@ -154,12 +163,6 @@ export class JobResultsComponent implements OnInit {
   }
 
   search(): void {
-    const token = this.authToken();
-    if (!token) {
-      this.error.set('Authentication token is missing. Please log in again.');
-      return;
-    }
-
     this.loading.set(true);
     this.error.set(null);
 

@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 import {
   ReportingSummaryResponse,
   UcJournalResponse,
-} from '../../generated/api/reporting-gateway';
+} from '../api/reporting-gateway';
 
 @Injectable({ providedIn: 'root' })
 export class ReportingService {

@@ -40,6 +40,18 @@ describe('JobCardComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Generate CV & Cover Letter');
   });
 
+  it('labels application and document actions as coming next when they are not integrated', () => {
+    const fixture = createFixture({ applicationToolsAvailable: false });
+    expandCard(fixture);
+    const button: HTMLButtonElement = fixture.debugElement
+      .queryAll(By.css('button'))
+      .find(candidate => candidate.nativeElement.textContent.includes('CV & Cover Letter — Coming next'))!
+      .nativeElement;
+
+    expect(button.disabled).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('Job details are available');
+  });
+
   it('shows the loading state and disables generation while generating', () => {
     const fixture = createFixture({ generating: true });
     expandCard(fixture);
@@ -289,6 +301,7 @@ describe('JobCardComponent', () => {
     generating?: boolean;
     generationError?: string;
     downloads?: GenerationDownloadsResponse;
+    applicationToolsAvailable?: boolean;
   } = {}) {
     const fixture = TestBed.createComponent(JobCardComponent);
     fixture.componentRef.setInput('job', options.job ?? job);
@@ -297,6 +310,7 @@ describe('JobCardComponent', () => {
     fixture.componentRef.setInput('downloads', options.downloads ?? null);
     fixture.componentRef.setInput('cvDocumentId', 'cv-123');
     fixture.componentRef.setInput('coverLetterDocumentId', 'cl-456');
+    fixture.componentRef.setInput('applicationToolsAvailable', options.applicationToolsAvailable ?? true);
     fixture.detectChanges();
     return fixture;
   }

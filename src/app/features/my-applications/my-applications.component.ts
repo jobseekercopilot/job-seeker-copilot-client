@@ -1,7 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
-import { UpdateApplicationStatusRequest } from '../../api/job-finder';
 import {
   ApplicationEvent,
   ApplicationFilter,
@@ -15,7 +14,15 @@ import {
   GenerationDownloadsResponse,
 } from '../../api/document-generation-gateway';
 
-type StatusUpdateTarget = UpdateApplicationStatusRequest['status'];
+type StatusUpdateTarget =
+  | 'DOCUMENTS_GENERATED'
+  | 'APPLIED'
+  | 'INTERVIEW'
+  | 'UNSUCCESSFUL'
+  | 'OFFER'
+  | 'ACCEPTED'
+  | 'REJECTED_BY_USER'
+  | 'WITHDRAWN';
 
 interface FilterOption {
   key: ApplicationFilter;

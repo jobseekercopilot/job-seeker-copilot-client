@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable, catchError, map, of, switchMap, throwError } from 'rxjs';
-import { ApplicationRecordResponse, UpdateApplicationStatusRequest } from '../api/job-finder';
+import { ApplicationRecordResponse } from '../api/job-finder';
 import { JobService, WithdrawGeneratedApplicationResponse } from './job.service';
 
 export type ApplicationStatus = NonNullable<ApplicationRecordResponse['status']>;
@@ -65,7 +65,7 @@ export class ApplicationTrackerService {
 
   updateStatus(
     applicationId: string,
-    status: UpdateApplicationStatusRequest['status'],
+    status: string,
     token: string,
     userId: string,
   ): Observable<TrackedApplication> {

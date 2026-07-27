@@ -161,6 +161,7 @@
           [coverLetterDocumentId]="generatedDocumentIds()[job.id ?? '']?.coverLetterDocumentId ?? job.coverLetterDocumentId ?? null"
           [uploadingDocument]="uploadingDocuments()[job.id ?? ''] ?? null"
           [updatingStatus]="updatingApplicationStatuses()[job.id ?? ''] ?? null"
+          [applicationToolsAvailable]="applicationToolsAvailable()"
           (generateDocuments)="generateDocuments($event)"
           (updateApplicationStatus)="updateApplicationStatus(job, $event)"
           (withdrawGeneratedApplication)="withdrawGeneratedApplication(job)"

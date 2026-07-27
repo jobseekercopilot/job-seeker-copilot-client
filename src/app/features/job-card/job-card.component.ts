@@ -53,6 +53,7 @@ export class JobCardComponent {
   coverLetterDocumentId = input<string | null>(null);
   uploadingDocument = input<UploadDocumentKind | null>(null);
   updatingStatus = input<StatusUpdateTarget | null>(null);
+  applicationToolsAvailable = input(false);
   generateDocuments = output<Job>();
   updateApplicationStatus = output<StatusUpdateTarget>();
   downloadFile = output<DownloadFileResponse>();
@@ -87,11 +88,12 @@ export class JobCardComponent {
 
   toggleStatusMenu(event: MouseEvent): void {
     event.stopPropagation();
-    if (this.statusActions().length === 0 || this.updatingStatus()) return;
+    if (!this.applicationToolsAvailable() || this.statusActions().length === 0 || this.updatingStatus()) return;
     this.statusMenuOpen.update(open => !open);
   }
 
   requestGeneration(): void {
+    if (!this.applicationToolsAvailable()) return;
     this.generateDocuments.emit(this.job());
   }
 

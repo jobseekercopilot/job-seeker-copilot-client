@@ -1,11 +1,10 @@
-import { Injectable } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { from, Observable } from 'rxjs';
 import { Job } from '../models/job-search.model';
 import {
-  Configuration,
   DocumentDownloadsResponse,
   DocumentGenerationResponse,
-  DocumentGenerationControllerApi,
+  DocumentGenerationControllerService,
   DownloadFileResponse,
   Job as GenerationJob,
 } from '../api/document-generation-gateway';
@@ -41,25 +40,20 @@ export interface DocumentFileMetadata {
 
 @Injectable({ providedIn: 'root' })
 export class DocumentGenerationService {
-  private readonly api = new DocumentGenerationControllerApi(
-    new Configuration({ basePath: '' })
-  );
+  private readonly api = inject(DocumentGenerationControllerService);
 
   generate(job: Job, token: string, userId: string): Observable<DocumentGenerationResponse> {
     if (!job.id || !job.title || !job.company || !job.description) {
       throw new Error('The selected job does not contain the data required for generation.');
     }
 
-    return from(this.api.generate({
-      jobId: job.id,
-      xUserId: userId || undefined,
-      documentGenerationRequest: { job: job as GenerationJob },
-    }, async ({ init }) => ({
-      headers: {
-        ...init.headers,
-        ...this.authorizationHeader(token),
-      },
-    })));
+    return this.api.generate(
+      job.id,
+      {job: job as GenerationJob},
+      'body',
+      false,
+      {transferCache: false},
+    );
   }
 
   latestFiles(generatedDocumentId: string): Observable<DocumentDownloadsResponse> {
@@ -150,13 +144,9 @@ export class DocumentGenerationService {
       throw new Error('Download file id is missing.');
     }
 
-    const requestOptions = await this.api.downloadRequestOpts({ fileId: file.fileId });
-    const response = await fetch(requestOptions.path, {
-      method: requestOptions.method,
-      headers: {
-        ...requestOptions.headers,
-        ...this.authorizationHeader(token),
-      },
+    const response = await fetch(`/api/v1/document-generation/files/${encodeURIComponent(file.fileId)}/download`, {
+      method: 'GET',
+      headers: this.authorizationHeader(token),
     });
 
     if (!response.ok) {

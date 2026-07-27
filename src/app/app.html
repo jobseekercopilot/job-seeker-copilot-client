@@ -21,7 +21,20 @@
 }
 
 <div class="app-shell min-h-screen font-sans antialiased pb-16">
-  @if (paymentReturnStatus()) {
+  @if (sessionStatus() === 'checking') {
+    <main class="dashboard-main mx-auto px-4 sm:px-6 lg:px-8 py-12" aria-live="polite">
+      <p class="eyebrow">Secure session</p>
+      <h1>Opening your Job Seeker Copilot workspace</h1>
+      <p role="status">Checking your session before displaying personal information.</p>
+    </main>
+  } @else if (sessionStatus() === 'unavailable') {
+    <main class="dashboard-main mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <p class="eyebrow">Secure session</p>
+      <h1>Session service temporarily unavailable</h1>
+      <p role="alert">Your personal workspace has not been displayed because the session could not be verified.</p>
+      <button type="button" class="return-button" (click)="retrySession()">Try again</button>
+    </main>
+  } @else if (paymentReturnStatus()) {
     <main class="payment-return-page mx-auto px-4 sm:px-6 lg:px-8 mt-8">
       <section class="payment-return-card">
         <span class="eyebrow">AI Credit checkout</span>
@@ -31,9 +44,11 @@
       </section>
 
       @if (isLoggedIn() && paymentReturnStatus() === 'success') {
-        <app-payment-panel [userId]="userAccountId()"
-                           mode="purchase"
-                           (balanceChanged)="updateAiTokenBalance($event)"></app-payment-panel>
+        <section class="capability-placeholder">
+          <span class="capability-state state-unavailable">Temporarily unavailable</span>
+          <h2>AI Credit and payments</h2>
+          <p>The secure payment boundary is retained. Checkout confirmation will be enabled after the restored interface is approved.</p>
+        </section>
       }
     </main>
   } @else if (!isLoggedIn()) {
@@ -56,12 +71,14 @@
             <div>
               <span class="eyebrow">AI Credit</span>
               <h1>Buy AI Credit</h1>
-              <p>Choose a credit package for AI-powered job search features.</p>
+              <p>The complete AI Credit area is visible while its secure runtime path awaits checkpoint approval.</p>
             </div>
           </div>
-          <app-payment-panel [userId]="userAccountId()"
-                             mode="purchase"
-                             (balanceChanged)="updateAiTokenBalance($event)"></app-payment-panel>
+          <section class="capability-placeholder" data-testid="workspace-payment">
+            <span class="capability-state state-unavailable">Temporarily unavailable</span>
+            <h2>Payments</h2>
+            <p>Secure session-derived Stripe and fixture payment paths are retained but are not enabled during this visual checkpoint.</p>
+          </section>
         </section>
       } @else if (currentRoute() === 'history') {
         <section class="tokens-page">
@@ -72,15 +89,40 @@
               <p>Track AI Credit purchases, AI feature usage, and running balances.</p>
             </div>
           </div>
-          <app-payment-panel [userId]="userAccountId()"
-                             mode="history"
-                             (balanceChanged)="updateAiTokenBalance($event)"></app-payment-panel>
+          <section class="capability-placeholder" data-testid="workspace-ai-credit-history">
+            <span class="capability-state state-unavailable">Temporarily unavailable</span>
+            <h2>AI Credit history</h2>
+            <p>The spending log will be enabled after its secure payment integration is confirmed.</p>
+          </section>
         </section>
       } @else {
+        <section class="capability-overview" aria-labelledby="workspace-overview-title">
+          <div>
+            <p class="eyebrow">Full private-beta application</p>
+            <h1 id="workspace-overview-title">Your complete Job Seeker Copilot workspace</h1>
+            <p>All major product areas remain visible while secure integrations are enabled incrementally.</p>
+          </div>
+          <div class="capability-grid">
+            <article data-testid="capability-profile"><span class="capability-state state-available">Available</span><strong>Profile</strong></article>
+            <article data-testid="capability-job-search"><span class="capability-state state-fixture">Fixture-backed</span><strong>Job search</strong></article>
+            <article data-testid="capability-job-details"><span class="capability-state state-fixture">Fixture-backed</span><strong>Job matching &amp; details</strong></article>
+            <article data-testid="capability-applications"><span class="capability-state state-unavailable">Temporarily unavailable</span><strong>Application tracking</strong></article>
+            <article data-testid="capability-generation"><span class="capability-state state-next">Coming next</span><strong>CV &amp; cover-letter generation</strong></article>
+            <article data-testid="capability-documents"><span class="capability-state state-unavailable">Temporarily unavailable</span><strong>Documents &amp; export</strong></article>
+            <article data-testid="capability-reporting"><span class="capability-state state-unavailable">Temporarily unavailable</span><strong>Reporting &amp; evidence</strong></article>
+            <article data-testid="capability-ai-credit"><span class="capability-state state-unavailable">Temporarily unavailable</span><strong>AI Credit</strong></article>
+            <article data-testid="capability-payments"><span class="capability-state state-unavailable">Temporarily unavailable</span><strong>Payments</strong></article>
+          </div>
+        </section>
+
         <div class="dashboard-grid grid grid-cols-1 gap-5 items-start">
         
         <!-- ================= LEFT COLUMN: CLAIMANT PROFILE (4 Cols) ================= -->
         <section id="left-sidebar" class="dashboard-left flex flex-col gap-5">
+          <div class="workspace-status-line">
+            <span class="capability-state state-available">Available</span>
+            <strong>Profile</strong>
+          </div>
           
           <!-- Claimant Professional Profile -->
           <app-claimant-profile [claimantName]="profileName()"
@@ -136,44 +178,52 @@
           </div>
 
           <div data-testid="workspace-panel-search" [hidden]="activeWorkspaceTab() !== 'search'">
+            <div class="workspace-status-line">
+              <span class="capability-state state-fixture">Fixture-backed</span>
+              <strong>Job search, matching and details</strong>
+            </div>
             <app-job-results #jobResults
               [skills]="profileSkills()"
               [experience]="profileExperience()"
               [aspirations]="profileAspirations()"
               [workPrefs]="profileWorkPrefs()"
               [userId]="userAccountId()"
+              [applicationToolsAvailable]="false"
               (notify)="showToast($event.message, $event.type)"
               (applicationChanged)="refreshAfterAiGeneration()">
             </app-job-results>
           </div>
 
           <div data-testid="workspace-panel-applications" [hidden]="activeWorkspaceTab() !== 'applications'">
-            <app-my-applications #myApplications
-              [userId]="userAccountId()"
-              [selectedApplicationId]="selectedApplicationId()"
-              (notify)="showToast($event.message, $event.type)"
-              (applicationChanged)="refreshAfterAiGeneration()">
-            </app-my-applications>
+            <section class="capability-placeholder" data-testid="workspace-application-tracking">
+              <span class="capability-state state-unavailable">Temporarily unavailable</span>
+              <h2>Application tracking</h2>
+              <p>The tracker, statuses and application history are part of the restored product. They will be enabled once ownership is derived entirely from the secure browser session.</p>
+            </section>
           </div>
 
           <div data-testid="workspace-panel-documents" [hidden]="activeWorkspaceTab() !== 'documents'">
-            <app-documents-workspace #documentsWorkspace
-              [userId]="userAccountId()"
-              [selectedApplicationId]="selectedApplicationId()"
-              (notify)="showToast($event.message, $event.type)"
-              (applicationChanged)="refreshAfterAiGeneration()"
-              (openApplication)="openApplicationFromDocument($event)">
-            </app-documents-workspace>
+            <section class="capability-placeholder" data-testid="workspace-documents">
+              <span class="capability-state state-unavailable">Temporarily unavailable</span>
+              <h2>Documents, storage and export</h2>
+              <p>Your generated CVs, cover letters, version history, DOCX and PDF exports will appear here after the secure document path is enabled.</p>
+            </section>
           </div>
         </section>
 
         <aside id="right-sidebar" class="dashboard-right flex flex-col gap-5">
-          <app-payment-panel [userId]="userAccountId()"
-                             mode="summary"
-                             (balanceChanged)="updateAiTokenBalance($event)"></app-payment-panel>
+          <section class="capability-placeholder" data-testid="workspace-ai-credit">
+            <span class="capability-state state-unavailable">Temporarily unavailable</span>
+            <h2>AI Credit &amp; Payments</h2>
+            <p>Wallet balance, fixture purchases and secure Stripe checkout remain visible in the product plan and will be enabled after this checkpoint.</p>
+            <a class="return-button" href="/payment">Open AI Credit area</a>
+          </section>
 
-          <app-reporting-panel #reportingPanel
-                               [userId]="userAccountId()"></app-reporting-panel>
+          <section class="capability-placeholder" data-testid="workspace-reporting">
+            <span class="capability-state state-unavailable">Temporarily unavailable</span>
+            <h2>Reporting &amp; job-search evidence</h2>
+            <p>Application totals, recent activity, commitment progress and Universal Credit journal evidence will appear here after session-derived reporting is enabled.</p>
+          </section>
         </aside>
 
       </div>

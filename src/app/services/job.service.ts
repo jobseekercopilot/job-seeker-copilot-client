@@ -168,13 +168,13 @@ export class JobService {
 
   updateApplicationStatus(
     applicationId: string,
-    status: UpdateApplicationStatusRequest['status'],
+    status: string,
     token: string,
     userId: string
   ): Observable<ApplicationRecordResponse> {
     return this.http.patch<ApplicationRecordResponse>(
       `/api/jobs/applications/${encodeURIComponent(applicationId)}/status`,
-      { status },
+      { status: status as UpdateApplicationStatusRequest['status'] },
       { headers: this.applicationActionHeaders(token, userId) }
     );
   }
