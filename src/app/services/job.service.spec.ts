@@ -41,4 +41,50 @@ describe('JobService', () => {
     );
     expect(response).toEqual({jobs: [], totalResults: 0});
   });
+
+  it('uses the searchable town before the postcode while retaining secure home coordinates', () => {
+    const searchJobs = vi.fn((request: JobSearchRequest) => {
+      void request;
+      return of({jobs: [], totalResults: 0});
+    });
+    const getByPostcode = vi.fn(() => of({
+      locations: [{
+        name: 'Reading, South East',
+        postcode: 'RG1 1AA',
+        latitude: 51.4543,
+        longitude: -0.9781,
+      }],
+    }));
+    TestBed.configureTestingModule({
+      providers: [
+        JobService,
+        {provide: GeneratedJobSearchService, useValue: {searchJobs}},
+        {provide: BrowserSessionService, useValue: {ensureCsrf: vi.fn(() => of(undefined))}},
+        {provide: LocationService, useValue: {getByPostcode}},
+      ],
+    });
+
+    TestBed.inject(JobService)
+      .searchJobs(
+        'Java',
+        '',
+        'Software Developer',
+        JSON.stringify({postcode: 'RG1 1AA', region: 'Reading, South East'}),
+      )
+      .subscribe();
+
+    expect(searchJobs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aspirations: expect.objectContaining({locations: ['Reading', 'RG1 1AA']}),
+        homeLocation: expect.objectContaining({
+          postcode: 'RG1 1AA',
+          latitude: 51.4543,
+          longitude: -0.9781,
+        }),
+      }),
+      'body',
+      false,
+      {transferCache: false},
+    );
+  });
 });

@@ -78,11 +78,16 @@ export class JobService {
       const prefs = JSON.parse(workPrefs);
       if (prefs.postcode) {
         homePostcode = String(prefs.postcode).trim().toUpperCase();
-        locations.push(homePostcode);
       }
       if (prefs.region) {
         homeDisplayName = String(prefs.region).trim();
-        locations.push(homeDisplayName);
+        const primaryRegion = homeDisplayName.split(',', 1)[0]?.trim();
+        if (primaryRegion) {
+          locations.push(primaryRegion);
+        }
+      }
+      if (homePostcode) {
+        locations.push(homePostcode);
       }
       if (typeof prefs.latitude === 'number') {
         homeLatitude = prefs.latitude;
