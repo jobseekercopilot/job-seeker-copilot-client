@@ -15,9 +15,17 @@ const SAFE_DOWNLOAD_TYPES = new Set([
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ]);
+const DOCUMENT_TYPES = new Set(['CV', 'COVER_LETTER']);
+const MAX_MULTIPART_BYTES = (25 * 1024 * 1024) + (64 * 1024);
+const MULTIPART_CONTENT_TYPE =
+  /^multipart\/form-data;\s*boundary=(?:"[^"\r\n;]{1,200}"|[^\s\r\n;]{1,200})$/i;
 
 export interface DocumentGenerationProxyConfig extends JobFinderProxyConfig {
   documentStoreOrigin: string;
+}
+
+class RequestTooLargeError extends Error {
+  override readonly name = 'RequestTooLargeError';
 }
 
 interface ProxyPayload {
@@ -107,6 +115,40 @@ function sendPayload(response: Response, payload: ProxyPayload | undefined): voi
     return;
   }
   response.status(payload.status).type(payload.contentType).send(payload.body);
+}
+
+function multipartType(request: Request): string | undefined {
+  const contentType = request.get('Content-Type')?.trim();
+  return contentType
+    && contentType.length <= 256
+    && MULTIPART_CONTENT_TYPE.test(contentType)
+    ? contentType
+    : undefined;
+}
+
+async function boundedRequestBody(
+  request: Request,
+  maximumBytes: number,
+): Promise<Buffer> {
+  const declaredLength = request.get('Content-Length');
+  if (
+    declaredLength
+    && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > maximumBytes)
+  ) {
+    throw new RequestTooLargeError('Upload exceeds the allowed size');
+  }
+
+  const chunks: Buffer[] = [];
+  let receivedBytes = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    receivedBytes += buffer.length;
+    if (receivedBytes > maximumBytes) {
+      throw new RequestTooLargeError('Upload exceeds the allowed size');
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks, receivedBytes);
 }
 
 function safeFileName(value: unknown): string | undefined {
@@ -216,6 +258,113 @@ export function registerDocumentGenerationRoutes(
       'POST',
       true,
     );
+  });
+
+  app.post('/api/v1/document-generation/applications/:applicationId/replace', async (request, response) => {
+    const applicationId = request.params['applicationId'];
+    const documentType = request.query['documentType'];
+    if (!validUuid(applicationId)) {
+      sendFailure(
+        response,
+        400,
+        'INVALID_APPLICATION_ID',
+        'The application identifier is invalid',
+      );
+      return;
+    }
+    if (typeof documentType !== 'string' || !DOCUMENT_TYPES.has(documentType)) {
+      sendFailure(
+        response,
+        400,
+        'INVALID_DOCUMENT_TYPE',
+        'The replacement document type is invalid',
+      );
+      return;
+    }
+    const contentType = multipartType(request);
+    if (!contentType) {
+      sendFailure(
+        response,
+        415,
+        'INVALID_CONTENT_TYPE',
+        'A multipart document upload is required',
+      );
+      return;
+    }
+    const credentials = jobFinderCredentials(
+      request.headers,
+      config,
+      true,
+      false,
+    );
+    if ('status' in credentials) {
+      sendFailure(
+        response,
+        credentials.status,
+        credentials.error,
+        credentials.message,
+      );
+      return;
+    }
+
+    try {
+      const body = await boundedRequestBody(request, MAX_MULTIPART_BYTES);
+      const upstream = await fetchWithTimeout(
+        `${config.origin}/api/v1/document-generation/applications/${applicationId.toLowerCase()}/replace?documentType=${documentType}`,
+        {
+          method: 'POST',
+          headers: {
+            ...credentials.headers,
+            'Content-Length': String(body.length),
+            'Content-Type': contentType,
+          },
+          body: Uint8Array.from(body).buffer,
+        },
+        config.timeoutMs,
+        fetchImplementation,
+      );
+      const payload = await upstream.text();
+      const accessToken = credentials.headers['Authorization'].slice('Bearer '.length);
+      if (payload.includes(accessToken)) {
+        sendPayload(response, undefined);
+        return;
+      }
+      const upstreamType = upstream.headers
+        .get('content-type')
+        ?.split(';', 1)[0]
+        .trim()
+        .toLowerCase();
+      sendPayload(response, {
+        body: payload,
+        contentType: upstreamType === 'application/problem+json'
+          ? 'application/problem+json'
+          : 'application/json',
+        status: upstream.status,
+      });
+    } catch (error: unknown) {
+      if (error instanceof RequestTooLargeError) {
+        sendFailure(
+          response,
+          413,
+          'REQUEST_TOO_LARGE',
+          'The document upload exceeds the 25MB limit',
+        );
+        return;
+      }
+      const category = downstreamFailureCategory(error);
+      console.error('BFF downstream request failed', {
+        category,
+        service: 'document-replacement',
+      });
+      sendFailure(
+        response,
+        category === 'timeout' ? 504 : 503,
+        category === 'timeout' ? 'DOWNSTREAM_TIMEOUT' : 'SERVICE_UNAVAILABLE',
+        category === 'timeout'
+          ? 'Document replacement timed out'
+          : 'Document replacement is currently unavailable',
+      );
+    }
   });
 
   app.get('/api/v1/document-generation/files/:fileId/download', async (request, response) => {
