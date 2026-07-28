@@ -7,7 +7,11 @@ import {
   ApplicationTrackerService,
   TrackedApplication,
 } from '../../services/application-tracker.service';
-import { DocumentGenerationService, DocumentKind } from '../../services/document-generation.service';
+import {
+  DocumentFileMetadata,
+  DocumentGenerationService,
+  DocumentKind,
+} from '../../services/document-generation.service';
 import {
   DocumentDownloadsResponse,
   DownloadFileResponse,
@@ -33,6 +37,20 @@ interface TimelineStep {
   key: string;
   label: string;
   completedAt?: string;
+}
+
+export function latestUserUploadTimestamp(metadata: DocumentFileMetadata[]): string | undefined {
+  return metadata
+    .filter(file => file.source?.toUpperCase() === 'USER_UPLOADED')
+    .map(file => file.updatedAt ?? file.createdAt)
+    .filter((value): value is string => Boolean(value))
+    .filter(value => !Number.isNaN(Date.parse(value)))
+    .sort((left, right) => Date.parse(right) - Date.parse(left))[0];
+}
+
+function latestTimestamp(left: string | undefined, right: string): string {
+  if (!left || Number.isNaN(Date.parse(left))) return right;
+  return Date.parse(right) > Date.parse(left) ? right : left;
 }
 
 @Component({
@@ -257,6 +275,7 @@ export class MyApplicationsComponent implements OnInit {
               ...item,
               cvDocumentId: response.cvDocumentId ?? item.cvDocumentId,
               coverLetterDocumentId: response.coverLetterDocumentId ?? item.coverLetterDocumentId,
+              documentsUploadedAt: new Date().toISOString(),
             }
           : item
       ));
@@ -370,6 +389,10 @@ export class MyApplicationsComponent implements OnInit {
           })),
           error: err => console.warn('Could not load CV files for application:', err),
         });
+        this.documentGenerationService.allFileMetadata(application.cvDocumentId).subscribe({
+          next: metadata => this.recordDocumentUpload(applicationId, metadata),
+          error: err => console.warn('Could not load CV upload history for application:', err),
+        });
       }
       if (application.coverLetterDocumentId) {
         this.documentGenerationService.latestFiles(application.coverLetterDocumentId).subscribe({
@@ -379,8 +402,26 @@ export class MyApplicationsComponent implements OnInit {
           })),
           error: err => console.warn('Could not load cover letter files for application:', err),
         });
+        this.documentGenerationService.allFileMetadata(application.coverLetterDocumentId).subscribe({
+          next: metadata => this.recordDocumentUpload(applicationId, metadata),
+          error: err => console.warn('Could not load cover letter upload history for application:', err),
+        });
       }
     }
+  }
+
+  private recordDocumentUpload(applicationId: string, metadata: DocumentFileMetadata[]): void {
+    const uploadedAt = latestUserUploadTimestamp(metadata);
+    if (!uploadedAt) return;
+
+    this.applications.update(applications => applications.map(application =>
+      this.applicationId(application) === applicationId
+        ? {
+            ...application,
+            documentsUploadedAt: latestTimestamp(application.documentsUploadedAt, uploadedAt),
+          }
+        : application
+    ));
   }
 
   private matchesFilter(application: TrackedApplication, filter: ApplicationFilter): boolean {

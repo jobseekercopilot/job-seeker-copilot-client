@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
+import { forkJoin, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 import { DocumentUploadRequest, JobCardComponent } from '../job-card/job-card.component';
 import { JobService } from '../../services/job.service';
 import { DocumentGenerationService } from '../../services/document-generation.service';
@@ -11,7 +13,10 @@ import {
   GenerationDownloadsResponse,
 } from '../../api/document-generation-gateway';
 import {logMalformedProviderResult} from '../../../shared/provider-content-policy';
-import {ApplicationTrackerService} from '../../services/application-tracker.service';
+import {
+  ApplicationTrackerService,
+  TrackedApplication,
+} from '../../services/application-tracker.service';
 import type {JobSearchProviderMode} from '../../services/runtime-configuration.service';
 
 type StatusUpdateTarget =
@@ -212,13 +217,16 @@ export class JobResultsComponent implements OnInit {
     this.loading.set(true);
     this.error.set(null);
 
-    this.jobService.searchJobs(
-      this.skills(),
-      this.experience(),
-      this.aspirations(),
-      this.workPrefs()
-    ).subscribe({
-      next: (response) => {
+    forkJoin({
+      response: this.jobService.searchJobs(
+        this.skills(),
+        this.experience(),
+        this.aspirations(),
+        this.workPrefs()
+      ),
+      applications: this.applicationTracker.listApplications().pipe(catchError(() => of([]))),
+    }).subscribe({
+      next: ({response, applications}) => {
         const roleGroups = response.resultsByTargetRole?.length
           ? response.resultsByTargetRole
           : [{ targetRole: 'All matches', jobs: response.jobs ?? [] }];
@@ -231,8 +239,9 @@ export class JobResultsComponent implements OnInit {
           for (const job of group.jobs ?? []) {
             const validated = this.validateJob(job);
             if (validated) {
-              groupJobs.push(validated);
-              validJobs.push(validated);
+              const reconciled = this.reconcilePersistedApplication(validated, applications);
+              groupJobs.push(reconciled);
+              validJobs.push(reconciled);
             } else {
               skippedCount.value++;
             }
@@ -642,6 +651,70 @@ export class JobResultsComponent implements OnInit {
         coverLetterDocumentId: record.coverLetterDocumentId,
       },
     }));
+  }
+
+  private reconcilePersistedApplication(
+    job: Job,
+    applications: TrackedApplication[],
+  ): Job {
+    const application = applications
+      .filter(candidate => this.matchesPersistedApplication(job, candidate))
+      .sort((left, right) => this.applicationTime(right) - this.applicationTime(left))[0];
+
+    if (!application) return job;
+
+    return {
+      ...job,
+      applicationId: application.applicationId ?? application.id,
+      applicationStatus: application.status,
+      cvDocumentId: application.cvDocumentId,
+      coverLetterDocumentId: application.coverLetterDocumentId,
+      appliedAt: application.appliedAt,
+      applicationUpdatedAt: application.updatedAt,
+    };
+  }
+
+  private matchesPersistedApplication(job: Job, application: TrackedApplication): boolean {
+    const jobIds = new Set(
+      [job.canonicalJobId, job.id]
+        .map(value => value?.trim())
+        .filter((value): value is string => Boolean(value))
+    );
+    const applicationJobIds = [
+      application.canonicalJobId,
+      application.jobId,
+    ]
+      .map(value => value?.trim())
+      .filter((value): value is string => Boolean(value));
+
+    if (applicationJobIds.some(id => jobIds.has(id))) return true;
+
+    const jobExternalId = job.externalJobId?.trim();
+    const applicationExternalId = application.externalJobId?.trim();
+    if (!jobExternalId || !applicationExternalId || jobExternalId !== applicationExternalId) {
+      return false;
+    }
+
+    const jobProvider = (
+      job.primarySource
+      ?? job.provider
+      ?? job.sources?.[0]?.integrationProvider
+      ?? job.sources?.[0]?.provider
+    )?.trim().toUpperCase();
+    const applicationProvider = (
+      application.providerName
+      ?? application.provider
+      ?? application.source
+    )?.trim().toUpperCase();
+
+    return Boolean(jobProvider && applicationProvider && jobProvider === applicationProvider);
+  }
+
+  private applicationTime(application: TrackedApplication): number {
+    const value = application.updatedAt ?? application.createdAt;
+    if (!value) return 0;
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
   }
 
   private updateJobLocally(jobId: string, patch: Partial<Job>): void {
