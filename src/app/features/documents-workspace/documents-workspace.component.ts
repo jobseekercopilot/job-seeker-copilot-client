@@ -196,11 +196,18 @@ export class DocumentsWorkspaceComponent {
   }
 
   canReplace(document: ApplicationDocument): boolean {
-    return false;
+    return Boolean(
+      document.applicationId
+      && document.documentId
+      && document.status === 'DOCUMENTS_GENERATED'
+    );
   }
 
   canDelete(document: ApplicationDocument): boolean {
-    return false;
+    return Boolean(
+      document.applicationId
+      && document.status === 'DOCUMENTS_GENERATED'
+    );
   }
 
   latestFileType(document: ApplicationDocument): string {
