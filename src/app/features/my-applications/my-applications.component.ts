@@ -201,7 +201,10 @@ export class MyApplicationsComponent implements OnInit {
   }
 
   canUploadDocuments(application: TrackedApplication): boolean {
-    return false;
+    return Boolean(
+      this.applicationId(application)
+      && application.status === 'DOCUMENTS_GENERATED'
+    );
   }
 
   downloadGroup(application: TrackedApplication, kind: DocumentKind): DocumentDownloadsResponse | undefined {
