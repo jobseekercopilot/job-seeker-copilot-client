@@ -103,6 +103,33 @@ function validateJobFinderContract(document) {
     );
   }
 
+  const jobProperties = document.components?.schemas?.Job?.properties ?? {};
+  if (!jobProperties.salaryText) {
+    throw new Error('job-finder-gateway Job is missing salaryText');
+  }
+  const sourceProperties =
+    document.components?.schemas?.JobSourceReference?.properties ?? {};
+  for (const property of [
+    'attributionLabel',
+    'attributionSourceUrl',
+    'licenceUrl',
+    'disclaimer',
+  ]) {
+    if (!sourceProperties[property]) {
+      throw new Error(
+        `job-finder-gateway JobSourceReference is missing ${property}`,
+      );
+    }
+  }
+  const selectedProviderPattern =
+    document.components?.schemas?.JobSearchRequest?.properties
+      ?.selectedProviders?.items?.pattern ?? '';
+  if (!selectedProviderPattern.includes('NHS_JOBS')) {
+    throw new Error(
+      'job-finder-gateway selectedProviders must include NHS_JOBS',
+    );
+  }
+
   const saveResponses = document.paths['/api/jobs/saved'].post.responses;
   const createdOutcomes =
     saveResponses?.['201']?.headers?.['X-Saved-Job-Outcome']?.schema?.enum;

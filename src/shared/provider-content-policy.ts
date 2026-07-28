@@ -2,6 +2,8 @@ const MAX_EXTERNAL_URL_LENGTH = 2_048;
 const MAX_JSON_DEPTH = 32;
 const PROVIDER_LINK_FIELDS = new Set([
   'applyUrl',
+  'attributionSourceUrl',
+  'licenceUrl',
   'listingUrl',
   'sourceUrl',
   'url',

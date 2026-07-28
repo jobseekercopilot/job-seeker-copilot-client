@@ -181,9 +181,12 @@ export class JobCardComponent {
     }
   }
 
-  formatSalary(salary: { min?: number; max?: number; currency?: string } | undefined | null): string {
+  formatSalary(
+    salary: { min?: number; max?: number; currency?: string } | undefined | null,
+    salaryText?: string | null,
+  ): string {
     if (!salary || typeof salary.min !== 'number' || typeof salary.max !== 'number') {
-      return 'Salary not specified';
+      return salaryText?.trim() || 'Salary not specified';
     }
     return `${salary.currency ?? 'GBP'} ${salary.min.toLocaleString()} - ${salary.max.toLocaleString()}`;
   }
@@ -364,6 +367,29 @@ export class JobCardComponent {
       if (url && !links.has(url)) links.set(url, this.sourceLabelForUrl(url));
     }
     return Array.from(links, ([url, label]) => ({label, url}));
+  }
+
+  sourceAttributions(): {
+    label: string;
+    sourceUrl: string | null;
+    licenceUrl: string | null;
+    disclaimer: string | null;
+  }[] {
+    return (this.job().sources ?? [])
+      .filter(source =>
+        Boolean(source.attributionLabel?.trim())
+        || Boolean(source.attributionSourceUrl)
+        || Boolean(source.licenceUrl)
+        || Boolean(source.disclaimer?.trim()))
+      .map(source => ({
+        label: source.attributionLabel?.trim()
+          || source.publisher?.trim()
+          || source.integrationProvider?.trim()
+          || 'Job source',
+        sourceUrl: approvedExternalUrl(source.attributionSourceUrl),
+        licenceUrl: approvedExternalUrl(source.licenceUrl),
+        disclaimer: source.disclaimer?.trim() || null,
+      }));
   }
 
   private setSelectedFile(file: File | null): void {

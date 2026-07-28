@@ -76,7 +76,7 @@
       </span>
       <span class="inline-flex items-center gap-1.5">
         <mat-icon class="text-base">payments</mat-icon>
-        {{ formatSalary(job().salary) }}
+        {{ formatSalary(job().salary, job().salaryText) }}
       </span>
       @if (job().employmentType) {
         <span class="inline-flex items-center gap-1.5">
@@ -108,6 +108,32 @@
               <span class="source-badge">{{ label }}</span>
             }
           </div>
+        }
+        @for (attribution of sourceAttributions(); track attribution.label + (attribution.sourceUrl ?? '')) {
+          <aside class="mb-3 rounded-lg border p-3 text-sm" aria-label="Job source attribution">
+            <p class="m-0 font-semibold">{{ attribution.label }}</p>
+            <div class="mt-1 flex flex-wrap gap-3">
+              @if (attribution.sourceUrl; as sourceUrl) {
+                <a [href]="sourceUrl"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   aria-label="Visit the official job source (opens in a new tab)">
+                  Official source
+                </a>
+              }
+              @if (attribution.licenceUrl; as licenceUrl) {
+                <a [href]="licenceUrl"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   aria-label="Read the source licence (opens in a new tab)">
+                  Source licence
+                </a>
+              }
+            </div>
+            @if (attribution.disclaimer) {
+              <p class="m-0 mt-2 text-xs">{{ attribution.disclaimer }}</p>
+            }
+          </aside>
         }
         @if (primaryApplyUrl(); as applyUrl) {
           <a [href]="applyUrl"

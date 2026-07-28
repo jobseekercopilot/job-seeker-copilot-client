@@ -115,6 +115,56 @@ describe('JobCardComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Posted date unavailable');
   });
 
+  it('renders NHS salary text, attribution, safe official links, and disclaimer', () => {
+    const fixture = createFixture({
+      job: {
+        ...job,
+        salary: undefined,
+        salaryText: '£29,970 to £36,483 a year',
+        primarySource: 'NHS_JOBS',
+        sources: [{
+          integrationProvider: 'NHS_JOBS',
+          publisher: 'NHS Jobs',
+          listingUrl: 'https://www.jobs.nhs.uk/candidate/jobadvert/C123',
+          attributionLabel: 'Vacancy source: NHS Jobs',
+          attributionSourceUrl: 'https://www.jobs.nhs.uk/',
+          licenceUrl: 'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/',
+          disclaimer: 'NHS Jobs has not reviewed or endorsed this service.',
+        }],
+      },
+    });
+    expandCard(fixture);
+    const links: HTMLAnchorElement[] = fixture.debugElement
+      .queryAll(By.css('aside[aria-label="Job source attribution"] a'))
+      .map(candidate => candidate.nativeElement);
+
+    expect(fixture.nativeElement.textContent).toContain('£29,970 to £36,483 a year');
+    expect(fixture.nativeElement.textContent).toContain('Vacancy source: NHS Jobs');
+    expect(fixture.nativeElement.textContent)
+      .toContain('NHS Jobs has not reviewed or endorsed this service.');
+    expect(links.map(link => link.getAttribute('href'))).toEqual([
+      'https://www.jobs.nhs.uk/',
+      'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/',
+    ]);
+    expect(links.every(link => link.getAttribute('rel') === 'noopener noreferrer')).toBe(true);
+  });
+
+  it('does not render an unsafe NHS attribution link', () => {
+    const fixture = createFixture({
+      job: {
+        ...job,
+        sources: [{
+          attributionLabel: 'Vacancy source: NHS Jobs',
+          attributionSourceUrl: 'javascript:alert(1)',
+        }],
+      },
+    });
+    expandCard(fixture);
+
+    expect(fixture.nativeElement.textContent).toContain('Vacancy source: NHS Jobs');
+    expect(fixture.debugElement.query(By.css('aside[aria-label="Job source attribution"] a'))).toBeNull();
+  });
+
   it('renders provider HTML as text without creating executable elements', () => {
     const unsafeDescription = '<img src=x onerror="window.providerHtmlExecuted=true">';
     const fixture = createFixture({ job: { ...job, description: unsafeDescription } });

@@ -135,7 +135,7 @@ test('pins the session-derived Job Finder search, saved-job and application cont
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
   assert.equal(
     gateway.sourceCommit,
-    '9ec7b4694fddf2ce3a96a429e359408079eb4522',
+    'fa8465bdacb947a563b3e134eb30e9f7a062362b',
   );
   assert.equal(gateway.output, 'src/app/api/job-finder');
   assert.deepEqual(gateway.requiredPaths, [
@@ -150,6 +150,17 @@ test('pins the session-derived Job Finder search, saved-job and application cont
   assert.equal(savedJob.snapshotVersion.format, 'int64');
   assert.equal(savedJob.contentSha256.type, 'string');
   assert.equal(savedJob.job.$ref, '#/components/schemas/Job');
+  assert.equal(contract.components.schemas.Job.properties.salaryText.type, 'string');
+  assert.deepEqual(
+    Object.keys(contract.components.schemas.JobSourceReference.properties)
+      .filter(property => [
+        'attributionLabel',
+        'attributionSourceUrl',
+        'licenceUrl',
+        'disclaimer',
+      ].includes(property)),
+    ['attributionLabel', 'attributionSourceUrl', 'licenceUrl', 'disclaimer'],
+  );
   assert.deepEqual(
     contract.paths['/api/jobs/saved'].post.responses['201']
       .headers['X-Saved-Job-Outcome'].schema.enum,

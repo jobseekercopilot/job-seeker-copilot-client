@@ -5,7 +5,10 @@ import { JobResultsComponent } from './job-results.component';
 import { JobService } from '../../services/job.service';
 import { DocumentGenerationService } from '../../services/document-generation.service';
 import { Job, JobSearchResponse } from '../../models/job-search.model';
-import { ProviderResultStatusStatusEnum } from '../../api/job-finder';
+import {
+  ProviderResultStatusStatusEnum,
+  ReedJobSearchResponseSearchStatusEnum,
+} from '../../api/job-finder';
 import { ApplicationTrackerService, TrackedApplication } from '../../services/application-tracker.service';
 
 describe('JobResultsComponent', () => {
@@ -131,6 +134,39 @@ describe('JobResultsComponent', () => {
 
     expect(jobCards(fixture)).toHaveLength(2);
     expect(fixture.nativeElement.textContent).toContain('adzuna job 2');
+  });
+
+  it('filters NHS Jobs and keeps its provider status independent during partial results', () => {
+    currentResponse = {
+      ...singleRoleResponse([
+        job('community staff nurse', {
+          primarySource: 'NHS_JOBS',
+          sources: [{integrationProvider: 'NHS_JOBS', publisher: 'NHS Jobs'}],
+        }),
+        job('reed nurse', {
+          primarySource: 'REED',
+          sources: [{integrationProvider: 'REED', publisher: 'Reed.co.uk'}],
+        }),
+      ]),
+      searchStatus: ReedJobSearchResponseSearchStatusEnum.Partial,
+      providerResults: [
+        {provider: 'NHS_JOBS', status: ProviderResultStatusStatusEnum.Success, rawResultCount: 1},
+        {provider: 'REED', status: ProviderResultStatusStatusEnum.Unavailable, rawResultCount: 0},
+      ],
+    };
+    const fixture = createFixture('REAL_PROVIDERS');
+
+    expect(fixture.nativeElement.textContent).toContain('Real providers — partial availability');
+    expect(fixture.nativeElement.textContent).toContain('community staff nurse');
+    expect(fixture.nativeElement.textContent)
+      .toContain('REED was temporarily unavailable. Results from other job sites are still shown.');
+
+    clickButtonContaining(fixture, 'Filter');
+    clickButtonContaining(fixture, 'NHS Jobs');
+
+    expect(jobCards(fixture)).toHaveLength(1);
+    expect(fixture.nativeElement.textContent).toContain('community staff nurse');
+    expect(fixture.nativeElement.textContent).not.toContain('reed nurse');
   });
 
   it('sorts highest salary with missing salaries last', () => {

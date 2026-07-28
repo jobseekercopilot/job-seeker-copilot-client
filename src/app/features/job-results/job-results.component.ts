@@ -148,7 +148,7 @@ export class JobResultsComponent implements OnInit {
         counts.set(publisher, (counts.get(publisher) ?? 0) + 1);
       }
     }
-    const preferredOrder = ['Reed.co.uk', 'Adzuna', 'Indeed', 'LinkedIn', 'Employer Sites', 'Other'];
+    const preferredOrder = ['NHS Jobs', 'Reed.co.uk', 'Adzuna', 'Indeed', 'LinkedIn', 'Employer Sites', 'Other'];
     return [
       { label: 'All Job Sites', count: this.activeJobs().length },
       ...Array.from(counts.entries())
@@ -820,6 +820,7 @@ export class JobResultsComponent implements OnInit {
     const value = (publisher ?? '').trim().toLowerCase();
     const providerValue = (provider ?? '').trim().toUpperCase();
     if (value.includes('reed') || providerValue === 'REED') return 'Reed.co.uk';
+    if (value.includes('nhs jobs') || providerValue === 'NHS_JOBS') return 'NHS Jobs';
     if (value.includes('adzuna') || providerValue === 'ADZUNA') return 'Adzuna';
     if (value.includes('indeed')) return 'Indeed';
     if (value.includes('linkedin')) return 'LinkedIn';

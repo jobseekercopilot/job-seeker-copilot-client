@@ -33,6 +33,8 @@ describe('provider content URL policy', () => {
         sources: [{
           applyUrl: 'data:text/html,unsafe',
           listingUrl: 'https://publisher.example.test/1',
+          attributionSourceUrl: 'https://www.jobs.nhs.uk/',
+          licenceUrl: 'javascript:alert(1)',
         }],
       }],
     }));
@@ -45,6 +47,8 @@ describe('provider content URL policy', () => {
         sources: [{
           applyUrl: null,
           listingUrl: 'https://publisher.example.test/1',
+          attributionSourceUrl: 'https://www.jobs.nhs.uk/',
+          licenceUrl: null,
         }],
       }],
     });
