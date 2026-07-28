@@ -6,6 +6,7 @@ import { JobService } from '../../services/job.service';
 import { DocumentGenerationService } from '../../services/document-generation.service';
 import { Job, JobSearchResponse } from '../../models/job-search.model';
 import { ProviderResultStatusStatusEnum } from '../../api/job-finder';
+import { ApplicationTrackerService, TrackedApplication } from '../../services/application-tracker.service';
 
 describe('JobResultsComponent', () => {
   const response: JobSearchResponse = {
@@ -16,6 +17,7 @@ describe('JobResultsComponent', () => {
     totalResults: 28,
   };
   let currentResponse = response;
+  let trackedApplications: TrackedApplication[] = [];
 
   const jobService = {
     callCount: 0,
@@ -29,14 +31,20 @@ describe('JobResultsComponent', () => {
     latestFiles: () => of({}),
   };
 
+  const applicationTracker = {
+    listApplications: () => of(trackedApplications),
+  };
+
   beforeEach(async () => {
     jobService.callCount = 0;
     currentResponse = response;
+    trackedApplications = [];
     await TestBed.configureTestingModule({
       imports: [JobResultsComponent],
       providers: [
         { provide: JobService, useValue: jobService },
         { provide: DocumentGenerationService, useValue: documentGenerationService },
+        { provide: ApplicationTrackerService, useValue: applicationTracker },
       ],
     }).compileComponents();
   });
@@ -221,6 +229,53 @@ describe('JobResultsComponent', () => {
       .toContain('No job matches found based on your current profile.');
   });
 
+  it('rehydrates a generated application into matching search results after reload', () => {
+    currentResponse = singleRoleResponse([
+      job('persisted role', {
+        id: 'canonical-job-1',
+        canonicalJobId: 'canonical-job-1',
+        primarySource: 'REED',
+        externalJobId: 'reed-123',
+      }),
+    ]);
+    trackedApplications = [{
+      id: 'application-1',
+      applicationId: 'application-1',
+      jobId: 'canonical-job-1',
+      status: 'DOCUMENTS_GENERATED',
+      cvDocumentId: 'cv-1',
+      coverLetterDocumentId: 'letter-1',
+      updatedAt: '2026-07-28T09:04:00Z',
+    }];
+
+    const fixture = createFixture();
+    fixture.debugElement.query(By.css('.job-main-toggle')).nativeElement.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('DOCUMENTS_GENERATED');
+    expect(fixture.nativeElement.textContent).not.toContain('Generate CV & Cover Letter');
+    expect(fixture.nativeElement.textContent).toContain('Upload CV');
+  });
+
+  it('does not reconcile an external id from a different provider', () => {
+    currentResponse = singleRoleResponse([
+      job('untracked role', {primarySource: 'REED', externalJobId: 'shared-123'}),
+    ]);
+    trackedApplications = [{
+      id: 'application-1',
+      jobId: 'different-canonical-job',
+      provider: 'ADZUNA',
+      externalJobId: 'shared-123',
+      status: 'DOCUMENTS_GENERATED',
+    }];
+
+    const fixture = createFixture();
+    fixture.debugElement.query(By.css('.job-main-toggle')).nativeElement.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Generate CV & Cover Letter');
+  });
+
   function createFixture(providerMode: 'FIXTURE' | 'REAL_PROVIDERS' | 'REQUIRED_VALIDATION' = 'FIXTURE') {
     const fixture = TestBed.createComponent(JobResultsComponent);
     fixture.componentRef.setInput('authToken', 'token');
@@ -228,6 +283,8 @@ describe('JobResultsComponent', () => {
     fixture.componentRef.setInput('aspirations', 'cleaning, programming');
     fixture.componentRef.setInput('workPrefs', JSON.stringify({ postcode: 'SW1A 1AA', hours: 'full time' }));
     fixture.componentRef.setInput('providerMode', providerMode);
+    fixture.componentRef.setInput('applicationToolsAvailable', true);
+    fixture.componentRef.setInput('applicationTrackingAvailable', true);
     fixture.detectChanges();
     return fixture;
   }
