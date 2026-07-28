@@ -314,40 +314,11 @@ h1, h2, h3, h4 {
     flex-direction: column;
   }
 }
-.capability-overview,
 .capability-placeholder,
 .workspace-status-line {
   border: 1px solid var(--color-border, #dbe3ef);
   background: #fff;
   border-radius: 1rem;
-}
-
-.capability-overview {
-  margin-bottom: 1.25rem;
-  padding: 1.25rem;
-}
-
-.capability-overview h1 {
-  margin: 0.2rem 0 0.35rem;
-}
-
-.capability-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: 0.65rem;
-  margin-top: 1rem;
-}
-
-.capability-grid article {
-  display: flex;
-  min-height: 5.25rem;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 0.75rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.8rem;
-  background: #f8fafc;
-  padding: 0.8rem;
 }
 
 .capability-state {

@@ -2,7 +2,7 @@
 
 ## Policy
 
-The selected beta build blocks unaccepted Critical and High npm advisories in CI.
+The application build blocks unaccepted Critical and High npm advisories in CI.
 Production and complete dependency trees are reviewed separately because build-only
 tooling is not shipped in the SSR image. Do not use `--force`, legacy peer resolution,
 or audit exclusions to make the gate pass.

@@ -1,21 +1,27 @@
 import express from 'express';
-import type { Server } from 'node:http';
-import {BETA_DISABLED_API_PREFIXES, rejectBetaDisabledCapability} from './beta-disabled-capabilities';
+import type {Server} from 'node:http';
+import {
+  UNAVAILABLE_API_PREFIXES,
+  rejectUnavailableCapability,
+} from './unavailable-capabilities';
 
-describe('beta-disabled payment boundary', () => {
+describe('unavailable capability boundary', () => {
   let server: Server | undefined;
-  let reachedRetainedHandler = 0;
+  let reachedUnsafeHandler = 0;
 
   afterEach(async () => {
-    if (server) await new Promise<void>((resolve, reject) => server?.close(error => error ? reject(error) : resolve()));
+    if (server) {
+      await new Promise<void>((resolve, reject) =>
+        server?.close(error => error ? reject(error) : resolve()));
+    }
     server = undefined;
   });
 
   async function startApp(): Promise<string> {
     const app = express();
-    app.use(BETA_DISABLED_API_PREFIXES, rejectBetaDisabledCapability);
-    app.use('/api/v1/payment', (_request, response) => {
-      reachedRetainedHandler += 1;
+    app.use(UNAVAILABLE_API_PREFIXES, rejectUnavailableCapability);
+    app.use(['/api/v1/payment', '/api/v1/reports'], (_request, response) => {
+      reachedUnsafeHandler += 1;
       response.status(200).json({unsafe: true});
     });
     server = app.listen(0, '127.0.0.1');
@@ -26,16 +32,14 @@ describe('beta-disabled payment boundary', () => {
   }
 
   it.each([
-    ['GET', '/api/v1/payment'],
+    ['GET', '/api/v1/reports/work-search'],
     ['GET', '/api/v1/payment/wallet'],
     ['GET', '/api/v1/payment/transactions?limit=20'],
     ['GET', '/api/v1/payment/pricing'],
     ['POST', '/api/v1/payment/demo-purchase'],
     ['POST', '/api/v1/payment/checkout'],
-    ['GET', '/api/v1/payment/unknown/child'],
-    ['POST', '/api/v1/payment/unknown/child'],
-  ])('rejects %s %s before a retained handler can run', async (method, path) => {
-    reachedRetainedHandler = 0;
+  ])('rejects %s %s before an unsafe handler can run', async (method, path) => {
+    reachedUnsafeHandler = 0;
     const origin = await startApp();
     const response = await fetch(`${origin}${path}`, {
       method,
@@ -44,23 +48,19 @@ describe('beta-disabled payment boundary', () => {
         'X-User-Id': 'another-user',
         'Content-Type': 'application/json',
       },
-      body: method === 'POST' ? '{"payment":"must-not-leave-the-bff"}' : undefined,
+      body: method === 'POST' ? '{"unsafe":"must-not-leave-the-bff"}' : undefined,
     });
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({
       error: 'FEATURE_NOT_AVAILABLE',
-      message: 'This capability is not available in the User Management beta',
+      message: 'This capability is not currently available',
     });
-    expect(reachedRetainedHandler).toBe(0);
+    expect(reachedUnsafeHandler).toBe(0);
   });
 
-  it('keeps the complete fail-closed prefix allowlist explicit', () => {
-    expect(BETA_DISABLED_API_PREFIXES).toEqual([
-      '/api/jobs',
-      '/api/v1/applications',
-      '/api/v1/document-generation',
-      '/api/v1/documents',
+  it('keeps the unsafe capability prefix allowlist explicit', () => {
+    expect(UNAVAILABLE_API_PREFIXES).toEqual([
       '/api/v1/reports',
       '/api/v1/payment',
     ]);

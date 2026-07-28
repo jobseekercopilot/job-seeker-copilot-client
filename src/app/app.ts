@@ -59,7 +59,7 @@ export class App implements OnInit {
   paymentReturnStatus = signal<'success' | 'cancel' | null>(null);
   currentRoute = signal<'dashboard' | 'payment' | 'history'>('dashboard');
 
-  // Claimant profile inputs retained by the non-beta shell in memory only.
+  // Claimant profile search inputs remain in memory only.
   profileSkills = signal('');
   profileExperience = signal('');
   profileAspirations = signal('');
@@ -85,7 +85,7 @@ export class App implements OnInit {
   documentGenerationModeLabel = computed(() =>
     this.documentGenerationMode() === 'FIXTURE_LLM'
       ? 'Fixture-generated'
-      : 'Temporarily unavailable',
+      : 'Not enabled for this beta',
   );
   activeWorkspaceTab = signal<WorkspaceTab>('search');
   selectedApplicationId = signal<string | null>(null);
@@ -230,7 +230,7 @@ export class App implements OnInit {
     const profile = event.profile;
     this.structuredProfile.set(profile);
 
-    // Update the retained non-beta shell's in-memory free-text signals.
+    // Update the in-memory search inputs derived from the structured profile.
     const searchText = profileToSearchText(profile);
     this.profileSkills.set(searchText.skills);
     this.profileExperience.set(searchText.experience);

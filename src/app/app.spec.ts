@@ -1,189 +1,114 @@
+import {provideHttpClient} from '@angular/common/http';
 import {signal} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
-import {NEVER, of, throwError} from 'rxjs';
-import {BetaApp} from './beta-app';
-import type {GatewayResponse, User, UserProfile} from './api';
-import {BrowserSessionService} from './services/browser-session.service';
+import {provideRouter} from '@angular/router';
+import {of} from 'rxjs';
+import type {User} from './api';
+import {App} from './app';
+import {routes} from './app.routes';
 import type {BrowserSessionStatus} from './services/browser-session.service';
-import {LEGACY_SESSION_STORAGE_KEYS} from './services/browser-storage';
+import {BrowserSessionService} from './services/browser-session.service';
 import {JobService} from './services/job.service';
+import {PaymentService} from './services/payment.service';
+import {ApplicationTrackerService} from './services/application-tracker.service';
+import {RuntimeConfigurationService} from './services/runtime-configuration.service';
 
-interface BetaAppTestAccess {
-  sessionStatus(): BrowserSessionStatus;
-  name(): string;
-  profile(): UserProfile | null;
-  message(): string | null;
-  handleOnboarded(user: {profile: UserProfile; name: string; email: string}): void;
-  handleProfileSaved(event: {profile: UserProfile; apiResult?: GatewayResponse; apiError?: unknown}): void;
-  retrySession(): Promise<void>;
-  logout(): Promise<void>;
-}
-
-describe('BetaApp', () => {
-  const status = signal<BrowserSessionStatus>('checking');
-  const user = signal<User | null>(null);
-  const restore = vi.fn();
-  const logout = vi.fn();
-  const acceptAuthenticatedUser = vi.fn((authenticatedUser: User) => {
-    user.set(authenticatedUser);
-    status.set('authenticated');
+describe('App', () => {
+  const status = signal<BrowserSessionStatus>('authenticated');
+  const user = signal<User | null>({
+    name: 'Alex Taylor',
+    email: 'alex@example.test',
+    profile: {
+      skills: ['TypeScript'],
+      aspirations: {targetRoles: ['Frontend developer']},
+      workPreferences: {location: {postcode: 'RG1 1AA'}},
+    },
   });
-  const updateCurrentProfile = vi.fn((profile: UserProfile) => {
-    const current = user();
-    if (current) user.set({...current, profile});
-  });
-  const handleAuthenticatedError = vi.fn((error: unknown) => {
-    if (typeof error === 'object' && error !== null && 'status' in error
-      && Number((error as {status?: unknown}).status) === 401) {
-      user.set(null);
-      status.set('anonymous');
-    }
-  });
-  const jobService = {
-    searchJobs: vi.fn(() => of({jobs: [], totalResults: 0})),
-  };
+  const searchJobs = vi.fn(() => of({jobs: [], totalResults: 0}));
 
   beforeEach(async () => {
-    status.set('checking');
-    user.set(null);
-    restore.mockReset();
-    restore.mockImplementation(() => {
-      status.set('anonymous');
-      return of<BrowserSessionStatus>('anonymous');
-    });
-    logout.mockReset();
-    logout.mockImplementation(() => {
-      status.set('anonymous');
-      user.set(null);
-      return of({statusCode: 200, success: true, message: 'Logged out'});
-    });
-    acceptAuthenticatedUser.mockClear();
-    updateCurrentProfile.mockClear();
-    handleAuthenticatedError.mockClear();
-    jobService.searchJobs.mockClear();
-    await TestBed.configureTestingModule({
-      imports: [BetaApp],
-      providers: [
-        {provide: BrowserSessionService, useValue: {
-          status,
-          user,
-          restore,
-          logout,
-          acceptAuthenticatedUser,
-          updateCurrentProfile,
-          handleAuthenticatedError,
-        }},
-        {provide: JobService, useValue: jobService},
-      ],
-    }).compileComponents();
-  });
-
-  it('should create the app', () => {
-    const fixture = TestBed.createComponent(BetaApp);
-    const app = fixture.componentInstance;
-    expect(app).toBeTruthy();
-  });
-
-  it('removes legacy token, identity, and profile data from browser storage', () => {
-    const values = new Map<string, string>();
-    const storage = {
-      getItem: (key: string) => values.get(key) ?? null,
-      setItem: (key: string, value: string) => values.set(key, value),
-      removeItem: (key: string) => values.delete(key),
-    };
-    vi.stubGlobal('localStorage', storage);
-    vi.stubGlobal('sessionStorage', storage);
-    for (const key of LEGACY_SESSION_STORAGE_KEYS) {
-      localStorage.setItem(key, 'sensitive');
-      sessionStorage.setItem(key, 'sensitive');
-    }
-
-    const app = TestBed.createComponent(BetaApp).componentInstance;
-    app.ngOnInit();
-    expect(restore).toHaveBeenCalledOnce();
-
-    for (const key of LEGACY_SESSION_STORAGE_KEYS) {
-      expect(localStorage.getItem(key)).toBeNull();
-      expect(sessionStorage.getItem(key)).toBeNull();
-    }
-    vi.unstubAllGlobals();
-  });
-
-  it('clears in-memory PII only after the gateway confirms logout', async () => {
-    const access = TestBed.createComponent(BetaApp).componentInstance as unknown as BetaAppTestAccess;
-    access.handleOnboarded({profile: {skills: ['TypeScript']}, name: 'Beta User', email: 'beta@example.test'});
-
-    await access.logout();
-
-    expect(logout).toHaveBeenCalledOnce();
-    expect(access.sessionStatus()).toBe('anonymous');
-    expect(access.name()).toBe('');
-    expect(access.profile()).toBeNull();
-    expect(access.message()).toBe('Signed out.');
-  });
-
-  it('retains the current view and reports logout failure explicitly', async () => {
-    logout.mockReturnValue(throwError(() => new Error('dependency unavailable')));
-    const access = TestBed.createComponent(BetaApp).componentInstance as unknown as BetaAppTestAccess;
-    access.handleOnboarded({profile: {skills: ['TypeScript']}, name: 'Beta User', email: 'beta@example.test'});
-
-    await access.logout();
-
-    expect(access.sessionStatus()).toBe('authenticated');
-    expect(access.name()).toBe('Beta User');
-    expect(access.message()).toBe('The session could not be ended. Please try again.');
-  });
-
-  it('does not render claimant PII while checking and offers retry when unavailable', () => {
-    restore.mockReturnValue(NEVER);
-    const fixture = TestBed.createComponent(BetaApp);
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Checking your session');
-    expect(fixture.nativeElement.querySelector('app-claimant-profile')).toBeNull();
-
-    status.set('unavailable');
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Session service unavailable');
-    expect(fixture.nativeElement.textContent).not.toContain('Beta User');
-    expect(fixture.nativeElement.querySelector('button')?.textContent).toContain('Try again');
-  });
-
-  it('clears central PII when an authenticated operation returns a final 401', () => {
-    const access = TestBed.createComponent(BetaApp).componentInstance as unknown as BetaAppTestAccess;
-    access.handleOnboarded({profile: {skills: ['TypeScript']}, name: 'Beta User', email: 'beta@example.test'});
-
-    access.handleProfileSaved({profile: {skills: ['changed']}, apiError: {status: 401}});
-
-    expect(handleAuthenticatedError).toHaveBeenCalledOnce();
-    expect(access.sessionStatus()).toBe('anonymous');
-    expect(access.name()).toBe('');
-    expect(access.profile()).toBeNull();
-    expect(access.message()).toBe('Your session has expired. Please sign in again.');
-  });
-
-  it('renders session-backed job search without exposing application actions', () => {
     status.set('authenticated');
-    restore.mockReturnValue(of<BrowserSessionStatus>('authenticated'));
     user.set({
-      name: 'Beta User',
-      email: 'beta@example.test',
+      name: 'Alex Taylor',
+      email: 'alex@example.test',
       profile: {
         skills: ['TypeScript'],
         aspirations: {targetRoles: ['Frontend developer']},
         workPreferences: {location: {postcode: 'RG1 1AA'}},
       },
     });
-    const fixture = TestBed.createComponent(BetaApp);
+    searchJobs.mockClear();
+
+    await TestBed.configureTestingModule({
+      imports: [App],
+      providers: [
+        provideHttpClient(),
+        provideRouter(routes),
+        {
+          provide: BrowserSessionService,
+          useValue: {
+            status,
+            user,
+            restore: () => of(status()),
+            logout: () => of({statusCode: 200, success: true, message: 'Logged out'}),
+            acceptAuthenticatedUser: (next: User) => user.set(next),
+            updateCurrentProfile: () => undefined,
+            handleAuthenticatedError: () => undefined,
+            ensureCsrf: () => of(undefined),
+          },
+        },
+        {provide: JobService, useValue: {searchJobs}},
+        {
+          provide: RuntimeConfigurationService,
+          useValue: {
+            jobSearchMode: () => of({mode: 'FIXTURE'}),
+            documentGenerationMode: () => of({mode: 'FIXTURE_LLM'}),
+          },
+        },
+        {
+          provide: ApplicationTrackerService,
+          useValue: {
+            listApplications: () => of([]),
+            createApplication: vi.fn(),
+            updateStatus: vi.fn(),
+          },
+        },
+        {
+          provide: PaymentService,
+          useValue: {
+            wallet: () => of({balanceTokens: 0}),
+            pricing: () => of({plans: []}),
+          },
+        },
+      ],
+    }).compileComponents();
+  });
+
+  it('renders the canonical product workspace with honest capability states', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-search"]')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="job-results-workspace"]')).not.toBeNull();
-    expect(jobService.searchJobs).toHaveBeenCalledWith(
-      'TypeScript',
-      '',
-      'Frontend developer',
-      expect.stringContaining('RG1 1AA'),
-    );
-    expect(fixture.nativeElement.querySelector('[data-testid="generate-documents-button"]')).toBeNull();
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Profile');
+    expect(text).toContain('Job search');
+    expect(text).toContain('Application tracking');
+    expect(text).toContain('Documents, storage and export');
+    expect(text).toContain('Reporting & job-search evidence');
+    expect(text).toContain('AI Credit');
+    expect(text).toContain('Fixture-backed');
+    expect(text).toContain('Not enabled for this beta');
+    expect(searchJobs).toHaveBeenCalled();
+  });
+
+  it('does not expose the dashboard while the secure session is being checked', () => {
+    status.set('checking');
+    user.set(null);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Checking your session');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-search"]')).toBeNull();
   });
 });

@@ -87,7 +87,6 @@
             "include": [
               "src/app/app.spec.ts",
               "src/app/config/**/*.spec.ts",
-              "src/app/features/beta-job-search/beta-job-search.spec.ts",
               "src/app/features/claimant-profile/claimant-profile.spec.ts",
               "src/app/features/job-card/job-card.component.spec.ts",
               "src/app/features/job-results/job-results.component.spec.ts",
