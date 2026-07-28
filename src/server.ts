@@ -50,6 +50,12 @@ const DOCUMENT_GENERATION_GATEWAY_URL = process.env['DOCUMENT_GENERATION_GATEWAY
 const DOCUMENT_STORE_SERVICE_URL = process.env['DOCUMENT_STORE_SERVICE_URL'] || 'http://localhost:8089';
 
 const angularApp = new AngularNodeAppEngine({ allowedHosts: bffConfig.allowedHosts });
+const PUBLIC_ACCOUNT_ROUTES: string[] = [
+  '/register',
+  '/sign-in',
+  '/forgot-password',
+  '/reset-password',
+];
 
 app.get('/api/runtime/job-search-mode', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -200,6 +206,14 @@ registerReportingRoutes(app, {
 // Payments remain fail-closed until its BFF integration derives identity from
 // the HttpOnly session and enforces CSRF for mutations.
 app.use(UNAVAILABLE_API_PREFIXES, rejectUnavailableCapability);
+
+app.get(PUBLIC_ACCOUNT_ROUTES, (req, res, next) => {
+  const routeDirectory = req.path.slice(1);
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(join(browserDistFolder, routeDirectory, 'index.html'), (error) => {
+    if (error) next(error);
+  });
+});
 
 /**
  * Serve static files from /browser
