@@ -118,7 +118,9 @@ export const normaliseProfile = (profile?: ProfileInputShape | UserProfile | nul
     qualifications: (profile.qualifications || []).filter(isValidQualification),
     roles: (profile.roles || []).filter(isValidRole),
     aspirations: {
-      targetRoles: aspirations?.targetRoles?.length ? splitTags(aspirations.targetRoles) : splitTags(profile.aspirations as string),
+      targetRoles: aspirations
+        ? splitTags(aspirations.targetRoles)
+        : splitTags(profile.aspirations as string),
       targetWeeklyHours: aspirations?.targetWeeklyHours || (hasStoredWorkPrefs(profile) ? targetHoursLabelToEnum(typeof profile.workPrefs === 'string' ? profile.workPrefs : undefined) : baseAspirations.targetWeeklyHours)
     },
     workPreferences: {

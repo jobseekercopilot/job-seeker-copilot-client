@@ -297,6 +297,10 @@ export class App implements OnInit {
       email: data.email,
       profile: normaliseProfile(data.profile),
     });
+    if (this.publicAccountRoute()) {
+      this.publicAccountRoute.set(null);
+      void this.router.navigateByUrl('/dashboard', {replaceUrl: true});
+    }
     this.saveProfile();
     this.showToast(`Welcome, ${data.name}! Your Jobseeker Copilot workspace is initialized.`, 'success');
   }

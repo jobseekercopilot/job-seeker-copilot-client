@@ -1,7 +1,7 @@
 import {provideHttpClient} from '@angular/common/http';
 import {signal} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
-import {provideRouter} from '@angular/router';
+import {provideRouter, Router} from '@angular/router';
 import {of} from 'rxjs';
 import type {User} from './api';
 import {App} from './app';
@@ -110,5 +110,25 @@ describe('App', () => {
 
     expect(fixture.nativeElement.textContent).toContain('Checking your session');
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-search"]')).toBeNull();
+  });
+
+  it('leaves a hosted account route after successful sign-in', () => {
+    const fixture = TestBed.createComponent(App);
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+    fixture.componentInstance.publicAccountRoute.set('signin');
+
+    fixture.componentInstance.handleOnboarded({
+      name: 'Alex Taylor',
+      email: 'alex@example.test',
+      profile: {
+        skills: [],
+        aspirations: {targetRoles: []},
+        workPreferences: null,
+      } as unknown as NonNullable<User['profile']>,
+    });
+
+    expect(fixture.componentInstance.publicAccountRoute()).toBeNull();
+    expect(navigate).toHaveBeenCalledWith('/dashboard', {replaceUrl: true});
   });
 });

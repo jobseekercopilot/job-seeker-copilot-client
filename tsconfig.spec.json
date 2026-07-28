@@ -18,6 +18,7 @@
     "src/app/features/password-recovery/password-recovery.spec.ts",
     "src/app/features/my-applications/my-applications.component.spec.ts",
     "src/app/gateways/**/*.spec.ts",
+    "src/app/models/**/*.spec.ts",
     "src/app/services/**/*.spec.ts",
     "src/server/**/*.spec.ts",
     "src/app/shared/**/*.spec.ts",
