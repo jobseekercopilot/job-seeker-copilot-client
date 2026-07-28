@@ -231,10 +231,12 @@
             <a class="return-button" href="/payment">Open AI Credit area</a>
           </section>
 
-          <section class="capability-placeholder" data-testid="workspace-reporting">
-            <span class="capability-state state-unavailable">Not enabled for this beta</span>
-            <h2>Reporting &amp; job-search evidence</h2>
-            <p>Application totals, recent activity, commitment progress and Universal Credit journal evidence will appear here after session-derived reporting is enabled.</p>
+          <section data-testid="workspace-reporting">
+            <div class="workspace-status-line">
+              <span class="capability-state state-available">Available</span>
+              <strong>Reporting &amp; job-search evidence</strong>
+            </div>
+            <app-reporting-panel #reportingPanel></app-reporting-panel>
           </section>
         </aside>
 

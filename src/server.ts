@@ -21,6 +21,7 @@ import {callUserManagement} from './server/user-management-proxy';
 import {installGracefulShutdown} from './server/graceful-shutdown';
 import {registerJobFinderRoutes} from './server/job-finder-proxy';
 import {registerDocumentGenerationRoutes} from './server/document-generation-proxy';
+import {registerReportingRoutes} from './server/reporting-proxy';
 import {
   documentGenerationMode,
   jobSearchProviderMode,
@@ -172,8 +173,15 @@ registerDocumentGenerationRoutes(app, {
   timeoutMs: Math.max(bffConfig.downstreamTimeoutMs, 60_000),
 });
 
-// Reporting and Payments remain unavailable until their BFF integrations derive
-// identity from the HttpOnly session and enforce CSRF for mutations.
+registerReportingRoutes(app, {
+  accessCookieName: bffConfig.sessionAccessCookieName,
+  csrfCookieName: bffConfig.sessionCsrfCookieName,
+  origin: bffConfig.reportingGatewayOrigin,
+  timeoutMs: bffConfig.downstreamTimeoutMs,
+});
+
+// Payments remain fail-closed until its BFF integration derives identity from
+// the HttpOnly session and enforces CSRF for mutations.
 app.use(UNAVAILABLE_API_PREFIXES, rejectUnavailableCapability);
 
 /**

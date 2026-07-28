@@ -73,13 +73,14 @@
       "id": "reporting-gateway",
       "version": "2.0.0",
       "sourceRepository": "jobseekercopilot/reporting-gateway",
-      "sourceCommit": "5abc402b9264dd03a6cd85fc019bd7f57db18172",
+      "sourceCommit": "86bead7461413b7b3d75c6ff6cabd1798ca6fdba",
       "path": "contracts/reporting-gateway/2.0.0/openapi.json",
-      "sha256": "7342afbc617cccf97ad4211e5e05a5547f62cc265f5a2d0eedc2f45558c1a617",
+      "sha256": "b8f13569095060821aa5a3e5398c050fcda808fb77d6541cbb3d54e84c81ff14",
       "output": "src/app/api/reporting-gateway",
       "requiredPaths": [
         "/api/v1/reports/summary",
-        "/api/v1/reports/uc-journal"
+        "/api/v1/reports/uc-journal",
+        "/api/v1/reports/evidence.txt"
       ]
     }
   ]
