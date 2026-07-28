@@ -388,6 +388,9 @@
             @if (isLoginFieldInvalid('password')) {
               <p id="login-password-error" class="text-[10px] font-semibold text-rose-700">{{ loginFieldError('password') }}</p>
             }
+            <a href="/forgot-password" class="text-xs font-bold text-blue-700 hover:underline">
+              Forgot your password?
+            </a>
           </div>
 
           <button id="btn-submit-signin"

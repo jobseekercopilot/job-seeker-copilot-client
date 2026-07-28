@@ -12,14 +12,16 @@
       "id": "user-management-gateway",
       "version": "2.0.0",
       "sourceRepository": "jobseekercopilot/user-management-gateway",
-      "sourceCommit": "ae1eec6efa86115edf68962f3fead63899a6c19b",
+      "sourceCommit": "be229023c4cee86ab9a10b177895f0c21d0ac5b3",
       "path": "contracts/user-management-gateway/2.0.0/openapi.json",
-      "sha256": "719de043adb1f6e4817dae0e1878914b6e0a71ff5a896b62d8b0be47056610a3",
+      "sha256": "ef3b42496d18e15370a20b8e9523b663b84452d3b5044dbb830a2e9b527e205a",
       "output": "src/app/api",
       "requiredPaths": [
         "/api/auth/csrf",
         "/api/auth/login",
         "/api/auth/logout",
+        "/api/auth/password-reset/complete",
+        "/api/auth/password-reset/request",
         "/api/auth/profile",
         "/api/auth/refresh",
         "/api/auth/register"

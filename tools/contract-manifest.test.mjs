@@ -79,6 +79,15 @@ test('pins the token-free UMG browser-session contract', async () => {
   assert.equal(contract.components.securitySchemes.browserSession.in, 'cookie');
   assert.equal(contract.components.securitySchemes.browserRefresh.in, 'cookie');
   assert.equal(contract.paths['/api/auth/profile'].get.parameters, undefined);
+  assert.ok(contract.paths['/api/auth/password-reset/request'].post);
+  assert.ok(contract.paths['/api/auth/password-reset/complete'].post);
+  assert.equal(
+    contract.paths['/api/auth/password-reset/request'].post.responses['202'].content[
+      'application/json'
+    ].schema.$ref,
+    '#/components/schemas/GatewayResponse',
+  );
+  assert.ok(contract.components.schemas.PasswordResetCompletionRequest);
   assert.deepEqual(contract.components.schemas.RegisterRequest.properties.name, {
     type: 'string',
     description: 'Display name after trimming, measured in Unicode code points.',
@@ -117,6 +126,8 @@ test('pins the token-free UMG browser-session contract', async () => {
     '/api/auth/csrf',
     '/api/auth/login',
     '/api/auth/logout',
+    '/api/auth/password-reset/complete',
+    '/api/auth/password-reset/request',
     '/api/auth/profile',
     '/api/auth/refresh',
     '/api/auth/register',

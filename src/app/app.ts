@@ -6,6 +6,7 @@ import {firstValueFrom} from 'rxjs';
 import { ClaimantProfileComponent } from './features/claimant-profile/claimant-profile';
 import { NavigationBar } from './features/navigation-bar/navigation-bar';
 import { LandingAuthComponent } from './features/landing-auth/landing-auth';
+import {PasswordRecoveryComponent} from './features/password-recovery/password-recovery';
 import { JobResultsComponent } from './features/job-results/job-results.component';
 import { ReportingPanelComponent } from './features/reporting-panel/reporting-panel';
 import { PaymentPanelComponent } from './features/payment-panel/payment-panel';
@@ -34,6 +35,7 @@ type WorkspaceTab = 'search' | 'applications' | 'documents';
     ClaimantProfileComponent,
     NavigationBar,
     LandingAuthComponent,
+    PasswordRecoveryComponent,
     JobResultsComponent,
     MyApplicationsComponent,
     DocumentsWorkspaceComponent,
@@ -59,6 +61,8 @@ export class App implements OnInit {
   aiCreditPencePerToken = signal(FALLBACK_PENCE_PER_TOKEN);
   paymentReturnStatus = signal<'success' | 'cancel' | null>(null);
   currentRoute = signal<'dashboard' | 'payment' | 'history'>('dashboard');
+  publicAccountRoute = signal<
+    'register' | 'signin' | 'forgot' | 'reset' | null>(null);
 
   // Claimant profile search inputs remain in memory only.
   profileSkills = signal('');
@@ -138,7 +142,9 @@ export class App implements OnInit {
       } catch {
         console.warn('Unable to remove legacy browser session data.');
       }
-      void this.retrySession();
+      if (!this.publicAccountRoute()) {
+        void this.retrySession();
+      }
       void this.loadJobSearchProviderMode();
       void this.loadDocumentGenerationMode();
     }
@@ -205,6 +211,7 @@ export class App implements OnInit {
 
   private syncRouteState(url: string): void {
     const pathname = this.routePath(url);
+    this.publicAccountRoute.set(this.detectPublicAccountRoute(pathname));
     this.paymentReturnStatus.set(this.detectPaymentReturnStatus(pathname));
     this.currentRoute.set(this.detectRoute(pathname));
   }
@@ -217,6 +224,15 @@ export class App implements OnInit {
     if (pathname === '/payment/history' || pathname === '/tokens/history') return 'history';
     if (pathname === '/payment' || pathname === '/tokens') return 'payment';
     return 'dashboard';
+  }
+
+  private detectPublicAccountRoute(pathname: string):
+      'register' | 'signin' | 'forgot' | 'reset' | null {
+    if (pathname === '/register') return 'register';
+    if (pathname === '/sign-in') return 'signin';
+    if (pathname === '/forgot-password') return 'forgot';
+    if (pathname === '/reset-password') return 'reset';
+    return null;
   }
 
   saveProfile(showConfirmation = true) {

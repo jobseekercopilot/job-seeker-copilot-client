@@ -15,6 +15,7 @@ import {
   downstreamFailureResponse,
   jsonBodyErrorHandler,
   loadBffConfig,
+  passwordResetIpRateLimiter,
   securityHeaders,
 } from './server/bff-boundary';
 import {callUserManagement} from './server/user-management-proxy';
@@ -32,6 +33,9 @@ const bffConfig = loadBffConfig();
 
 const app = express();
 app.disable('x-powered-by');
+if (bffConfig.trustedProxyHops > 0) {
+  app.set('trust proxy', bffConfig.trustedProxyHops);
+}
 app.use(securityHeaders);
 app.use(express.json({limit: bffConfig.jsonBodyLimitBytes}));
 app.use(jsonBodyErrorHandler);
@@ -70,6 +74,19 @@ app.post('/api/auth/register', async (req, res) => {
  */
 app.post('/api/auth/login', async (req, res) => {
   await proxyUserManagementRequest('/api/auth/login', 'POST', req, res);
+});
+
+const resetRequestIpLimiter = passwordResetIpRateLimiter(
+  bffConfig.passwordResetRateLimitWindowMs,
+  bffConfig.passwordResetRateLimitMaximum,
+);
+
+app.post('/api/auth/password-reset/request', resetRequestIpLimiter, async (req, res) => {
+  await proxyUserManagementRequest('/api/auth/password-reset/request', 'POST', req, res);
+});
+
+app.post('/api/auth/password-reset/complete', async (req, res) => {
+  await proxyUserManagementRequest('/api/auth/password-reset/complete', 'POST', req, res);
 });
 
 /**

@@ -13,6 +13,8 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  input,
+  OnInit,
   output,
   signal,
   inject
@@ -53,7 +55,7 @@ type TargetWeeklyHours = AspirationsTargetWeeklyHoursEnum;
   templateUrl: './landing-auth.html',
   styleUrl: './landing-auth.css'
 })
-export class LandingAuthComponent {
+export class LandingAuthComponent implements OnInit {
   private userManagementApi = inject(AuthenticationService);
   private browserSession = inject(BrowserSessionService);
   private locationService = inject(LocationService);
@@ -69,6 +71,8 @@ export class LandingAuthComponent {
     name: string;
     email: string;
   }>();
+
+  readonly initialMode = input<'create' | 'signin'>('create');
 
   mode = signal<'create' | 'signin'>('create');
   currentStep = signal<number>(1);
@@ -116,6 +120,10 @@ export class LandingAuthComponent {
       this.locationSuggestions.set(state.locations);
       this.showLocationDropdown.set(state.status === 'results');
     });
+  }
+
+  ngOnInit(): void {
+    if (this.initialMode() === 'signin') this.mode.set('signin');
   }
 
   onLocationInputChange(query: string) {
