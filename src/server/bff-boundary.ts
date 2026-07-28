@@ -4,6 +4,7 @@ import { isIP } from 'node:net';
 export interface BffConfig {
   userManagementGatewayOrigin: string;
   jobFinderGatewayOrigin: string;
+  reportingGatewayOrigin: string;
   sessionAccessCookieName: string;
   sessionCsrfCookieName: string;
   allowedHosts: string[];
@@ -116,6 +117,11 @@ export function loadBffConfig(environment: RuntimeEnvironment = process.env): Bf
       environment,
       'JOB_FINDER_GATEWAY_URL',
       'http://localhost:8080',
+    ),
+    reportingGatewayOrigin: parseOrigin(
+      environment,
+      "REPORTING_GATEWAY_URL",
+      "http://localhost:8095",
     ),
     sessionAccessCookieName: cookies.access,
     sessionCsrfCookieName: cookies.csrf,

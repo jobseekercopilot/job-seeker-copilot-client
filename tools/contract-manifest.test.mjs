@@ -54,16 +54,18 @@ test('pins the reporting summary and evidence contract', async () => {
   assert.equal(reporting.sourceRepository, 'jobseekercopilot/reporting-gateway');
   assert.equal(
     reporting.sourceCommit,
-    '5abc402b9264dd03a6cd85fc019bd7f57db18172',
+    '86bead7461413b7b3d75c6ff6cabd1798ca6fdba',
   );
   assert.equal(reporting.output, 'src/app/api/reporting-gateway');
   assert.deepEqual(reporting.requiredPaths, [
     '/api/v1/reports/summary',
     '/api/v1/reports/uc-journal',
+    '/api/v1/reports/evidence.txt',
   ]);
   assert.equal(contract.info.version, '2.0.0');
   assert.ok(contract.components.schemas.ReportingSummaryResponse);
   assert.ok(contract.components.schemas.UcJournalResponse);
+  assert.ok(contract.paths['/api/v1/reports/evidence.txt']);
 });
 
 test('pins the token-free UMG browser-session contract', async () => {

@@ -20,7 +20,7 @@ describe('unavailable capability boundary', () => {
   async function startApp(): Promise<string> {
     const app = express();
     app.use(UNAVAILABLE_API_PREFIXES, rejectUnavailableCapability);
-    app.use(['/api/v1/payment', '/api/v1/reports'], (_request, response) => {
+    app.use(['/api/v1/payment'], (_request, response) => {
       reachedUnsafeHandler += 1;
       response.status(200).json({unsafe: true});
     });
@@ -32,7 +32,6 @@ describe('unavailable capability boundary', () => {
   }
 
   it.each([
-    ['GET', '/api/v1/reports/work-search'],
     ['GET', '/api/v1/payment/wallet'],
     ['GET', '/api/v1/payment/transactions?limit=20'],
     ['GET', '/api/v1/payment/pricing'],
@@ -61,7 +60,6 @@ describe('unavailable capability boundary', () => {
 
   it('keeps the unsafe capability prefix allowlist explicit', () => {
     expect(UNAVAILABLE_API_PREFIXES).toEqual([
-      '/api/v1/reports',
       '/api/v1/payment',
     ]);
   });

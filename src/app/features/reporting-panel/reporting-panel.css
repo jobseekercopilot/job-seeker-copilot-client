@@ -313,3 +313,30 @@
     flex-direction: column;
   }
 }
+
+.journal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.journal-actions a {
+  text-decoration: none;
+}
+
+.evidence-category {
+  align-self: start;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+}
+
+.evidence-note {
+  color: #475569;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  margin: 0.75rem 0 0;
+}

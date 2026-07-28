@@ -19,16 +19,6 @@
         "summary" : "Get deterministic Universal Credit journal text",
         "operationId" : "ucJournal",
         "responses" : {
-          "502" : {
-            "description" : "Reporting service failed",
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/UcJournalResponse"
-                }
-              }
-            }
-          },
           "200" : {
             "description" : "UC journal text returned",
             "content" : {
@@ -48,6 +38,16 @@
                 }
               }
             }
+          },
+          "502" : {
+            "description" : "Reporting service failed",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UcJournalResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -58,16 +58,6 @@
         "summary" : "Get reporting summary",
         "operationId" : "summary",
         "responses" : {
-          "502" : {
-            "description" : "Reporting service failed",
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ReportingSummaryResponse"
-                }
-              }
-            }
-          },
           "200" : {
             "description" : "Reporting summary returned",
             "content" : {
@@ -84,6 +74,55 @@
               "*/*" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/ReportingSummaryResponse"
+                }
+              }
+            }
+          },
+          "502" : {
+            "description" : "Reporting service failed",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ReportingSummaryResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/evidence.txt" : {
+      "get" : {
+        "tags" : [ "reporting-gateway-controller" ],
+        "summary" : "Download work-search evidence as plain text",
+        "operationId" : "evidenceExport",
+        "responses" : {
+          "200" : {
+            "description" : "Owner-scoped evidence export returned",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Valid access token required",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "502" : {
+            "description" : "Reporting service failed",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "string"
                 }
               }
             }
@@ -108,11 +147,23 @@
       "ActivityTimelineItem" : {
         "type" : "object",
         "properties" : {
+          "applicationId" : {
+            "type" : "string"
+          },
           "occurredAt" : {
             "type" : "string",
             "format" : "date-time"
           },
+          "eventType" : {
+            "type" : "string"
+          },
+          "evidenceCategory" : {
+            "type" : "string"
+          },
           "status" : {
+            "type" : "string"
+          },
+          "provider" : {
             "type" : "string"
           },
           "jobTitle" : {

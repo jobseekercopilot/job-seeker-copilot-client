@@ -55,6 +55,7 @@
           @for (item of displayActivity(); track item.id) {
             <li>
               <time>{{ item.timestamp | date:'dd/MM HH:mm' }}</time>
+              <span class="evidence-category">{{ item.category === 'JOB_SEARCH' ? 'Job search' : item.category === 'DOCUMENT' ? 'Documents' : 'Application' }}</span>
               <div>
                 <strong>{{ item.label }}</strong>
                 @if (item.jobTitle) {
@@ -62,6 +63,9 @@
                 }
                 @if (item.companyName) {
                   <span>{{ item.companyName }}</span>
+                }
+                @if (item.provider) {
+                  <small>Source: {{ item.provider }}</small>
                 }
                 @if (item.status) {
                   <small>Status: {{ item.status }}</small>
@@ -78,20 +82,27 @@
     <article class="reporting-card journal-card">
       <div class="journal-header">
         <h3>Journal preview</h3>
-        <button type="button" class="secondary-button" (click)="copyJournal()" [disabled]="!displayJournal()">
-          {{ copied() ? 'Copied' : 'Copy' }}
-        </button>
+        <div class="journal-actions">
+          <button type="button" class="secondary-button" (click)="copyJournal()" [disabled]="!displayJournal()">
+            {{ copied() ? 'Copied' : 'Copy journal' }}
+          </button>
+          <a class="secondary-button" href="/api/v1/reports/evidence.txt" download="job-search-evidence.txt">Download evidence</a>
+        </div>
       </div>
       <pre>{{ displayJournal() || 'No journal entries yet.' }}</pre>
       @if (copied()) {
         <p class="copy-success">Copied to clipboard.</p>
       }
+      @if (copyError()) {
+        <p class="reporting-error">{{ copyError() }}</p>
+      }
+      <p class="evidence-note">Review this evidence before sharing it. It is a summary of your stored Job Seeker Copilot records, not an official Universal Credit submission.</p>
     </article>
 
     @if (report.commitmentProgress; as progress) {
       <article class="reporting-card commitment">
         <div class="commitment-line">
-          <span>Applications this week</span>
+          <span>Indicative activity estimate</span>
           <strong>{{ progress.percentageComplete ?? 0 }}%</strong>
         </div>
         <div class="progress-track" aria-hidden="true">
@@ -101,6 +112,7 @@
           <span>{{ progress.completedHours ?? 0 }} of {{ progress.requiredHours ?? 35 }} hours</span>
           <span>{{ progress.remainingHours ?? 0 }} remaining</span>
         </div>
+        <p class="evidence-note">This planning estimate uses your stored profile preference and tracked application activity. It is not a measured time log.</p>
       </article>
     }
   } @else if (loading()) {

@@ -1,7 +1,6 @@
 import type {RequestHandler} from 'express';
 
 export const UNAVAILABLE_API_PREFIXES: string[] = [
-  '/api/v1/reports',
   '/api/v1/payment',
 ];
 

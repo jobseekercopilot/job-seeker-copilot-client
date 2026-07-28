@@ -37,6 +37,7 @@ type WorkspaceTab = 'search' | 'applications' | 'documents';
     JobResultsComponent,
     MyApplicationsComponent,
     DocumentsWorkspaceComponent,
+    ReportingPanelComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.css',
