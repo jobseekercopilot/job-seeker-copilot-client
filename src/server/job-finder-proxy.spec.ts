@@ -1,6 +1,9 @@
 import express from 'express';
 import type {Server} from 'node:http';
-import {BETA_DISABLED_API_PREFIXES, rejectBetaDisabledCapability} from './beta-disabled-capabilities';
+import {
+  UNAVAILABLE_API_PREFIXES,
+  rejectUnavailableCapability,
+} from './unavailable-capabilities';
 import {
   jobFinderCredentials,
   type JobFinderProxyConfig,
@@ -143,7 +146,7 @@ describe('Job Finder route allowlist', () => {
     const app = express();
     app.use(express.json());
     registerJobFinderRoutes(app, config, fetchImplementation);
-    app.use(BETA_DISABLED_API_PREFIXES, rejectBetaDisabledCapability);
+    app.use(UNAVAILABLE_API_PREFIXES, rejectUnavailableCapability);
     server = app.listen(0, '127.0.0.1');
     await new Promise<void>(resolve => server?.once('listening', resolve));
     const address = server.address();
@@ -594,7 +597,7 @@ describe('Job Finder route allowlist', () => {
     ['GET', '/api/jobs/applications/user/another-user'],
     ['POST', `/api/jobs/applications/${SAVED_JOB_ID}/withdraw-generated`],
     ['POST', '/api/v1/document-generation/jobs/job-1/generate'],
-  ])('keeps retained %s %s routes fail-closed', async (method, path) => {
+  ])('does not expose removed browser-identity %s %s routes', async (method, path) => {
     const upstream = vi.fn() as unknown as typeof fetch;
     const origin = await startApp(upstream);
 
@@ -608,10 +611,6 @@ describe('Job Finder route allowlist', () => {
     });
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
-      error: 'FEATURE_NOT_AVAILABLE',
-      message: 'This capability is not available in the User Management beta',
-    });
     expect(upstream).not.toHaveBeenCalled();
   });
 });

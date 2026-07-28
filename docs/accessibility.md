@@ -1,8 +1,7 @@
 # Accessibility baseline
 
-The selected beta path targets WCAG 2.2 level AA for registration, sign-in and
-profile editing. Accessibility is a release requirement, not an optional visual
-enhancement.
+The application targets WCAG 2.2 level AA for its private-beta journeys.
+Accessibility is a release requirement, not an optional visual enhancement.
 
 ## Implemented interaction contract
 

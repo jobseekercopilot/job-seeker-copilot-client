@@ -1,14 +1,14 @@
 # Job Seeker Copilot Client
 
-Angular 21 browser application with an Express SSR/BFF layer. In the selected
-beta path it proxies authentication/profile requests to user-management-gateway
-and postcode requests to location-gateway. Its narrow Job Finder boundary
-proxies authenticated search and saved-job operations, but the Angular Job
-Search journey remains disabled.
+Angular 21 browser application with an Express SSR/BFF layer. The BFF proxies
+authentication, profile, location, Job Search, Application Tracking and
+document-generation requests through secure session-derived boundaries.
+Reporting and Payments remain explicitly unavailable until their equivalent
+secure integrations are complete.
 
-> Beta status: not beta-ready. Reproducible builds, browser token custody, and
-> client session lifecycle are in place, while end-to-end readiness work
-> remains. See [the audit](docs/BETA_READINESS_AUDIT.md).
+Private beta is a release stage for this normal application. Reproducible
+builds, browser token custody and the client session lifecycle are in place;
+the remaining release gates are tracked in the GitHub Project.
 
 The client/BFF responsibility and the canonical `src/app/api` generated-client
 root are defined in the Infrastructure
@@ -73,13 +73,12 @@ into `.cache/`; its locked SHA-256 is verified before execution. See the
 [dependency security baseline](docs/dependency-security.md) for audit policy and
 current residual findings.
 
-The selected beta enables authentication, profile, location lookup and a narrow
-server-side Job Finder search/saved-job boundary. Job Search UI, document
-generation, reporting, and payment UI source remains disabled pending each
-capability's complete dependency set and separate approval. The Job Finder
-Gateway 1.2.0 and durable Document Generation Gateway 1.4.0 contracts are
-reproducible. See
-[ADR 0001](docs/adr/0001-reproducible-beta-api-clients.md) and the
+The normal application enables secure authentication, profile management, Job
+Search, Application Tracking, fixture-backed document generation, storage and
+export. Reporting and Payments remain fail-closed until their session-derived
+integrations are approved. Versioned Job Finder and Document Generation
+contracts are generated reproducibly. See
+[ADR 0001](docs/adr/0001-reproducible-api-clients.md) and the
 [browser-session ADR](docs/adr/0002-browser-session-client.md), plus the
 [document-generation contract ADR](docs/adr/0003-document-generation-typescript-contract.md)
 and [Job Finder contract ADR](docs/adr/0004-job-finder-typescript-contract.md).

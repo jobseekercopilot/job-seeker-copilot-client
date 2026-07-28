@@ -45,9 +45,9 @@
 
       @if (isLoggedIn() && paymentReturnStatus() === 'success') {
         <section class="capability-placeholder">
-          <span class="capability-state state-unavailable">Temporarily unavailable</span>
+          <span class="capability-state state-unavailable">Not enabled for this beta</span>
           <h2>AI Credit and payments</h2>
-          <p>The secure payment boundary is retained. Checkout confirmation will be enabled after the restored interface is approved.</p>
+          <p>Checkout confirmation will be enabled after the secure payment integration is approved.</p>
         </section>
       }
     </main>
@@ -71,13 +71,13 @@
             <div>
               <span class="eyebrow">AI Credit</span>
               <h1>Buy AI Credit</h1>
-              <p>The complete AI Credit area is visible while its secure runtime path awaits checkpoint approval.</p>
+              <p>Choose an AI Credit package when secure purchasing is enabled.</p>
             </div>
           </div>
           <section class="capability-placeholder" data-testid="workspace-payment">
-            <span class="capability-state state-unavailable">Temporarily unavailable</span>
+            <span class="capability-state state-unavailable">Not enabled for this beta</span>
             <h2>Payments</h2>
-            <p>Secure session-derived Stripe and fixture payment paths are retained but are not enabled during this visual checkpoint.</p>
+            <p>Purchasing is unavailable until the secure session-derived payment path is enabled.</p>
           </section>
         </section>
       } @else if (currentRoute() === 'history') {
@@ -90,41 +90,12 @@
             </div>
           </div>
           <section class="capability-placeholder" data-testid="workspace-ai-credit-history">
-            <span class="capability-state state-unavailable">Temporarily unavailable</span>
+            <span class="capability-state state-unavailable">Not enabled for this beta</span>
             <h2>AI Credit history</h2>
             <p>The spending log will be enabled after its secure payment integration is confirmed.</p>
           </section>
         </section>
       } @else {
-        <section class="capability-overview" aria-labelledby="workspace-overview-title">
-          <div>
-            <p class="eyebrow">Full private-beta application</p>
-            <h1 id="workspace-overview-title">Your complete Job Seeker Copilot workspace</h1>
-            <p>All major product areas remain visible while secure integrations are enabled incrementally.</p>
-          </div>
-          <div class="capability-grid">
-            <article data-testid="capability-profile"><span class="capability-state state-available">Available</span><strong>Profile</strong></article>
-            <article data-testid="capability-job-search"><span class="capability-state"
-              [class.state-fixture]="jobSearchProviderMode() === 'FIXTURE'"
-              [class.state-available]="jobSearchProviderMode() === 'REAL_PROVIDERS'"
-              [class.state-unavailable]="jobSearchProviderMode() === 'REQUIRED_VALIDATION'">{{ jobSearchProviderModeLabel() }}</span><strong>Job search</strong></article>
-            <article data-testid="capability-job-details"><span class="capability-state"
-              [class.state-fixture]="jobSearchProviderMode() === 'FIXTURE'"
-              [class.state-available]="jobSearchProviderMode() === 'REAL_PROVIDERS'"
-              [class.state-unavailable]="jobSearchProviderMode() === 'REQUIRED_VALIDATION'">{{ jobSearchProviderModeLabel() }}</span><strong>Job matching &amp; details</strong></article>
-            <article data-testid="capability-applications"><span class="capability-state state-available">Available</span><strong>Application tracking</strong></article>
-            <article data-testid="capability-generation"><span class="capability-state"
-              [class.state-fixture]="documentGenerationMode() === 'FIXTURE_LLM'"
-              [class.state-unavailable]="documentGenerationMode() !== 'FIXTURE_LLM'">{{ documentGenerationModeLabel() }}</span><strong>CV &amp; cover-letter generation</strong></article>
-            <article data-testid="capability-documents"><span class="capability-state"
-              [class.state-fixture]="documentGenerationMode() === 'FIXTURE_LLM'"
-              [class.state-unavailable]="documentGenerationMode() !== 'FIXTURE_LLM'">{{ documentGenerationModeLabel() }}</span><strong>Documents &amp; export</strong></article>
-            <article data-testid="capability-reporting"><span class="capability-state state-unavailable">Temporarily unavailable</span><strong>Reporting &amp; evidence</strong></article>
-            <article data-testid="capability-ai-credit"><span class="capability-state state-unavailable">Temporarily unavailable</span><strong>AI Credit</strong></article>
-            <article data-testid="capability-payments"><span class="capability-state state-unavailable">Temporarily unavailable</span><strong>Payments</strong></article>
-          </div>
-        </section>
-
         <div class="dashboard-grid grid grid-cols-1 gap-5 items-start">
         
         <!-- ================= LEFT COLUMN: CLAIMANT PROFILE (4 Cols) ================= -->
@@ -244,7 +215,7 @@
               </app-documents-workspace>
             } @else {
               <section class="capability-placeholder" data-testid="workspace-documents">
-                <span class="capability-state state-unavailable">Temporarily unavailable</span>
+                <span class="capability-state state-unavailable">Not enabled for this beta</span>
                 <h2>Documents, storage and export</h2>
                 <p>The secure document runtime has not been validated in this environment.</p>
               </section>
@@ -254,14 +225,14 @@
 
         <aside id="right-sidebar" class="dashboard-right flex flex-col gap-5">
           <section class="capability-placeholder" data-testid="workspace-ai-credit">
-            <span class="capability-state state-unavailable">Temporarily unavailable</span>
+            <span class="capability-state state-unavailable">Not enabled for this beta</span>
             <h2>AI Credit &amp; Payments</h2>
-            <p>Wallet balance, fixture purchases and secure Stripe checkout remain visible in the product plan and will be enabled after this checkpoint.</p>
+            <p>Wallet balance and purchasing will be enabled after the secure payment integration is approved.</p>
             <a class="return-button" href="/payment">Open AI Credit area</a>
           </section>
 
           <section class="capability-placeholder" data-testid="workspace-reporting">
-            <span class="capability-state state-unavailable">Temporarily unavailable</span>
+            <span class="capability-state state-unavailable">Not enabled for this beta</span>
             <h2>Reporting &amp; job-search evidence</h2>
             <p>Application totals, recent activity, commitment progress and Universal Credit journal evidence will appear here after session-derived reporting is enabled.</p>
           </section>

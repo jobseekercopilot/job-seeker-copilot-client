@@ -111,7 +111,12 @@ function sendPayload(response: Response, payload: ProxyPayload | undefined): voi
 
 function safeFileName(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
-  const normalised = value.trim().replace(/[\u0000-\u001f\u007f]/g, '');
+  const normalised = [...value.trim()]
+    .filter(character => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint >= 32 && codePoint !== 127;
+    })
+    .join('');
   return normalised && normalised.length <= 255 ? normalised : undefined;
 }
 
@@ -298,10 +303,10 @@ export function registerDocumentGenerationRoutes(
         sendPayload(response, payload);
         return;
       }
-      const files = JSON.parse(payload.body) as Array<{
+      const files = JSON.parse(payload.body) as {
         fileType?: unknown;
         active?: unknown;
-      }>;
+      }[];
       if (!Array.isArray(files)) {
         sendPayload(response, undefined);
         return;
