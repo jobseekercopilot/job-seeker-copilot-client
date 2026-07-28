@@ -17,6 +17,7 @@ import {
   DownloadFileResponse,
   GenerationDownloadsResponse,
 } from '../../api/document-generation-gateway';
+import { approvedExternalUrl } from '../../../shared/provider-content-policy';
 
 type StatusUpdateTarget =
   | 'DOCUMENTS_GENERATED'
@@ -149,6 +150,22 @@ export class MyApplicationsComponent implements OnInit {
   sourceText(application: TrackedApplication): string {
     return application.providerName || application.source || application.provider || 'Saved application';
   }
+  listingUrl(application: TrackedApplication): string | null {
+    return approvedExternalUrl(application.listingUrl);
+  }
+
+  applyUrl(application: TrackedApplication): string | null {
+    return approvedExternalUrl(application.applyUrl);
+  }
+
+  attributionSourceUrl(application: TrackedApplication): string | null {
+    return approvedExternalUrl(application.attributionSourceUrl);
+  }
+
+  licenceUrl(application: TrackedApplication): string | null {
+    return approvedExternalUrl(application.licenceUrl);
+  }
+
 
   postedDate(application: TrackedApplication): string | null {
     return application.postedAt ?? application.postedDate ?? null;

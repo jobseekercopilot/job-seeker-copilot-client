@@ -380,3 +380,33 @@
     right: auto;
   }
 }
+
+.application-source-evidence {
+  background: var(--color-surface-soft);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  display: grid;
+  font-size: 0.76rem;
+  gap: 0.4rem;
+  padding: 0.65rem;
+}
+
+.application-source-evidence strong {
+  color: var(--text-primary);
+}
+
+.application-source-evidence p {
+  margin: 0;
+}
+
+.application-source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.85rem;
+}
+
+.application-source-links a {
+  color: var(--color-primary-hover);
+  font-weight: 700;
+}

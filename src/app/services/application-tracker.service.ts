@@ -60,26 +60,39 @@ export class ApplicationTrackerService {
       map(applications => (applications ?? []).map(application => ({
         ...application,
         applicationId: application.id,
-        canonicalJobId: application.jobId,
+        canonicalJobId: application.canonicalJobId ?? application.jobId,
       }))),
     );
   }
 
   createApplication(job: Job): Observable<TrackedApplication> {
+    const provider = this.required(
+      job.primarySource
+        ?? job.provider
+        ?? job.sources?.[0]?.provider
+        ?? job.sources?.[0]?.integrationProvider,
+      'Job provider',
+    );
+    const externalJobId = this.required(
+      job.externalJobId ?? job.sources?.[0]?.externalJobId ?? job.id,
+      'External job identifier',
+    );
+    const source = job.sources?.find(candidate =>
+      (candidate.integrationProvider ?? candidate.provider) === provider
+      && candidate.externalJobId === externalJobId)
+      ?? job.sources?.find(candidate =>
+        (candidate.integrationProvider ?? candidate.provider) === provider);
     const request: CreateTrackedApplicationRequest = {
       jobId: this.required(job.canonicalJobId ?? job.id, 'Job identifier'),
       canonicalJobId: this.required(job.canonicalJobId ?? job.id, 'Canonical job identifier'),
-      provider: this.required(
-        job.primarySource
-          ?? job.provider
-          ?? job.sources?.[0]?.provider
-          ?? job.sources?.[0]?.integrationProvider,
-        'Job provider',
-      ),
-      externalJobId: this.required(
-        job.externalJobId ?? job.sources?.[0]?.externalJobId ?? job.id,
-        'External job identifier',
-      ),
+      provider,
+      externalJobId,
+      ...(source?.listingUrl ? {listingUrl: source.listingUrl} : {}),
+      ...(source?.applyUrl ? {applyUrl: source.applyUrl} : {}),
+      ...(source?.attributionLabel ? {attributionLabel: source.attributionLabel} : {}),
+      ...(source?.attributionSourceUrl ? {attributionSourceUrl: source.attributionSourceUrl} : {}),
+      ...(source?.licenceUrl ? {licenceUrl: source.licenceUrl} : {}),
+      ...(source?.disclaimer ? {disclaimer: source.disclaimer} : {}),
       jobTitle: this.required(job.jobTitle ?? job.title, 'Job title'),
       companyName: this.required(job.companyName ?? job.company, 'Company name'),
       location: job.canonicalLocation?.displayName ?? job.location,

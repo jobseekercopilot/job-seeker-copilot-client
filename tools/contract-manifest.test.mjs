@@ -131,11 +131,11 @@ test('pins the session-derived Job Finder search, saved-job and application cont
   );
   const savedJob = contract.components.schemas.SavedJobResponse.properties;
 
-  assert.equal(gateway.version, '1.5.0');
+  assert.equal(gateway.version, '1.6.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
   assert.equal(
     gateway.sourceCommit,
-    'fa8465bdacb947a563b3e134eb30e9f7a062362b',
+    '21b46420cb39d44599d1bc5ff88405634618d2a4',
   );
   assert.equal(gateway.output, 'src/app/api/job-finder');
   assert.deepEqual(gateway.requiredPaths, [
@@ -145,7 +145,18 @@ test('pins the session-derived Job Finder search, saved-job and application cont
     '/api/jobs/applications',
     '/api/jobs/applications/{applicationId}/status',
   ]);
-  assert.equal(contract.info.version, '1.5.0');
+  assert.equal(contract.info.version, '1.6.0');
+  assert.deepEqual(
+    Object.keys(contract.components.schemas.ApplicationRecordResponse.properties)
+      .filter(property => [
+        'canonicalJobId', 'listingUrl', 'applyUrl', 'attributionLabel',
+        'attributionSourceUrl', 'licenceUrl', 'disclaimer',
+      ].includes(property)),
+    [
+      'canonicalJobId', 'listingUrl', 'applyUrl', 'attributionLabel',
+      'attributionSourceUrl', 'licenceUrl', 'disclaimer',
+    ],
+  );
   assert.equal(savedJob.savedJobId.format, 'uuid');
   assert.equal(savedJob.snapshotVersion.format, 'int64');
   assert.equal(savedJob.contentSha256.type, 'string');

@@ -58,6 +58,26 @@ function validateJobFinderContract(document) {
     );
   }
 
+  const applicationResponse =
+    document.components?.schemas?.ApplicationRecordResponse;
+  const sourceMetadata = [
+    'canonicalJobId',
+    'listingUrl',
+    'applyUrl',
+    'attributionLabel',
+    'attributionSourceUrl',
+    'licenceUrl',
+    'disclaimer',
+  ];
+  for (const property of sourceMetadata) {
+    if (!createApplication.properties?.[property] ||
+        !applicationResponse?.properties?.[property]) {
+      throw new Error(
+        `job-finder-gateway application models are missing ${property}`,
+      );
+    }
+  }
+
   const bearer = document.components?.securitySchemes?.bearerAuth;
   if (bearer?.type !== 'http' || bearer?.scheme !== 'bearer') {
     throw new Error(

@@ -60,4 +60,32 @@ describe('MyApplicationsComponent document replacement', () => {
       },
     ])).toBeUndefined();
   });
+
+  it('exposes only safe persisted source links in the application view', () => {
+    const persisted = {
+      listingUrl: 'https://www.jobs.nhs.uk/candidate/jobadvert/C123',
+      applyUrl: 'https://www.jobs.nhs.uk/candidate/jobadvert/C123',
+      attributionSourceUrl: 'https://www.jobs.nhs.uk/',
+      licenceUrl: 'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/',
+    } as TrackedApplication;
+
+    expect(component.listingUrl(persisted))
+      .toBe('https://www.jobs.nhs.uk/candidate/jobadvert/C123');
+    expect(component.applyUrl(persisted))
+      .toBe('https://www.jobs.nhs.uk/candidate/jobadvert/C123');
+    expect(component.attributionSourceUrl(persisted))
+      .toBe('https://www.jobs.nhs.uk/');
+    expect(component.licenceUrl(persisted))
+      .toBe('https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/');
+  });
+
+  it('does not render an unsafe persisted source URL', () => {
+    const persisted = {
+      listingUrl: 'javascript:alert(1)',
+      applyUrl: 'data:text/html,unsafe',
+    } as TrackedApplication;
+
+    expect(component.listingUrl(persisted)).toBeNull();
+    expect(component.applyUrl(persisted)).toBeNull();
+  });
 });

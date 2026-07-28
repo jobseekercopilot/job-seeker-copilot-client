@@ -70,6 +70,40 @@
             <span>{{ documentState(application) }}</span>
           </div>
 
+          @if (application.attributionLabel || listingUrl(application)) {
+            <aside class="application-source-evidence"
+                   data-testid="application-source-evidence">
+              <strong>{{ application.attributionLabel || sourceText(application) }}</strong>
+              <div class="application-source-links">
+                @if (listingUrl(application); as officialListingUrl) {
+                  <a [href]="officialListingUrl"
+                     target="_blank"
+                     rel="noopener noreferrer">View official listing</a>
+                }
+                @if (applyUrl(application); as officialApplyUrl) {
+                  @if (officialApplyUrl !== listingUrl(application)) {
+                    <a [href]="officialApplyUrl"
+                       target="_blank"
+                       rel="noopener noreferrer">Apply on the official site</a>
+                  }
+                }
+                @if (attributionSourceUrl(application); as sourceUrl) {
+                  <a [href]="sourceUrl"
+                     target="_blank"
+                     rel="noopener noreferrer">About the vacancy source</a>
+                }
+                @if (licenceUrl(application); as sourceLicenceUrl) {
+                  <a [href]="sourceLicenceUrl"
+                     target="_blank"
+                     rel="noopener noreferrer">Open Government Licence</a>
+                }
+              </div>
+              @if (application.disclaimer) {
+                <p>{{ application.disclaimer }}</p>
+              }
+            </aside>
+          }
+
           <div class="timeline" aria-label="Application progress">
             @for (step of timeline(application); track step.key) {
               <div class="timeline-step" [class.timeline-step-done]="step.completedAt">
