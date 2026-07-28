@@ -10,6 +10,9 @@ const CSRF_TOKEN = 'csrf-token-123';
 const DOCUMENT_ID = '3b0f6a57-389d-4e20-a007-199afca04b20';
 const FILE_ID = '9f40a536-4167-4b5c-9295-c41b6e127f84';
 const OPERATION_ID = '69e794d1-f0aa-4ed5-9779-a5f3e98610cb';
+const APPLICATION_ID = 'c17442dd-c24f-48a2-86e5-b0ec7f38f8cb';
+const MULTIPART_TYPE = 'multipart/form-data; boundary=test-boundary';
+const MULTIPART_BODY = '--test-boundary\r\nContent-Disposition: form-data; name="file"; filename="Updated CV.docx"\r\nContent-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document\r\n\r\nsafe-docx-test\r\n--test-boundary--\r\n';
 
 type FetchLike = (
   input: string | URL | Request,
@@ -169,6 +172,90 @@ describe('Document generation session boundary', () => {
           'Idempotency-Key': 'unsafe key with spaces',
         },
       },
+    );
+
+    expect(response.status).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('replaces an application document through the cookie session and CSRF boundary', async () => {
+    const upstream = vi.fn<FetchLike>(async () =>
+      Response.json({
+        applicationId: APPLICATION_ID,
+        cvDocumentId: DOCUMENT_ID,
+        message: 'CV replaced',
+      }));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/applications/${APPLICATION_ID}/replace?documentType=CV`,
+      {
+        method: 'POST',
+        headers: {
+          ...sessionHeaders(),
+          Authorization: 'Bearer browser-controlled',
+          'X-User-Id': 'another-user',
+          'Content-Type': MULTIPART_TYPE,
+        },
+        body: MULTIPART_BODY,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(await response.json()).toEqual({
+      applicationId: APPLICATION_ID,
+      cvDocumentId: DOCUMENT_ID,
+      message: 'CV replaced',
+    });
+    expect(upstream).toHaveBeenCalledOnce();
+    const [url, init] = upstream.mock.calls[0];
+    expect(url).toBe(
+      `https://documents.example.test/api/v1/document-generation/applications/${APPLICATION_ID}/replace?documentType=CV`,
+    );
+    expect(init?.method).toBe('POST');
+    expect(init?.headers).toEqual(expect.objectContaining({
+      Accept: 'application/json',
+      Authorization: `Bearer ${ACCESS_TOKEN}`,
+      'Content-Type': expect.stringMatching(/^multipart\/form-data;\s*boundary=/i),
+    }));
+    expect(init?.headers).not.toHaveProperty('X-User-Id');
+    expect(JSON.stringify(init?.headers)).not.toContain('browser-controlled');
+    expect(init?.body).toBeInstanceOf(ArrayBuffer);
+    expect(Buffer.from(init?.body as ArrayBuffer).toString('utf8')).toContain('Updated CV.docx');
+  });
+
+  it('requires CSRF before a replacement upload reaches the gateway', async () => {
+    const upstream = vi.fn<FetchLike>();
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/applications/${APPLICATION_ID}/replace?documentType=CV`,
+      {
+        method: 'POST',
+        headers: {
+          ...sessionHeaders(false),
+          'Content-Type': MULTIPART_TYPE,
+        },
+        body: MULTIPART_BODY,
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: 'REQUEST_FORBIDDEN',
+      message: 'A valid CSRF token is required',
+    });
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid replacement document type before the gateway is called', async () => {
+    const upstream = vi.fn<FetchLike>();
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/applications/${APPLICATION_ID}/replace?documentType=OTHER`,
+      {method: 'POST', headers: sessionHeaders()},
     );
 
     expect(response.status).toBe(400);

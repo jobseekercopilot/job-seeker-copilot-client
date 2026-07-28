@@ -212,11 +212,11 @@ export class DocumentGenerationService {
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('documentType', documentKind);
+    const documentType = encodeURIComponent(documentKind);
 
     return firstValueFrom(this.browserSession.ensureCsrf().pipe(
       switchMap(() => this.http.post<DocumentUploadResponse>(
-        `/api/v1/document-generation/applications/${encodeURIComponent(applicationId)}/replace`,
+        `/api/v1/document-generation/applications/${encodeURIComponent(applicationId)}/replace?documentType=${documentType}`,
         formData,
       )),
     ));
