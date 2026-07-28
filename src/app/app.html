@@ -21,7 +21,16 @@
 }
 
 <div class="app-shell min-h-screen font-sans antialiased pb-16">
-  @if (sessionStatus() === 'checking') {
+  @if (publicAccountRoute() === 'forgot' || publicAccountRoute() === 'reset') {
+    <app-password-recovery
+      [mode]="publicAccountRoute() === 'forgot' ? 'forgot' : 'reset'">
+    </app-password-recovery>
+  } @else if (publicAccountRoute() === 'register' || publicAccountRoute() === 'signin') {
+    <app-landing-auth
+      [initialMode]="publicAccountRoute() === 'signin' ? 'signin' : 'create'"
+      (onboarded)="handleOnboarded($event)">
+    </app-landing-auth>
+  } @else if (sessionStatus() === 'checking') {
     <main class="dashboard-main mx-auto px-4 sm:px-6 lg:px-8 py-12" aria-live="polite">
       <p class="eyebrow">Secure session</p>
       <h1>Opening your Job Seeker Copilot workspace</h1>

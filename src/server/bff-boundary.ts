@@ -15,6 +15,9 @@ export interface BffConfig {
   requestTimeoutMs: number;
   headersTimeoutMs: number;
   keepAliveTimeoutMs: number;
+  trustedProxyHops: number;
+  passwordResetRateLimitWindowMs: number;
+  passwordResetRateLimitMaximum: number;
 }
 
 type RuntimeEnvironment = Record<string, string | undefined>;
@@ -34,6 +37,22 @@ function positiveInteger(
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value < 1 || value > maximum) {
     throw new Error(`${name} must be between 1 and ${maximum}`);
+  }
+  return value;
+}
+
+function nonNegativeInteger(
+  environment: RuntimeEnvironment,
+  name: string,
+  fallback: number,
+  maximum: number,
+): number {
+  const raw = environment[name];
+  if (raw === undefined || raw === '') return fallback;
+  if (!/^\d+$/.test(raw)) throw new Error(`${name} must be a non-negative integer`);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 0 || value > maximum) {
+    throw new Error(`${name} must be between 0 and ${maximum}`);
   }
   return value;
 }
@@ -133,6 +152,9 @@ export function loadBffConfig(environment: RuntimeEnvironment = process.env): Bf
     requestTimeoutMs: positiveInteger(environment, 'BFF_REQUEST_TIMEOUT_MS', 15_000, 120_000),
     headersTimeoutMs: positiveInteger(environment, 'BFF_HEADERS_TIMEOUT_MS', 10_000, 120_000),
     keepAliveTimeoutMs: positiveInteger(environment, 'BFF_KEEP_ALIVE_TIMEOUT_MS', 5_000, 60_000),
+    trustedProxyHops: nonNegativeInteger(environment, 'BFF_TRUSTED_PROXY_HOPS', 0, 3),
+    passwordResetRateLimitWindowMs: positiveInteger(environment, 'BFF_PASSWORD_RESET_RATE_WINDOW_MS', 900_000, 3_600_000),
+    passwordResetRateLimitMaximum: positiveInteger(environment, 'BFF_PASSWORD_RESET_RATE_MAXIMUM', 5, 100),
   };
 
   if (config.headersTimeoutMs > config.requestTimeoutMs) {
@@ -163,6 +185,49 @@ export const securityHeaders: RequestHandler = (_request, response, next) => {
   response.setHeader('X-Frame-Options', 'DENY');
   next();
 };
+
+export function passwordResetIpRateLimiter(
+  windowMs: number,
+  maximum: number,
+  now: () => number = Date.now,
+): RequestHandler {
+  if (!Number.isSafeInteger(windowMs) || windowMs < 1
+      || !Number.isSafeInteger(maximum) || maximum < 1) {
+    throw new Error('Password-reset rate-limit settings must be positive integers');
+  }
+  const attempts = new Map<string, number[]>();
+  const maximumTrackedSources = 10_000;
+
+  return (request, response, next) => {
+    const source = request.ip;
+    if (!source) {
+      response.status(429).json({
+        statusCode: 429,
+        success: false,
+        message: 'Too many password-reset requests. Try again later.',
+      });
+      return;
+    }
+    const cutoff = now() - windowMs;
+    const recent = (attempts.get(source) ?? []).filter(timestamp => timestamp > cutoff);
+    if (recent.length >= maximum) {
+      response.setHeader('Retry-After', String(Math.max(1, Math.ceil((recent[0] + windowMs - now()) / 1000))));
+      response.status(429).json({
+        statusCode: 429,
+        success: false,
+        message: 'Too many password-reset requests. Try again later.',
+      });
+      return;
+    }
+    recent.push(now());
+    attempts.set(source, recent);
+    if (attempts.size > maximumTrackedSources) {
+      const oldest = attempts.keys().next().value;
+      if (oldest !== undefined) attempts.delete(oldest);
+    }
+    next();
+  };
+}
 
 interface BodyParserError extends Error {
   status?: number;

@@ -1,7 +1,13 @@
 import {Routes} from '@angular/router';
 import {JobSeekerDashboardComponent} from './features/job-seeker-dashboard/job-seeker-dashboard';
+import {LandingAuthComponent} from './features/landing-auth/landing-auth';
+import {PasswordRecoveryComponent} from './features/password-recovery/password-recovery';
 
 export const routes: Routes = [
+  {path: 'register', component: LandingAuthComponent},
+  {path: 'sign-in', component: LandingAuthComponent},
+  {path: 'forgot-password', component: PasswordRecoveryComponent},
+  {path: 'reset-password', component: PasswordRecoveryComponent},
   {path: 'dashboard', component: JobSeekerDashboardComponent},
   {path: 'payment/success', component: JobSeekerDashboardComponent},
   {path: 'payment/cancel', component: JobSeekerDashboardComponent},

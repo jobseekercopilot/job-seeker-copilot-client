@@ -15,6 +15,7 @@ import {
   downstreamFailureResponse,
   jsonBodyErrorHandler,
   loadBffConfig,
+  passwordResetIpRateLimiter,
   securityHeaders,
 } from './server/bff-boundary';
 import {callUserManagement} from './server/user-management-proxy';
@@ -32,6 +33,9 @@ const bffConfig = loadBffConfig();
 
 const app = express();
 app.disable('x-powered-by');
+if (bffConfig.trustedProxyHops > 0) {
+  app.set('trust proxy', bffConfig.trustedProxyHops);
+}
 app.use(securityHeaders);
 app.use(express.json({limit: bffConfig.jsonBodyLimitBytes}));
 app.use(jsonBodyErrorHandler);
@@ -46,6 +50,12 @@ const DOCUMENT_GENERATION_GATEWAY_URL = process.env['DOCUMENT_GENERATION_GATEWAY
 const DOCUMENT_STORE_SERVICE_URL = process.env['DOCUMENT_STORE_SERVICE_URL'] || 'http://localhost:8089';
 
 const angularApp = new AngularNodeAppEngine({ allowedHosts: bffConfig.allowedHosts });
+const PUBLIC_ACCOUNT_ROUTES: string[] = [
+  '/register',
+  '/sign-in',
+  '/forgot-password',
+  '/reset-password',
+];
 
 app.get('/api/runtime/job-search-mode', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -70,6 +80,19 @@ app.post('/api/auth/register', async (req, res) => {
  */
 app.post('/api/auth/login', async (req, res) => {
   await proxyUserManagementRequest('/api/auth/login', 'POST', req, res);
+});
+
+const resetRequestIpLimiter = passwordResetIpRateLimiter(
+  bffConfig.passwordResetRateLimitWindowMs,
+  bffConfig.passwordResetRateLimitMaximum,
+);
+
+app.post('/api/auth/password-reset/request', resetRequestIpLimiter, async (req, res) => {
+  await proxyUserManagementRequest('/api/auth/password-reset/request', 'POST', req, res);
+});
+
+app.post('/api/auth/password-reset/complete', async (req, res) => {
+  await proxyUserManagementRequest('/api/auth/password-reset/complete', 'POST', req, res);
 });
 
 /**
@@ -183,6 +206,14 @@ registerReportingRoutes(app, {
 // Payments remain fail-closed until its BFF integration derives identity from
 // the HttpOnly session and enforces CSRF for mutations.
 app.use(UNAVAILABLE_API_PREFIXES, rejectUnavailableCapability);
+
+app.get(PUBLIC_ACCOUNT_ROUTES, (req, res, next) => {
+  const routeDirectory = req.path.slice(1);
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(join(browserDistFolder, routeDirectory, 'index.html'), (error) => {
+    if (error) next(error);
+  });
+});
 
 /**
  * Serve static files from /browser

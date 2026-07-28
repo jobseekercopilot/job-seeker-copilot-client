@@ -26,6 +26,9 @@ describe('BFF runtime configuration', () => {
       requestTimeoutMs: 15_000,
       headersTimeoutMs: 10_000,
       keepAliveTimeoutMs: 5_000,
+      trustedProxyHops: 0,
+      passwordResetRateLimitWindowMs: 900_000,
+      passwordResetRateLimitMaximum: 5,
     });
   });
 
