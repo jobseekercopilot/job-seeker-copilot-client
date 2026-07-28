@@ -185,3 +185,48 @@
   border-color: #d97706;
   color: #b45309;
 }
+
+.provider-status-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.provider-status-item {
+  align-items: center;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  display: inline-flex;
+  gap: 0.45rem;
+  padding: 0.3rem 0.55rem;
+}
+
+.provider-status-name {
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.provider-status-value {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+}
+
+.provider-status-success {
+  border-color: #86efac;
+}
+
+.provider-status-success .provider-status-value {
+  color: #15803d;
+}
+
+.provider-status-degraded {
+  border-color: #fbbf24;
+}
+
+.provider-status-degraded .provider-status-value {
+  color: #b45309;
+}

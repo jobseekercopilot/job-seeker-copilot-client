@@ -102,6 +102,22 @@
       </div>
     }
 
+    @if (!loading() && !error() && providerStatusSummaries().length > 0) {
+      <div class="provider-status-summary"
+           data-testid="provider-status-summary"
+           aria-label="Job provider status">
+        @for (summary of providerStatusSummaries(); track summary.provider) {
+          <div class="provider-status-item"
+               [class.provider-status-success]="summary.status === 'SUCCESS'"
+               [class.provider-status-degraded]="summary.status !== 'SUCCESS' && summary.status !== 'DISABLED'"
+               [attr.data-provider]="summary.provider">
+            <span class="provider-status-name">{{ summary.label }}</span>
+            <span class="provider-status-value">{{ summary.status }}</span>
+          </div>
+        }
+      </div>
+    }
+
     <!-- Loading skeleton -->
     @if (loading()) {
       <div class="space-y-4">

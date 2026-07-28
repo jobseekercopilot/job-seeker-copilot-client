@@ -29,6 +29,11 @@ type StatusUpdateTarget =
   | 'REJECTED_BY_USER'
   | 'WITHDRAWN';
 type SortOption = 'MOST_RELEVANT' | 'CLOSEST' | 'HIGHEST_SALARY' | 'NEWEST_POSTED' | 'OLDEST_POSTED' | 'COMPANY_AZ' | 'JOB_TITLE_AZ';
+type ProviderStatusSummary = {
+  provider: string;
+  label: string;
+  status: string;
+};
 
 @Component({
   selector: 'app-job-results',
@@ -70,6 +75,7 @@ export class JobResultsComponent implements OnInit {
   filtersOpen = signal(false);
   providerWarnings = signal<string[]>([]);
   providerStatuses = signal<string[]>([]);
+  providerStatusSummaries = signal<ProviderStatusSummary[]>([]);
   providerDegraded = computed(() => {
     const statuses = this.providerStatuses();
     return statuses.some(status => status !== 'SUCCESS' && status !== 'DISABLED');
@@ -269,6 +275,19 @@ export class JobResultsComponent implements OnInit {
         this.providerStatuses.set(
           (response.providerResults ?? []).map(result => result.status ?? 'UNAVAILABLE')
         );
+        const providerStatusSummaries = new Map<string, ProviderStatusSummary>();
+        for (const result of response.providerResults ?? []) {
+          const provider = result.provider ?? 'UNKNOWN';
+          if (provider === 'REQUEST' || providerStatusSummaries.has(provider)) {
+            continue;
+          }
+          providerStatusSummaries.set(provider, {
+            provider,
+            label: this.providerStatusLabel(provider),
+            status: result.status ?? 'UNAVAILABLE',
+          });
+        }
+        this.providerStatusSummaries.set(Array.from(providerStatusSummaries.values()));
         this.providerWarnings.set(Array.from(new Set(
           degradedResults.map(result => this.providerWarning(
             result.provider ?? 'A job provider',
@@ -286,6 +305,7 @@ export class JobResultsComponent implements OnInit {
       error: (err) => {
         this.loading.set(false);
         this.providerStatuses.set(['UNAVAILABLE']);
+        this.providerStatusSummaries.set([]);
         const status = err.status;
 
         if (status === 503) {
@@ -317,6 +337,16 @@ export class JobResultsComponent implements OnInit {
         console.error('[JobResults] Job search failed');
       }
     });
+  }
+
+  private providerStatusLabel(provider: string): string {
+    const labels: Record<string, string> = {
+      ADZUNA: 'Adzuna',
+      JSEARCH: 'JSearch',
+      NHS_JOBS: 'NHS Jobs',
+      REED: 'Reed',
+    };
+    return labels[provider] ?? provider.replaceAll('_', ' ');
   }
 
   refresh(): void {

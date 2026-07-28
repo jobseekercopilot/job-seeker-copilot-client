@@ -160,6 +160,10 @@ describe('JobResultsComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('community staff nurse');
     expect(fixture.nativeElement.textContent)
       .toContain('REED was temporarily unavailable. Results from other job sites are still shown.');
+    const providerSummary = fixture.nativeElement.querySelector('[data-testid="provider-status-summary"]');
+    expect(providerSummary.textContent).toContain('NHS Jobs');
+    expect(providerSummary.querySelector('[data-provider="NHS_JOBS"]').textContent).toContain('SUCCESS');
+    expect(providerSummary.querySelector('[data-provider="REED"]').textContent).toContain('UNAVAILABLE');
 
     clickButtonContaining(fixture, 'Filter');
     clickButtonContaining(fixture, 'NHS Jobs');
