@@ -10,6 +10,13 @@ import {
 import { LocationService } from './location.service';
 import { BrowserSessionService } from './browser-session.service';
 
+const SEARCH_EMPLOYMENT_TYPES = new Set([
+  'FULL_TIME',
+  'PART_TIME',
+  'CONTRACT',
+  'TEMPORARY',
+]);
+
 @Injectable({
   providedIn: 'root'
 })
@@ -44,10 +51,17 @@ export class JobService {
     let remotePreference: string | undefined;
     try {
       const prefs = JSON.parse(workPrefs);
-      employmentType = Array.isArray(prefs.employmentTypes)
-        ? prefs.employmentTypes.filter((value: unknown): value is string =>
-            typeof value === 'string' && value.trim().length > 0)
+      const profileEmploymentTypes = Array.isArray(prefs.employmentTypes)
+        ? prefs.employmentTypes
         : [];
+      const profileWorkingPatterns = Array.isArray(prefs.workingPatterns)
+        ? prefs.workingPatterns
+        : [];
+      employmentType = Array.from(new Set(
+        [...profileEmploymentTypes, ...profileWorkingPatterns]
+          .filter((value: unknown): value is string =>
+            typeof value === 'string' && SEARCH_EMPLOYMENT_TYPES.has(value)),
+      ));
       const workplaceArrangements = Array.isArray(prefs.workplaceArrangements)
         ? prefs.workplaceArrangements
         : [];

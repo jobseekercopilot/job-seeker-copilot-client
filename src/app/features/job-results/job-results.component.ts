@@ -323,6 +323,13 @@ export class JobResultsComponent implements OnInit {
       },
       error: (err) => {
         this.loading.set(false);
+        this.jobs.set([]);
+        this.roleResults.set([]);
+        this.selectedTargetRole.set('');
+        this.selectedPublisher.set('All Job Sites');
+        this.currentPage.set(1);
+        this.totalResults.set(0);
+        this.providerWarnings.set([]);
         this.providerStatuses.set(['UNAVAILABLE']);
         const status = err.status;
 

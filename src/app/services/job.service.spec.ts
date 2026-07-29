@@ -98,4 +98,64 @@ describe('JobService', () => {
       {transferCache: false},
     );
   });
+
+  it('translates profile work choices into only supported search employment types', () => {
+    const searchJobs = vi.fn((request: JobSearchRequest) => {
+      void request;
+      return of({jobs: [], totalResults: 0});
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        JobService,
+        {provide: GeneratedJobSearchService, useValue: {searchJobs}},
+        {provide: BrowserSessionService, useValue: {ensureCsrf: vi.fn(() => of(undefined))}},
+        {provide: LocationService, useValue: {getByPostcode: vi.fn()}},
+      ],
+    });
+
+    TestBed.inject(JobService)
+      .searchJobs(
+        '',
+        '',
+        'Software Developer',
+        JSON.stringify({
+          employmentTypes: ['PERMANENT', 'CONTRACT', 'FIXED_TERM'],
+          workingPatterns: ['FULL_TIME', 'FLEXIBLE', 'CONTRACT'],
+        }),
+      )
+      .subscribe();
+
+    expect(searchJobs.mock.calls[0][0].workPreferences!.employmentType)
+      .toEqual(['CONTRACT', 'FULL_TIME']);
+  });
+
+  it('omits unsupported profile work choices from the search request', () => {
+    const searchJobs = vi.fn((request: JobSearchRequest) => {
+      void request;
+      return of({jobs: [], totalResults: 0});
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        JobService,
+        {provide: GeneratedJobSearchService, useValue: {searchJobs}},
+        {provide: BrowserSessionService, useValue: {ensureCsrf: vi.fn(() => of(undefined))}},
+        {provide: LocationService, useValue: {getByPostcode: vi.fn()}},
+      ],
+    });
+
+    TestBed.inject(JobService)
+      .searchJobs(
+        '',
+        '',
+        'Software Developer',
+        JSON.stringify({
+          employmentTypes: ['PERMANENT', 'APPRENTICESHIP'],
+          workingPatterns: ['FLEXIBLE', 'WEEKEND'],
+        }),
+      )
+      .subscribe();
+
+    expect(searchJobs.mock.calls[0][0].workPreferences!)
+      .not.toHaveProperty('employmentType');
+  });
 });

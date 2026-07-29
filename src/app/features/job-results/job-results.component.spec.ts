@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { JobResultsComponent } from './job-results.component';
 import { JobService } from '../../services/job.service';
 import { DocumentGenerationService } from '../../services/document-generation.service';
@@ -19,6 +19,7 @@ describe('JobResultsComponent', () => {
     totalResults: 28,
   };
   let currentResponse = response;
+  let searchErrorStatus: number | undefined;
   let trackedApplications: TrackedApplication[] = [];
   let evidenceEntries: any[] = [];
 
@@ -26,6 +27,9 @@ describe('JobResultsComponent', () => {
     callCount: 0,
     searchJobs: () => {
       jobService.callCount++;
+      if (searchErrorStatus != null) {
+        return throwError(() => ({status: searchErrorStatus}));
+      }
       return of(currentResponse);
     },
   };
@@ -50,6 +54,7 @@ describe('JobResultsComponent', () => {
   beforeEach(async () => {
     jobService.callCount = 0;
     currentResponse = response;
+    searchErrorStatus = undefined;
     trackedApplications = [];
     evidenceEntries = [];
     documentGenerationService.generate.mockClear();
@@ -83,6 +88,22 @@ describe('JobResultsComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain('programming job 1');
     expect(fixture.nativeElement.textContent).not.toContain('cleaning job 1');
+  });
+
+  it('clears stale matches when a refreshed search is rejected', () => {
+    const fixture = createFixture();
+    expect(jobCards(fixture)).toHaveLength(10);
+
+    searchErrorStatus = 400;
+    fixture.componentInstance.refresh();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.jobs()).toEqual([]);
+    expect(fixture.componentInstance.roleResults()).toEqual([]);
+    expect(fixture.componentInstance.totalResults()).toBe(0);
+    expect(fixture.componentInstance.error())
+      .toBe('Invalid search parameters. Please update your profile and try again.');
+    expect(jobCards(fixture)).toHaveLength(0);
   });
 
   it('shows 10 jobs per page and paginates the selected role only', () => {
