@@ -44,6 +44,8 @@ interface RolePageCache {
   jobs: Job[];
   providerStatuses: string[];
   providerWarnings: string[];
+  searchStatus: string | null;
+  matchingStatus: string | null;
 }
 
 interface RoleSearchState {
@@ -57,6 +59,8 @@ interface RoleSearchState {
   hasMore: boolean;
   providerStatuses: string[];
   providerWarnings: string[];
+  searchStatus: string | null;
+  matchingStatus: string | null;
   loading: boolean;
   error: string | null;
   searched: boolean;
@@ -117,6 +121,8 @@ export class JobResultsComponent implements OnInit {
       loading: state.loading,
       error: state.error,
       searched: state.searched,
+      searchStatus: state.searchStatus,
+      matchingStatus: state.matchingStatus,
     })));
   selectedPublisher = signal<string>('All Job Sites');
   readonly selectedSort = computed<SortOption>(() =>
@@ -126,6 +132,10 @@ export class JobResultsComponent implements OnInit {
     this.activeRoleState()?.providerWarnings ?? []);
   readonly providerStatuses = computed(() =>
     this.activeRoleState()?.providerStatuses ?? []);
+  readonly searchStatus = computed(() =>
+    this.activeRoleState()?.searchStatus ?? null);
+  readonly matchingStatus = computed(() =>
+    this.activeRoleState()?.matchingStatus ?? null);
   providerDegraded = computed(() => {
     const statuses = this.providerStatuses();
     return statuses.some(status => status !== 'SUCCESS' && status !== 'DISABLED');
@@ -385,6 +395,8 @@ export class JobResultsComponent implements OnInit {
       hasMore: false,
       providerStatuses: [],
       providerWarnings: [],
+      searchStatus: null,
+      matchingStatus: null,
       loading: false,
       error: null,
       searched: false,
@@ -405,6 +417,8 @@ export class JobResultsComponent implements OnInit {
         hasMore: requestedPage < current.totalPages,
         providerStatuses: cachedPage.providerStatuses,
         providerWarnings: cachedPage.providerWarnings,
+        searchStatus: cachedPage.searchStatus,
+        matchingStatus: cachedPage.matchingStatus,
         error: null,
       }));
       return;
@@ -458,6 +472,8 @@ export class JobResultsComponent implements OnInit {
             searched: true,
             providerStatuses: ['UNAVAILABLE'],
             providerWarnings: [],
+            searchStatus: 'UNAVAILABLE',
+            matchingStatus: 'UNAVAILABLE',
           });
       if (this.roleKey(this.selectedTargetRole()) === roleKey) {
         this.notify.emit({message, type: 'error'});
@@ -479,33 +495,55 @@ export class JobResultsComponent implements OnInit {
       console.warn(`[JobResults] Filtered out ${skippedCount} malformed job(s)`);
     }
 
-    const responsePage = Math.max(1, response.page ?? requestedPage);
-    const responsePageSize = Math.max(1, response.pageSize ?? current.pageSize);
+    const responsePage = Math.max(
+      1,
+      matchingGroup?.page ?? response.page ?? requestedPage,
+    );
+    const responsePageSize = Math.max(
+      1,
+      matchingGroup?.pageSize ?? response.pageSize ?? current.pageSize,
+    );
     const deduplicatedJobs = this.removeCrossPageDuplicates(
       current,
       responsePage,
       validJobs,
     );
     const minimumTotal = ((responsePage - 1) * responsePageSize) + deduplicatedJobs.length;
-    const totalResults = Math.max(0, response.totalResults ?? minimumTotal);
+    const totalResults = Math.max(
+      0,
+      matchingGroup?.totalResults ?? response.totalResults ?? minimumTotal,
+    );
     const totalPages = Math.max(
       1,
-      response.totalPages ?? Math.ceil(totalResults / responsePageSize),
+      matchingGroup?.totalPages
+        ?? response.totalPages
+        ?? Math.ceil(totalResults / responsePageSize),
     );
-    const providerStatuses = (response.providerResults ?? [])
+    const providerResults = matchingGroup?.providerResults
+      ?? response.providerResults
+      ?? [];
+    const providerStatuses = providerResults
       .map(result => result.status ?? 'UNAVAILABLE');
     const providerWarnings = Array.from(new Set(
-      (response.providerResults ?? [])
+      providerResults
         .filter(result => result.status !== 'SUCCESS' && result.status !== 'DISABLED')
         .map(result => this.providerWarning(
           result.provider ?? 'A job provider',
           result.status ?? 'UNAVAILABLE',
         )),
     ));
+    const searchStatus = matchingGroup?.searchStatus
+      ?? response.searchStatus
+      ?? null;
+    const matchingStatus = matchingGroup?.matchingStatus
+      ?? response.matchingStatus
+      ?? null;
     const pageCache: RolePageCache = {
       jobs: deduplicatedJobs,
       providerStatuses,
       providerWarnings,
+      searchStatus,
+      matchingStatus,
     };
 
     this.updateRoleState(roleKey, state => {
@@ -527,6 +565,8 @@ export class JobResultsComponent implements OnInit {
         hasMore: responsePage < totalPages,
         providerStatuses,
         providerWarnings,
+        searchStatus,
+        matchingStatus,
         loading: false,
         error: null,
         searched: true,
@@ -556,6 +596,8 @@ export class JobResultsComponent implements OnInit {
           searched: true,
           providerStatuses: ['UNAVAILABLE'],
           providerWarnings: [],
+          searchStatus: 'UNAVAILABLE',
+          matchingStatus: 'UNAVAILABLE',
         });
     if (this.roleKey(this.selectedTargetRole()) === roleKey) {
       this.notify.emit({message, type: 'error'});
@@ -672,6 +714,8 @@ export class JobResultsComponent implements OnInit {
       hasMore: false,
       providerStatuses: [],
       providerWarnings: [],
+      searchStatus: null,
+      matchingStatus: null,
       loading: false,
       error: null,
       searched: false,

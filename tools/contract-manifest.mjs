@@ -84,6 +84,78 @@ function validateJobFinderContract(document) {
     );
   }
 
+  const targetRoleResults =
+    document.components?.schemas?.TargetRoleJobResults;
+  const targetRoleProperties = targetRoleResults?.properties ?? {};
+  const requiredTargetRoleProperties = [
+    'targetRole',
+    'jobs',
+    'totalResults',
+    'page',
+    'pageSize',
+    'totalPages',
+    'providerResults',
+    'searchStatus',
+    'matchingStatus',
+  ];
+  if (!targetRoleResults ||
+      !requiredTargetRoleProperties.every(property =>
+        targetRoleResults.required?.includes(property) &&
+        targetRoleProperties[property])) {
+    throw new Error(
+      'job-finder-gateway TargetRoleJobResults must require all nine role-scoped result, paging and provider fields',
+    );
+  }
+  if (targetRoleProperties.targetRole.type !== 'string' ||
+      targetRoleProperties.jobs.type !== 'array' ||
+      targetRoleProperties.jobs.items?.$ref !== '#/components/schemas/Job' ||
+      targetRoleProperties.totalResults.type !== 'integer' ||
+      targetRoleProperties.totalResults.format !== 'int32' ||
+      targetRoleProperties.totalResults.minimum !== 0 ||
+      targetRoleProperties.page.type !== 'integer' ||
+      targetRoleProperties.page.format !== 'int32' ||
+      targetRoleProperties.page.minimum !== 1 ||
+      targetRoleProperties.page.maximum !== 100 ||
+      targetRoleProperties.pageSize.type !== 'integer' ||
+      targetRoleProperties.pageSize.format !== 'int32' ||
+      targetRoleProperties.pageSize.minimum !== 1 ||
+      targetRoleProperties.pageSize.maximum !== 50 ||
+      targetRoleProperties.totalPages.type !== 'integer' ||
+      targetRoleProperties.totalPages.format !== 'int32' ||
+      targetRoleProperties.totalPages.minimum !== 0 ||
+      targetRoleProperties.providerResults.type !== 'array' ||
+      targetRoleProperties.providerResults.items?.$ref !==
+        '#/components/schemas/ProviderResultStatus') {
+    throw new Error(
+      'job-finder-gateway TargetRoleJobResults must preserve bounded role-scoped paging and result types',
+    );
+  }
+  const requiredSearchStatuses = ['COMPLETE', 'PARTIAL', 'UNAVAILABLE'];
+  const requiredMatchingStatuses = [
+    'COMPLETE',
+    'NOT_RUN',
+    'UNAVAILABLE',
+    'TIMED_OUT',
+    'SATURATED',
+  ];
+  if (targetRoleProperties.searchStatus.type !== 'string' ||
+      targetRoleProperties.matchingStatus.type !== 'string' ||
+      JSON.stringify(targetRoleProperties.searchStatus.enum) !==
+        JSON.stringify(requiredSearchStatuses) ||
+      JSON.stringify(targetRoleProperties.matchingStatus.enum) !==
+        JSON.stringify(requiredMatchingStatuses)) {
+    throw new Error(
+      'job-finder-gateway TargetRoleJobResults must preserve role-scoped search and matching status semantics',
+    );
+  }
+  if (document.components?.schemas?.ReedJobSearchResponse?.properties
+      ?.resultsByTargetRole?.items?.$ref !==
+        '#/components/schemas/TargetRoleJobResults') {
+    throw new Error(
+      'job-finder-gateway search response must expose TargetRoleJobResults',
+    );
+  }
+
   const bearer = document.components?.securitySchemes?.bearerAuth;
   if (bearer?.type !== 'http' || bearer?.scheme !== 'bearer') {
     throw new Error(

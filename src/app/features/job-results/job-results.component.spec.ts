@@ -5,7 +5,14 @@ import { JobResultsComponent } from './job-results.component';
 import { JobSearchOptions, JobService } from '../../services/job.service';
 import { DocumentGenerationService } from '../../services/document-generation.service';
 import { Job, JobSearchResponse } from '../../models/job-search.model';
-import { ProviderResultStatusStatusEnum } from '../../api/job-finder';
+import {
+  ProviderResultStatus,
+  ProviderResultStatusStatusEnum,
+  ReedJobSearchResponseMatchingStatusEnum,
+  ReedJobSearchResponseSearchStatusEnum,
+  TargetRoleJobResultsMatchingStatusEnum,
+  TargetRoleJobResultsSearchStatusEnum,
+} from '../../api/job-finder';
 import { DocumentEvidenceSelectionSectionOrderEnum } from '../../api/document-generation-gateway';
 import { ApplicationTrackerService } from '../../services/application-tracker.service';
 import { EvidenceLibraryService } from '../../api';
@@ -13,8 +20,8 @@ import { EvidenceLibraryService } from '../../api';
 describe('JobResultsComponent', () => {
   const response: JobSearchResponse = {
     resultsByTargetRole: [
-      { targetRole: 'cleaning', jobs: jobsFor('cleaning', 12) },
-      { targetRole: 'programming', jobs: jobsFor('programming', 16) },
+      targetRoleResult('cleaning', jobsFor('cleaning', 12), 12, 1, 10, 2),
+      targetRoleResult('programming', jobsFor('programming', 16), 16, 1, 10, 2),
     ],
     totalResults: 28,
   };
@@ -212,24 +219,16 @@ describe('JobResultsComponent', () => {
   });
 
   it('applies source filter before sorting and paginating', () => {
-    currentResponse = {
-      resultsByTargetRole: [
-        {
-          targetRole: 'developer',
-          jobs: [
-            ...jobsFor('adzuna', 12, 'Adzuna').map((job, index) => ({
-              ...job,
-              salary: { min: 20000 + index * 1000, max: 30000 + index * 1000, currency: 'GBP', normalisedAnnualMidpoint: 30000 + index * 1000 }
-            })),
-            ...jobsFor('reed', 4, 'Reed.co.uk').map((job, index) => ({
-              ...job,
-              salary: { min: 90000 + index * 1000, max: 100000 + index * 1000, currency: 'GBP', normalisedAnnualMidpoint: 100000 + index * 1000 }
-            }))
-          ]
-        }
-      ],
-      totalResults: 16,
-    };
+    currentResponse = singleRoleResponse([
+      ...jobsFor('adzuna', 12, 'Adzuna').map((job, index) => ({
+        ...job,
+        salary: { min: 20000 + index * 1000, max: 30000 + index * 1000, currency: 'GBP', normalisedAnnualMidpoint: 30000 + index * 1000 }
+      })),
+      ...jobsFor('reed', 4, 'Reed.co.uk').map((job, index) => ({
+        ...job,
+        salary: { min: 90000 + index * 1000, max: 100000 + index * 1000, currency: 'GBP', normalisedAnnualMidpoint: 100000 + index * 1000 }
+      })),
+    ]);
     const fixture = createFixture();
 
     clickButtonContaining(fixture, 'Filter');
@@ -294,13 +293,15 @@ describe('JobResultsComponent', () => {
   });
 
   it('keeps successful real jobs visible when another provider is rate limited', () => {
-    currentResponse = {
-      ...singleRoleResponse([job('real developer role', {})]),
-      providerResults: [
+    currentResponse = singleRoleResponse(
+      [job('real developer role', {})],
+      'developer',
+      [
         {provider: 'REED', status: ProviderResultStatusStatusEnum.Success, rawResultCount: 1},
         {provider: 'JSEARCH', status: ProviderResultStatusStatusEnum.RateLimited, rawResultCount: 0},
       ],
-    };
+      TargetRoleJobResultsSearchStatusEnum.Partial,
+    );
     const fixture = createFixture('REAL_PROVIDERS');
 
     expect(fixture.nativeElement.textContent).toContain('Real providers — partial availability');
@@ -310,19 +311,29 @@ describe('JobResultsComponent', () => {
 
   it('keeps provider partial failures scoped to the role that returned them', () => {
     queuedSearchResponses = [
-      of({
-        ...rolePageResponse('cleaning', [job('cleaning result', {})], 1, 1, 1),
-        providerResults: [
+      of(rolePageResponse(
+        'cleaning',
+        [job('cleaning result', {})],
+        1,
+        1,
+        1,
+        [
           {provider: 'REED', status: ProviderResultStatusStatusEnum.Success, rawResultCount: 1},
         ],
-      }),
-      of({
-        ...rolePageResponse('programming', [job('programming result', {})], 1, 1, 1),
-        providerResults: [
+      )),
+      of(rolePageResponse(
+        'programming',
+        [job('programming result', {})],
+        1,
+        1,
+        1,
+        [
           {provider: 'REED', status: ProviderResultStatusStatusEnum.Success, rawResultCount: 1},
           {provider: 'JSEARCH', status: ProviderResultStatusStatusEnum.RateLimited, rawResultCount: 0},
         ],
-      }),
+        TargetRoleJobResultsSearchStatusEnum.Partial,
+        TargetRoleJobResultsMatchingStatusEnum.TimedOut,
+      )),
     ];
     const fixture = createFixture('REAL_PROVIDERS');
 
@@ -331,12 +342,20 @@ describe('JobResultsComponent', () => {
     expect(fixture.nativeElement.textContent)
       .toContain('JSEARCH has reached its current request limit');
     expect(fixture.nativeElement.textContent).toContain('programming result');
+    expect(fixture.componentInstance.searchStatus())
+      .toBe(TargetRoleJobResultsSearchStatusEnum.Partial);
+    expect(fixture.componentInstance.matchingStatus())
+      .toBe(TargetRoleJobResultsMatchingStatusEnum.TimedOut);
 
     clickButtonContaining(fixture, 'cleaning');
 
     expect(fixture.nativeElement.textContent)
       .not.toContain('JSEARCH has reached its current request limit');
     expect(fixture.nativeElement.textContent).toContain('cleaning result');
+    expect(fixture.componentInstance.searchStatus())
+      .toBe(TargetRoleJobResultsSearchStatusEnum.Complete);
+    expect(fixture.componentInstance.matchingStatus())
+      .toBe(TargetRoleJobResultsMatchingStatusEnum.Complete);
   });
 
   it('shows one role failure without discarding another role cached results', () => {
@@ -359,12 +378,15 @@ describe('JobResultsComponent', () => {
   });
 
   it('distinguishes a real-provider configuration error from zero results', () => {
-    currentResponse = {
-      ...singleRoleResponse([]),
-      providerResults: [
+    currentResponse = singleRoleResponse(
+      [],
+      'developer',
+      [
         {provider: 'REED', status: ProviderResultStatusStatusEnum.ConfigurationError, rawResultCount: 0},
       ],
-    };
+      TargetRoleJobResultsSearchStatusEnum.Unavailable,
+      TargetRoleJobResultsMatchingStatusEnum.Unavailable,
+    );
     const fixture = createFixture('REAL_PROVIDERS');
 
     expect(fixture.nativeElement.textContent).toContain('Real-provider configuration error');
@@ -373,23 +395,27 @@ describe('JobResultsComponent', () => {
   });
 
   it('distinguishes unavailable real providers from a successful zero-result search', () => {
-    currentResponse = {
-      ...singleRoleResponse([]),
-      providerResults: [
+    currentResponse = singleRoleResponse(
+      [],
+      'developer',
+      [
         {provider: 'ADZUNA', status: ProviderResultStatusStatusEnum.Unavailable, rawResultCount: 0},
       ],
-    };
+      TargetRoleJobResultsSearchStatusEnum.Unavailable,
+      TargetRoleJobResultsMatchingStatusEnum.Unavailable,
+    );
     const unavailable = createFixture('REAL_PROVIDERS');
     expect(unavailable.nativeElement.textContent).toContain('Real providers temporarily unavailable');
     expect(unavailable.nativeElement.textContent)
       .toContain('Real job providers are temporarily unavailable. Please try again later.');
 
-    currentResponse = {
-      ...singleRoleResponse([]),
-      providerResults: [
+    currentResponse = singleRoleResponse(
+      [],
+      'developer',
+      [
         {provider: 'ADZUNA', status: ProviderResultStatusStatusEnum.Success, rawResultCount: 0},
       ],
-    };
+    );
     const zeroResults = createFixture('REAL_PROVIDERS');
     expect(zeroResults.nativeElement.textContent).toContain('Real providers');
     expect(zeroResults.nativeElement.textContent)
@@ -477,24 +503,155 @@ describe('JobResultsComponent', () => {
     expect(fixture.nativeElement.textContent).not.toContain('wrong-role result');
   });
 
-  it('keeps application and document enrichment on a subsequently loaded page', () => {
-    currentResponse = {
+  it('prefers matching role metadata over conflicting legacy top-level metadata', () => {
+    queuedSearchResponses = [
+      of({
+        ...rolePageResponse(
+          'cleaning',
+          [job('nested metadata result', {})],
+          17,
+          2,
+          4,
+          [
+            {
+              provider: 'JSEARCH',
+              status: ProviderResultStatusStatusEnum.RateLimited,
+              rawResultCount: 0,
+            },
+          ],
+          TargetRoleJobResultsSearchStatusEnum.Partial,
+          TargetRoleJobResultsMatchingStatusEnum.TimedOut,
+          5,
+        ),
+        totalResults: 999,
+        page: 99,
+        pageSize: 50,
+        totalPages: 100,
+        providerResults: [
+          {
+            provider: 'REED',
+            status: ProviderResultStatusStatusEnum.Success,
+            rawResultCount: 1,
+          },
+        ],
+        searchStatus: ReedJobSearchResponseSearchStatusEnum.Complete,
+        matchingStatus: ReedJobSearchResponseMatchingStatusEnum.Complete,
+      }),
+    ];
+
+    const fixture = createFixture('REAL_PROVIDERS');
+    const state = fixture.componentInstance.roleStates()['cleaning'];
+
+    expect(state.currentPage).toBe(2);
+    expect(state.pageSize).toBe(5);
+    expect(state.totalResults).toBe(17);
+    expect(state.totalPages).toBe(4);
+    expect(state.providerStatuses).toEqual([
+      ProviderResultStatusStatusEnum.RateLimited,
+    ]);
+    expect(state.searchStatus).toBe(TargetRoleJobResultsSearchStatusEnum.Partial);
+    expect(state.matchingStatus).toBe(TargetRoleJobResultsMatchingStatusEnum.TimedOut);
+    expect(fixture.nativeElement.textContent)
+      .toContain('JSEARCH has reached its current request limit');
+  });
+
+  it('falls back to top-level metadata for a legacy matching role group', () => {
+    const legacyResponse = {
+      jobs: [job('legacy metadata result', {})],
       resultsByTargetRole: [{
         targetRole: 'cleaning',
-        jobs: [
-          ...jobsFor('cleaning', 10),
-          job('enriched page two result', {
-            id: 'canonical-enriched-page-two',
-            canonicalJobId: 'canonical-enriched-page-two',
-            applicationId: 'application-page-two',
-            applicationStatus: 'DOCUMENTS_GENERATED',
-            cvDocumentId: 'cv-page-two',
-            coverLetterDocumentId: 'cover-page-two',
-          }),
-        ],
+        jobs: [job('legacy metadata result', {})],
       }],
-      totalResults: 11,
-    };
+      totalResults: 13,
+      page: 2,
+      pageSize: 5,
+      totalPages: 3,
+      providerResults: [{
+        provider: 'JSEARCH',
+        status: ProviderResultStatusStatusEnum.RateLimited,
+        rawResultCount: 0,
+      }],
+      searchStatus: ReedJobSearchResponseSearchStatusEnum.Partial,
+      matchingStatus: ReedJobSearchResponseMatchingStatusEnum.TimedOut,
+    } as unknown as JobSearchResponse;
+    queuedSearchResponses = [of(legacyResponse)];
+
+    const fixture = createFixture('REAL_PROVIDERS');
+    const state = fixture.componentInstance.roleStates()['cleaning'];
+
+    expect(state.currentPage).toBe(2);
+    expect(state.pageSize).toBe(5);
+    expect(state.totalResults).toBe(13);
+    expect(state.totalPages).toBe(3);
+    expect(state.providerStatuses).toEqual([
+      ProviderResultStatusStatusEnum.RateLimited,
+    ]);
+    expect(state.searchStatus).toBe(ReedJobSearchResponseSearchStatusEnum.Partial);
+    expect(state.matchingStatus).toBe(ReedJobSearchResponseMatchingStatusEnum.TimedOut);
+  });
+
+  it('restores page-scoped statuses when returning to a cached page', () => {
+    queuedSearchResponses = [
+      of(rolePageResponse(
+        'cleaning',
+        jobsFor('cleaning', 10),
+        11,
+        1,
+        2,
+        [{
+          provider: 'REED',
+          status: ProviderResultStatusStatusEnum.Success,
+          rawResultCount: 10,
+        }],
+      )),
+      of(rolePageResponse(
+        'cleaning',
+        [job('partial page two result', {})],
+        11,
+        2,
+        2,
+        [{
+          provider: 'JSEARCH',
+          status: ProviderResultStatusStatusEnum.RateLimited,
+          rawResultCount: 0,
+        }],
+        TargetRoleJobResultsSearchStatusEnum.Partial,
+        TargetRoleJobResultsMatchingStatusEnum.Saturated,
+      )),
+    ];
+    const fixture = createFixture('REAL_PROVIDERS');
+
+    clickButtonContaining(fixture, 'Next');
+    expect(fixture.componentInstance.searchStatus())
+      .toBe(TargetRoleJobResultsSearchStatusEnum.Partial);
+    expect(fixture.componentInstance.matchingStatus())
+      .toBe(TargetRoleJobResultsMatchingStatusEnum.Saturated);
+
+    clickButtonContaining(fixture, 'Previous');
+    expect(fixture.componentInstance.searchStatus())
+      .toBe(TargetRoleJobResultsSearchStatusEnum.Complete);
+    expect(fixture.componentInstance.matchingStatus())
+      .toBe(TargetRoleJobResultsMatchingStatusEnum.Complete);
+    expect(fixture.componentInstance.providerStatuses())
+      .toEqual([ProviderResultStatusStatusEnum.Success]);
+    expect(jobService.calls).toHaveLength(2);
+  });
+
+  it('keeps application and document enrichment on a subsequently loaded page', () => {
+    currentResponse = singleRoleResponse(
+      [
+        ...jobsFor('cleaning', 10),
+        job('enriched page two result', {
+          id: 'canonical-enriched-page-two',
+          canonicalJobId: 'canonical-enriched-page-two',
+          applicationId: 'application-page-two',
+          applicationStatus: 'DOCUMENTS_GENERATED',
+          cvDocumentId: 'cv-page-two',
+          coverLetterDocumentId: 'cover-page-two',
+        }),
+      ],
+      'cleaning',
+    );
     const fixture = createFixture();
 
     clickButtonContaining(fixture, 'Next');
@@ -652,10 +809,33 @@ describe('JobResultsComponent', () => {
     return fixture.debugElement.queryAll(By.css('app-job-card'));
   }
 
-  function singleRoleResponse(jobs: Job[], targetRole = 'developer'): JobSearchResponse {
+  function singleRoleResponse(
+    jobs: Job[],
+    targetRole = 'developer',
+    providerResults: ProviderResultStatus[] = [],
+    searchStatus: TargetRoleJobResultsSearchStatusEnum = TargetRoleJobResultsSearchStatusEnum.Complete,
+    matchingStatus: TargetRoleJobResultsMatchingStatusEnum = TargetRoleJobResultsMatchingStatusEnum.Complete,
+  ): JobSearchResponse {
     return {
-      resultsByTargetRole: [{ targetRole, jobs }],
+      jobs,
+      resultsByTargetRole: [
+        targetRoleResult(
+          targetRole,
+          jobs,
+          jobs.length,
+          1,
+          10,
+          Math.max(1, Math.ceil(jobs.length / 10)),
+          providerResults,
+          searchStatus,
+          matchingStatus,
+        ),
+      ],
       totalResults: jobs.length,
+      page: 1,
+      pageSize: 10,
+      totalPages: Math.max(1, Math.ceil(jobs.length / 10)),
+      providerResults,
     };
   }
 
@@ -665,14 +845,55 @@ describe('JobResultsComponent', () => {
     totalResults: number,
     page: number,
     totalPages: number,
+    providerResults: ProviderResultStatus[] = [],
+    searchStatus: TargetRoleJobResultsSearchStatusEnum = TargetRoleJobResultsSearchStatusEnum.Complete,
+    matchingStatus: TargetRoleJobResultsMatchingStatusEnum = TargetRoleJobResultsMatchingStatusEnum.Complete,
+    pageSize = 10,
   ): JobSearchResponse {
     return {
       jobs,
-      resultsByTargetRole: [{targetRole, jobs}],
+      resultsByTargetRole: [
+        targetRoleResult(
+          targetRole,
+          jobs,
+          totalResults,
+          page,
+          pageSize,
+          totalPages,
+          providerResults,
+          searchStatus,
+          matchingStatus,
+        ),
+      ],
       totalResults,
       page,
-      pageSize: 10,
+      pageSize,
       totalPages,
+      providerResults,
+    };
+  }
+
+  function targetRoleResult(
+    targetRole: string,
+    jobs: Job[],
+    totalResults: number,
+    page: number,
+    pageSize: number,
+    totalPages: number,
+    providerResults: ProviderResultStatus[] = [],
+    searchStatus: TargetRoleJobResultsSearchStatusEnum = TargetRoleJobResultsSearchStatusEnum.Complete,
+    matchingStatus: TargetRoleJobResultsMatchingStatusEnum = TargetRoleJobResultsMatchingStatusEnum.Complete,
+  ): NonNullable<JobSearchResponse['resultsByTargetRole']>[number] {
+    return {
+      targetRole,
+      jobs,
+      totalResults,
+      page,
+      pageSize,
+      totalPages,
+      providerResults,
+      searchStatus,
+      matchingStatus,
     };
   }
 
@@ -691,14 +912,39 @@ describe('JobResultsComponent', () => {
     const pageSize = options.pageSize ?? 10;
     const start = (page - 1) * pageSize;
     const pageJobs = allJobs.slice(start, start + pageSize);
+    const totalPages = Math.max(1, Math.ceil(allJobs.length / pageSize));
+    const providerResults = group?.providerResults ?? source.providerResults ?? [];
+    const searchStatus = (
+      group?.searchStatus
+      ?? source.searchStatus
+      ?? TargetRoleJobResultsSearchStatusEnum.Complete
+    ) as TargetRoleJobResultsSearchStatusEnum;
+    const matchingStatus = (
+      group?.matchingStatus
+      ?? source.matchingStatus
+      ?? TargetRoleJobResultsMatchingStatusEnum.Complete
+    ) as TargetRoleJobResultsMatchingStatusEnum;
     return {
       ...source,
       jobs: pageJobs,
-      resultsByTargetRole: [{targetRole, jobs: pageJobs}],
+      resultsByTargetRole: [
+        targetRoleResult(
+          targetRole,
+          pageJobs,
+          allJobs.length,
+          page,
+          pageSize,
+          totalPages,
+          providerResults,
+          searchStatus,
+          matchingStatus,
+        ),
+      ],
       totalResults: allJobs.length,
       page,
       pageSize,
-      totalPages: Math.max(1, Math.ceil(allJobs.length / pageSize)),
+      totalPages,
+      providerResults,
       sort: options.sort as JobSearchResponse['sort'],
     };
   }
