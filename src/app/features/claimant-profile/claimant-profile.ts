@@ -7,6 +7,7 @@ import {
   ElementRef,
   inject,
   input,
+  OnInit,
   output,
   signal,
   type WritableSignal,
@@ -16,6 +17,7 @@ import {MatIconModule} from '@angular/material/icon';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {firstValueFrom, Subject, switchMap} from 'rxjs';
 import {
+  EvidenceLibraryService,
   ProfileService,
   WorkPreferencesEmploymentTypesEnum,
   WorkPreferencesWorkingPatternsEnum,
@@ -23,6 +25,7 @@ import {
 } from '../../api';
 import type {
   GatewayResponse,
+  EvidenceEntry,
   ProfilePreferencesUpdate,
   UserProfile,
   WorkPreferences,
@@ -38,6 +41,10 @@ import {
 import {TagInputComponent} from '../../shared/tag-input/tag-input';
 
 type ProfileSection = 'jobs' | 'skills' | 'location' | 'patterns' | 'availability';
+interface EvidenceSummaryRow {
+  label: string;
+  categories: string[];
+}
 
 @Component({
   selector: 'app-claimant-profile',
@@ -50,11 +57,13 @@ type ProfileSection = 'jobs' | 'skills' | 'location' | 'patterns' | 'availabilit
   templateUrl: './claimant-profile.html',
   styleUrl: './claimant-profile.css',
 })
-export class ClaimantProfileComponent {
+export class ClaimantProfileComponent implements OnInit {
   private readonly profileApi = inject(ProfileService);
+  private readonly evidenceApi = inject(EvidenceLibraryService);
   private readonly browserSession = inject(BrowserSessionService);
   private readonly locationService = inject(LocationService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private evidenceLoadSequence = 0;
 
   readonly claimantName = input('');
   readonly claimantEmail = input('');
@@ -66,10 +75,14 @@ export class ClaimantProfileComponent {
 
   readonly profileSaved = output<{profile: UserProfile; apiResult?: GatewayResponse; apiError?: unknown}>();
   readonly findJobsRequested = output<void>();
+  readonly manageEvidenceRequested = output<void>();
 
   readonly editingSection = signal<ProfileSection | null>(null);
   readonly isSaving = signal(false);
   readonly saveError = signal<string | null>(null);
+  readonly evidenceEntries = signal<EvidenceEntry[]>([]);
+  readonly evidenceLoading = signal(true);
+  readonly evidenceError = signal<string | null>(null);
 
   readonly localSkills = signal<string[]>([]);
   readonly localTargetRoles = signal<string[]>([]);
@@ -106,6 +119,20 @@ export class ClaimantProfileComponent {
       || this.localWorkplaceArrangements().length > 0,
     Boolean(this.localAvailableFrom()) || this.localNoticePeriodDays() != null,
   ].filter(Boolean).length);
+  readonly evidenceSummaryRows: EvidenceSummaryRow[] = [
+    {
+      label: 'Work experience',
+      categories: ['EMPLOYMENT', 'FREELANCE', 'VOLUNTEERING', 'CAREER_BREAK'],
+    },
+    {
+      label: 'Qualifications',
+      categories: ['EDUCATION', 'QUALIFICATION_TRAINING'],
+    },
+    {
+      label: 'Projects and achievements',
+      categories: ['PROJECT', 'ACHIEVEMENT', 'OTHER'],
+    },
+  ];
 
   readonly employmentTypeOptions = [
     ['PERMANENT', 'Permanent'],
@@ -145,6 +172,48 @@ export class ClaimantProfileComponent {
       const profile = normaliseProfile(this.profile());
       if (!this.editingSection()) this.populate(profile);
     });
+  }
+
+  ngOnInit(): void {
+    void this.refreshEvidenceSummary();
+  }
+
+  async refreshEvidenceSummary(): Promise<void> {
+    const requestSequence = ++this.evidenceLoadSequence;
+    this.evidenceLoading.set(true);
+    this.evidenceError.set(null);
+    try {
+      const entries = await firstValueFrom(
+        this.evidenceApi.listEvidence(false, 'body', false, {transferCache: false}),
+      );
+      if (requestSequence !== this.evidenceLoadSequence) return;
+      this.evidenceEntries.set(entries.filter(entry => entry.lifecycle === 'ACTIVE'));
+    } catch (error) {
+      if (requestSequence !== this.evidenceLoadSequence) return;
+      this.browserSession.handleAuthenticatedError(error);
+      this.evidenceError.set('Experience summary unavailable.');
+    } finally {
+      if (requestSequence === this.evidenceLoadSequence) {
+        this.evidenceLoading.set(false);
+      }
+    }
+  }
+
+  evidenceSummary(row: EvidenceSummaryRow): string {
+    const entries = this.evidenceEntries().filter(entry => row.categories.includes(entry.category));
+    const confirmed = entries.filter(entry =>
+      !entry.reviewRequired
+      && this.latestEvidenceRevision(entry)?.confirmationState === 'USER_CONFIRMED').length;
+    const needsReview = entries.length - confirmed;
+    if (!entries.length) return 'No entries yet';
+    const confirmedText = `${confirmed} confirmed`;
+    return needsReview
+      ? `${confirmedText} · ${needsReview} ${needsReview === 1 ? 'needs' : 'need'} review`
+      : confirmedText;
+  }
+
+  openEvidenceManager(): void {
+    this.manageEvidenceRequested.emit();
   }
 
   startEditing(section: ProfileSection): void {
@@ -238,6 +307,11 @@ export class ClaimantProfileComponent {
 
   triggerFinderSearch(): void {
     this.findJobsRequested.emit();
+  }
+
+  private latestEvidenceRevision(entry: EvidenceEntry) {
+    return [...entry.revisions].sort((left, right) =>
+      right.revisionNumber - left.revisionNumber)[0];
   }
 
   private populate(profile: UserProfile): void {

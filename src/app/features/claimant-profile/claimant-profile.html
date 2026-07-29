@@ -19,16 +19,19 @@
     <article class="rounded-xl border border-slate-200 p-4">
       <div class="flex justify-between gap-3">
         <div>
-          <h3 class="font-extrabold text-sm text-slate-900">What jobs are you looking for?</h3>
+          <h3 class="font-extrabold text-sm text-slate-900">Target roles</h3>
           <p class="text-xs text-slate-600 mt-1">
             {{ localTargetRoles().length ? localTargetRoles().join(', ') : 'Not provided yet' }}
           </p>
         </div>
         <button type="button" class="text-xs font-bold text-indigo-700"
+                aria-label="Edit Target roles"
+                aria-controls="profile-target-roles-editor"
+                [attr.aria-expanded]="editingSection() === 'jobs'"
                 (click)="startEditing('jobs')">Edit</button>
       </div>
       @if (editingSection() === 'jobs') {
-        <div class="mt-4 space-y-3">
+        <div id="profile-target-roles-editor" class="mt-4 space-y-3">
           <app-tag-input label="Target roles" placeholder="Type a role and press Enter"
                          [(tags)]="localTargetRoles"></app-tag-input>
         </div>
@@ -38,16 +41,19 @@
     <article class="rounded-xl border border-slate-200 p-4">
       <div class="flex justify-between gap-3">
         <div>
-          <h3 class="font-extrabold text-sm text-slate-900">Which skills should stand out?</h3>
+          <h3 class="font-extrabold text-sm text-slate-900">Key skills</h3>
           <p class="text-xs text-slate-600 mt-1">
             {{ localSkills().length ? localSkills().join(', ') : 'Not provided yet' }}
           </p>
         </div>
         <button type="button" class="text-xs font-bold text-indigo-700"
+                aria-label="Edit Key skills"
+                aria-controls="profile-key-skills-editor"
+                [attr.aria-expanded]="editingSection() === 'skills'"
                 (click)="startEditing('skills')">Edit</button>
       </div>
       @if (editingSection() === 'skills') {
-        <div class="mt-4">
+        <div id="profile-key-skills-editor" class="mt-4">
           <app-tag-input label="Skills" placeholder="Type a skill and press Enter"
                          [(tags)]="localSkills"></app-tag-input>
         </div>
@@ -57,17 +63,20 @@
     <article class="rounded-xl border border-slate-200 p-4">
       <div class="flex justify-between gap-3">
         <div>
-          <h3 class="font-extrabold text-sm text-slate-900">Where do you want to work?</h3>
+          <h3 class="font-extrabold text-sm text-slate-900">Location and commute</h3>
           <p class="text-xs text-slate-600 mt-1">
             {{ localPostcode() || 'Not provided yet' }}
             @if (localCommuteRange() !== undefined) { · within {{ localCommuteRange() }} miles }
           </p>
         </div>
         <button type="button" class="text-xs font-bold text-indigo-700"
+                aria-label="Edit Location and commute"
+                aria-controls="profile-location-editor"
+                [attr.aria-expanded]="editingSection() === 'location'"
                 (click)="startEditing('location')">Edit</button>
       </div>
       @if (editingSection() === 'location') {
-        <div class="mt-4 grid grid-cols-1 gap-3">
+        <div id="profile-location-editor" class="mt-4 grid grid-cols-1 gap-3">
           <div class="relative">
             <label for="profile-postcode" class="block text-xs font-bold text-slate-700 mb-1">Town or postcode</label>
             <input id="profile-postcode" type="text" role="combobox" autocomplete="postal-code"
@@ -112,17 +121,20 @@
     <article class="rounded-xl border border-slate-200 p-4">
       <div class="flex justify-between gap-3">
         <div>
-          <h3 class="font-extrabold text-sm text-slate-900">What working patterns suit you?</h3>
+          <h3 class="font-extrabold text-sm text-slate-900">Working preferences</h3>
           <p class="text-xs text-slate-600 mt-1">
             {{ localWorkingPatterns().length + localEmploymentTypes().length + localWorkplaceArrangements().length
               ? 'Preferences added' : 'Not provided yet' }}
           </p>
         </div>
         <button type="button" class="text-xs font-bold text-indigo-700"
+                aria-label="Edit Working preferences"
+                aria-controls="profile-working-preferences-editor"
+                [attr.aria-expanded]="editingSection() === 'patterns'"
                 (click)="startEditing('patterns')">Edit</button>
       </div>
       @if (editingSection() === 'patterns') {
-        <div class="mt-4 space-y-4">
+        <div id="profile-working-preferences-editor" class="mt-4 space-y-4">
           <fieldset>
             <legend class="text-xs font-extrabold text-slate-700 mb-2">Employment types</legend>
             <div class="flex flex-wrap gap-2">
@@ -166,7 +178,7 @@
     <article class="rounded-xl border border-slate-200 p-4">
       <div class="flex justify-between gap-3">
         <div>
-          <h3 class="font-extrabold text-sm text-slate-900">When can you start?</h3>
+          <h3 class="font-extrabold text-sm text-slate-900">Availability</h3>
           <p class="text-xs text-slate-600 mt-1">
             @if (localAvailableFrom()) { From {{ localAvailableFrom() }} }
             @else if (localNoticePeriodDays() !== undefined) { {{ localNoticePeriodDays() }} days' notice }
@@ -174,10 +186,13 @@
           </p>
         </div>
         <button type="button" class="text-xs font-bold text-indigo-700"
+                aria-label="Edit Availability"
+                aria-controls="profile-availability-editor"
+                [attr.aria-expanded]="editingSection() === 'availability'"
                 (click)="startEditing('availability')">Edit</button>
       </div>
       @if (editingSection() === 'availability') {
-        <div class="mt-4 grid grid-cols-1 gap-3">
+        <div id="profile-availability-editor" class="mt-4 grid grid-cols-1 gap-3">
           <div>
             <label for="available-from" class="block text-xs font-bold text-slate-700 mb-1">Available from</label>
             <input id="available-from" type="date" [value]="localAvailableFrom()"
@@ -194,6 +209,42 @@
         </div>
       }
     </article>
+
+    <section class="evidence-summary rounded-xl border border-slate-200 p-4"
+             aria-labelledby="profile-evidence-heading"
+             data-testid="profile-evidence-summary">
+      <div>
+        <p class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">
+          Reusable career details
+        </p>
+        <h3 id="profile-evidence-heading" class="font-extrabold text-sm text-slate-900">
+          Experience &amp; achievements
+        </h3>
+      </div>
+      @if (evidenceLoading()) {
+        <p class="mt-3 text-xs text-slate-600" role="status">Loading summary…</p>
+      } @else if (evidenceError()) {
+        <div class="mt-3 flex items-center justify-between gap-2">
+          <p class="text-xs text-rose-700" role="status">{{ evidenceError() }}</p>
+          <button type="button" class="summary-retry" (click)="refreshEvidenceSummary()">
+            Retry
+          </button>
+        </div>
+      } @else {
+        <dl class="evidence-summary-list mt-3">
+          @for (row of evidenceSummaryRows; track row.label) {
+            <div class="evidence-summary-row">
+              <dt>{{ row.label }}</dt>
+              <dd>{{ evidenceSummary(row) }}</dd>
+            </div>
+          }
+        </dl>
+      }
+      <button id="manage-experience-evidence" type="button" class="manage-evidence-button mt-3"
+              (click)="openEvidenceManager()">
+        Manage experience &amp; achievements
+      </button>
+    </section>
 
     @if (editingSection()) {
       <div class="flex gap-2">

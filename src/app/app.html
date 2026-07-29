@@ -71,7 +71,7 @@
                         [aiCreditPencePerToken]="aiCreditPencePerToken()"
                         (refreshTokens)="refreshAiTokenBalance()"
                         (openProfile)="openMyProfile()"
-                        (openExperience)="openExperienceAndAchievements()"
+                        (openExperience)="openExperienceAndAchievements('navigation')"
                         (logout)="logout()"></app-navigation-bar>
 
     <!-- Main Grid Workspace Content wrapper -->
@@ -126,6 +126,7 @@
                                 [aspirations]="profileAspirations()"
                                 [workPrefs]="profileWorkPrefs()"
                                 (profileSaved)="handleSaveProfile($event)"
+                                (manageEvidenceRequested)="openExperienceAndAchievements('summary')"
                                 (findJobsRequested)="triggerJobSearch()">
           </app-claimant-profile>
 
@@ -137,8 +138,8 @@
             <button type="button"
                     class="workspace-tab"
                     data-testid="workspace-tab-search"
-                    [class.workspace-tab-active]="activeWorkspaceTab() === 'search' && !activePersonalWorkspace()"
-                    [attr.aria-current]="activeWorkspaceTab() === 'search' && !activePersonalWorkspace() ? 'page' : null"
+                    [class.workspace-tab-active]="activeWorkspaceTab() === 'search'"
+                    [attr.aria-current]="activeWorkspaceTab() === 'search' ? 'page' : null"
                     (click)="selectWorkspace('search')">
               <mat-icon>search</mat-icon>
               <span>Search</span>
@@ -146,8 +147,8 @@
             <button type="button"
                     class="workspace-tab"
                     data-testid="workspace-tab-applications"
-                    [class.workspace-tab-active]="activeWorkspaceTab() === 'applications' && !activePersonalWorkspace()"
-                    [attr.aria-current]="activeWorkspaceTab() === 'applications' && !activePersonalWorkspace() ? 'page' : null"
+                    [class.workspace-tab-active]="activeWorkspaceTab() === 'applications'"
+                    [attr.aria-current]="activeWorkspaceTab() === 'applications' ? 'page' : null"
                     (click)="selectWorkspace('applications')">
               <mat-icon>work_history</mat-icon>
               <span>Applications</span>
@@ -155,21 +156,14 @@
             <button type="button"
                     class="workspace-tab"
                     data-testid="workspace-tab-documents"
-                    [class.workspace-tab-active]="activeWorkspaceTab() === 'documents' && !activePersonalWorkspace()"
-                    [attr.aria-current]="activeWorkspaceTab() === 'documents' && !activePersonalWorkspace() ? 'page' : null"
+                    [class.workspace-tab-active]="activeWorkspaceTab() === 'documents'"
+                    [attr.aria-current]="activeWorkspaceTab() === 'documents' ? 'page' : null"
                     (click)="selectWorkspace('documents')">
               <mat-icon>description</mat-icon>
               <span>Documents</span>
             </button>
           </div>
 
-          @if (activePersonalWorkspace() === 'experience') {
-            <div data-testid="workspace-panel-experience">
-              <app-evidence-library
-                (notify)="showToast($event.message, $event.type)">
-              </app-evidence-library>
-            </div>
-          } @else {
           @if (activeWorkspaceTab() === 'search') {
           <div data-testid="workspace-panel-search">
             <div class="workspace-status-line">
@@ -249,7 +243,6 @@
               </section>
             }
           </div>
-          }
           }
         </section>
 

@@ -1,8 +1,40 @@
+.evidence-workspace {
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+}
+
 .field-label {
   display: block;
   color: #334155;
   font-size: 0.75rem;
   font-weight: 700;
+}
+
+.field-help {
+  display: block;
+  margin-top: 0.35rem;
+  color: #64748b;
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+
+.advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.55rem 0.8rem;
+  color: #334155;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.advanced-toggle mat-icon {
+  width: 1rem;
+  height: 1rem;
+  font-size: 1rem;
 }
 
 .field-control {
@@ -59,4 +91,14 @@
 .card-action.danger {
   border-color: #fecdd3;
   color: #be123c;
+}
+
+@media (max-width: 640px) {
+  .evidence-workspace {
+    max-height: 100dvh;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    padding: 1rem;
+  }
 }

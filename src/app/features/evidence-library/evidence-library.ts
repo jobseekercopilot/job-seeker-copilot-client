@@ -9,6 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import {FormsModule} from '@angular/forms';
+import {MatDialogRef} from '@angular/material/dialog';
 import {MatIconModule} from '@angular/material/icon';
 import {firstValueFrom} from 'rxjs';
 import {
@@ -29,6 +30,8 @@ import {BrowserSessionService} from '../../services/browser-session.service';
 
 type EditorMode = 'create' | 'edit';
 type EvidenceAction = 'confirm' | 'archive' | 'restore' | 'hide' | 'show';
+type CompletionStatus = 'Completed' | 'In progress';
+type DateField = 'startDate' | 'endDate' | 'issueDate' | 'expiryDate';
 
 @Component({
   selector: 'app-evidence-library',
@@ -40,8 +43,16 @@ type EvidenceAction = 'confirm' | 'archive' | 'restore' | 'hide' | 'show';
 export class EvidenceLibraryComponent implements OnInit {
   private readonly api = inject(EvidenceLibraryService);
   private readonly browserSession = inject(BrowserSessionService);
+  private readonly dialogRef = inject<MatDialogRef<EvidenceLibraryComponent> | null>(
+    MatDialogRef,
+    {optional: true},
+  );
+  private loadSequence = 0;
+  private originalDates: Partial<Record<DateField, PartialDate>> = {};
+  private preserveLegacyHeading = false;
 
   readonly notify = output<{message: string; type: 'success' | 'info' | 'error'}>();
+  readonly changed = output<void>();
   readonly entries = signal<EvidenceEntry[]>([]);
   readonly loading = signal(true);
   readonly busy = signal(false);
@@ -69,14 +80,18 @@ export class EvidenceLibraryComponent implements OnInit {
   readonly description = signal('');
   readonly responsibilities = signal('');
   readonly achievements = signal('');
-  readonly careerBreakReason = signal('');
+  readonly privateCredentialIdentifier = signal('');
   readonly ongoing = signal(false);
+  readonly completionStatus = signal<CompletionStatus>('Completed');
   readonly startDate = signal('');
   readonly endDate = signal('');
   readonly issueDate = signal('');
   readonly expiryDate = signal('');
   readonly demonstratedSkills = signal('');
   readonly supportingLinks = signal('');
+  readonly advancedExpanded = signal(false);
+  readonly conditionalDateMessage = signal('');
+  readonly inDialog = Boolean(this.dialogRef);
 
   readonly categories = [
     ['EMPLOYMENT', 'Employment'],
@@ -112,17 +127,25 @@ export class EvidenceLibraryComponent implements OnInit {
   }
 
   async load(): Promise<void> {
+    const requestSequence = ++this.loadSequence;
     this.loading.set(true);
     this.error.set(null);
     try {
-      this.entries.set(await firstValueFrom(
+      const entries = await firstValueFrom(
         this.api.listEvidence(this.includeArchived(), 'body', false, {transferCache: false}),
-      ));
+      );
+      if (requestSequence === this.loadSequence) {
+        this.entries.set(entries);
+      }
     } catch (error) {
-      this.browserSession.handleAuthenticatedError(error);
-      this.error.set('Your experience and achievements could not be loaded. Try again.');
+      if (requestSequence === this.loadSequence) {
+        this.browserSession.handleAuthenticatedError(error);
+        this.error.set('Your experience and achievements could not be loaded. Try again.');
+      }
     } finally {
-      this.loading.set(false);
+      if (requestSequence === this.loadSequence) {
+        this.loading.set(false);
+      }
     }
   }
 
@@ -154,14 +177,32 @@ export class EvidenceLibraryComponent implements OnInit {
     this.description.set(revision.description ?? '');
     this.responsibilities.set(revision.responsibilities ?? '');
     this.achievements.set(revision.achievements ?? '');
-    this.careerBreakReason.set(revision.careerBreakReason ?? '');
-    this.ongoing.set(revision.ongoing);
-    this.startDate.set(this.dateValue(revision.startDate));
-    this.endDate.set(this.dateValue(revision.endDate));
-    this.issueDate.set(this.dateValue(revision.issueDate));
+    this.privateCredentialIdentifier.set(revision.privateCredentialIdentifier ?? '');
+    const completionStatus = this.statusFrom(revision);
+    this.completionStatus.set(completionStatus);
+    this.ongoing.set(this.usesCompletionStatus() ? false : revision.ongoing);
+    const completionDate = completionStatus === 'Completed'
+      ? revision.issueDate ?? revision.endDate
+      : undefined;
+    const expectedDate = completionStatus === 'In progress'
+      ? revision.endDate ?? revision.issueDate
+      : undefined;
+    this.originalDates = {
+      startDate: revision.startDate,
+      endDate: this.usesCompletionStatus() ? expectedDate : revision.endDate,
+      issueDate: this.usesCompletionStatus() ? completionDate : revision.issueDate,
+      expiryDate: revision.expiryDate,
+    };
+    this.startDate.set(this.dateValue(this.originalDates.startDate));
+    this.endDate.set(this.dateValue(this.originalDates.endDate));
+    this.issueDate.set(this.dateValue(this.originalDates.issueDate));
     this.expiryDate.set(this.dateValue(revision.expiryDate));
     this.demonstratedSkills.set(revision.demonstratedSkills.join(', '));
     this.supportingLinks.set(revision.supportingLinks.join('\n'));
+    this.preserveLegacyHeading = this.hasDerivedHeading()
+      && revision.heading.trim() !== this.derivedHeading();
+    this.advancedExpanded.set(false);
+    this.conditionalDateMessage.set('');
     this.editingEntry.set(entry);
     this.editorMode.set('edit');
     this.error.set(null);
@@ -172,6 +213,50 @@ export class EvidenceLibraryComponent implements OnInit {
       this.editorMode.set(null);
       this.editingEntry.set(null);
       this.error.set(null);
+    }
+  }
+
+  closeManager(): void {
+    this.dialogRef?.close();
+  }
+
+  changeCategory(category: string): void {
+    if (this.editorMode() === 'edit') return;
+    this.resetForm(category);
+  }
+
+  setOngoing(ongoing: boolean): void {
+    this.ongoing.set(ongoing);
+    if (ongoing) {
+      this.endDate.set('');
+      delete this.originalDates.endDate;
+      this.conditionalDateMessage.set(
+        'Current selected. The end date was removed and will not be saved.',
+      );
+    } else {
+      this.conditionalDateMessage.set('Current cleared. You can now add an end date.');
+    }
+  }
+
+  setCompletionStatus(status: CompletionStatus): void {
+    this.completionStatus.set(status);
+    this.ongoing.set(false);
+    if (status === 'Completed') {
+      this.endDate.set('');
+      this.expiryDate.set('');
+      delete this.originalDates.endDate;
+      delete this.originalDates.expiryDate;
+      this.conditionalDateMessage.set(
+        'Completed selected. Only the completion date is required.',
+      );
+    } else {
+      this.issueDate.set('');
+      this.expiryDate.set('');
+      delete this.originalDates.issueDate;
+      delete this.originalDates.expiryDate;
+      this.conditionalDateMessage.set(
+        'In progress selected. Only the expected completion date is required.',
+      );
     }
   }
 
@@ -201,6 +286,7 @@ export class EvidenceLibraryComponent implements OnInit {
       });
       this.editorMode.set(null);
       this.editingEntry.set(null);
+      this.changed.emit();
       await this.load();
     } catch (error) {
       this.handleWriteError(error);
@@ -254,6 +340,7 @@ export class EvidenceLibraryComponent implements OnInit {
       });
       this.pendingSupersede.set(null);
       this.replacementEntryId.set('');
+      this.changed.emit();
       await this.load();
     } catch (error) {
       this.handleWriteError(error);
@@ -281,6 +368,7 @@ export class EvidenceLibraryComponent implements OnInit {
         await firstValueFrom(this.api.showEvidence(entry.entryId, version));
       }
       this.notify.emit({message: this.actionMessage(action), type: 'success'});
+      this.changed.emit();
       await this.load();
     } catch (error) {
       this.handleWriteError(error);
@@ -304,6 +392,18 @@ export class EvidenceLibraryComponent implements OnInit {
       current === entry.entryId ? null : entry.entryId);
   }
 
+  revisions(entry: EvidenceEntry): EvidenceRevision[] {
+    return [...entry.revisions].sort((left, right) =>
+      right.revisionNumber - left.revisionNumber);
+  }
+
+  revisionCreatedAt(revision: EvidenceRevision): string {
+    const value = new Date(revision.createdAt);
+    return Number.isNaN(value.getTime())
+      ? revision.createdAt
+      : value.toLocaleDateString('en-GB');
+  }
+
   dateRange(revision?: EvidenceRevision): string {
     if (!revision) return 'No date supplied';
     const start = revision.startDate ?? revision.issueDate;
@@ -318,42 +418,165 @@ export class EvidenceLibraryComponent implements OnInit {
     return ['EMPLOYMENT', 'FREELANCE', 'VOLUNTEERING'].includes(this.category());
   }
 
+  hasDerivedHeading(): boolean {
+    return [
+      'EMPLOYMENT',
+      'EDUCATION',
+      'QUALIFICATION_TRAINING',
+      'VOLUNTEERING',
+      'FREELANCE',
+    ].includes(this.category());
+  }
+
+  usesCompletionStatus(): boolean {
+    return ['EDUCATION', 'QUALIFICATION_TRAINING'].includes(this.category());
+  }
+
+  usesDateRange(): boolean {
+    return [
+      'EMPLOYMENT',
+      'PROJECT',
+      'VOLUNTEERING',
+      'FREELANCE',
+      'CAREER_BREAK',
+      'OTHER',
+    ].includes(this.category());
+  }
+
+  showsRoleAdvancedDetail(): boolean {
+    return ['EMPLOYMENT', 'VOLUNTEERING', 'FREELANCE'].includes(this.category());
+  }
+
+  showsOutcomeAdvancedDetail(): boolean {
+    return [
+      'EMPLOYMENT',
+      'EDUCATION',
+      'PROJECT',
+      'VOLUNTEERING',
+      'FREELANCE',
+      'ACHIEVEMENT',
+      'OTHER',
+    ].includes(this.category());
+  }
+
+  supportsAdvancedDetails(): boolean {
+    return this.category() !== 'CAREER_BREAK';
+  }
+
   private request(): EvidenceWriteRequest {
-    return {
-      category: this.category() as EvidenceWriteRequestCategoryEnum,
-      heading: this.heading().trim(),
-      ...(this.organisationContext().trim()
-        ? {organisationContext: this.organisationContext().trim()} : {}),
-      ...(this.roleTitle().trim() ? {roleTitle: this.roleTitle().trim()} : {}),
-      ...(this.programmeOrSubject().trim()
-        ? {programmeOrSubject: this.programmeOrSubject().trim()} : {}),
-      ...(this.institution().trim() ? {institution: this.institution().trim()} : {}),
-      ...(this.qualificationTitle().trim()
-        ? {qualificationTitle: this.qualificationTitle().trim()} : {}),
-      ...(this.issuer().trim() ? {issuer: this.issuer().trim()} : {}),
-      ...(this.resultOrStatus().trim() ? {resultOrStatus: this.resultOrStatus().trim()} : {}),
-      ...(this.projectRole().trim() ? {projectRole: this.projectRole().trim()} : {}),
-      ...(this.description().trim() ? {description: this.description().trim()} : {}),
-      ...(this.responsibilities().trim()
-        ? {responsibilities: this.responsibilities().trim()} : {}),
-      ...(this.achievements().trim() ? {achievements: this.achievements().trim()} : {}),
-      ...(this.careerBreakReason().trim()
-        ? {careerBreakReason: this.careerBreakReason().trim()} : {}),
-      ongoing: this.ongoing(),
-      ...(this.startDate() ? {startDate: this.partialDate(this.startDate())} : {}),
-      ...(!this.ongoing() && this.endDate()
-        ? {endDate: this.partialDate(this.endDate())} : {}),
-      ...(this.issueDate() ? {issueDate: this.partialDate(this.issueDate())} : {}),
-      ...(this.expiryDate() ? {expiryDate: this.partialDate(this.expiryDate())} : {}),
-      demonstratedSkills: this.csv(this.demonstratedSkills()),
-      supportingLinks: this.supportingLinks().split(/\r?\n/).map(value => value.trim()).filter(Boolean),
+    const category = this.category();
+    const request: EvidenceWriteRequest = {
+      category: category as EvidenceWriteRequestCategoryEnum,
+      heading: this.effectiveHeading(),
     };
+    const text = (value: string): string | undefined => value.trim() || undefined;
+    const setAdvancedCommon = (): void => {
+      request.demonstratedSkills = this.csv(this.demonstratedSkills());
+      request.supportingLinks = this.links();
+    };
+    const setRange = (): void => {
+      request.ongoing = this.ongoing();
+      if (this.startDate()) request.startDate = this.savedDate('startDate', this.startDate());
+      if (!this.ongoing() && this.endDate()) {
+        request.endDate = this.savedDate('endDate', this.endDate());
+      }
+    };
+
+    switch (category) {
+      case 'EMPLOYMENT':
+        request.roleTitle = text(this.roleTitle());
+        request.organisationContext = text(this.organisationContext());
+        request.description = text(this.description());
+        request.responsibilities = text(this.responsibilities());
+        request.achievements = text(this.achievements());
+        setRange();
+        setAdvancedCommon();
+        break;
+      case 'EDUCATION':
+        request.programmeOrSubject = text(this.programmeOrSubject());
+        request.institution = text(this.institution());
+        request.resultOrStatus = this.completionStatus();
+        request.description = text(this.description());
+        request.achievements = text(this.achievements());
+        if (this.completionStatus() === 'Completed' && this.issueDate()) {
+          request.issueDate = this.savedDate('issueDate', this.issueDate());
+        } else if (this.endDate()) {
+          request.endDate = this.savedDate('endDate', this.endDate());
+        }
+        setAdvancedCommon();
+        break;
+      case 'QUALIFICATION_TRAINING':
+        request.qualificationTitle = text(this.qualificationTitle());
+        request.issuer = text(this.issuer());
+        request.resultOrStatus = this.completionStatus();
+        request.description = text(this.description());
+        if (this.completionStatus() === 'Completed' && this.issueDate()) {
+          request.issueDate = this.savedDate('issueDate', this.issueDate());
+          if (this.expiryDate()) {
+            request.expiryDate = this.savedDate('expiryDate', this.expiryDate());
+          }
+        } else if (this.endDate()) {
+          request.endDate = this.savedDate('endDate', this.endDate());
+        }
+        request.privateCredentialIdentifier = text(this.privateCredentialIdentifier());
+        setAdvancedCommon();
+        break;
+      case 'PROJECT':
+        request.projectRole = text(this.projectRole());
+        request.description = text(this.description());
+        request.achievements = text(this.achievements());
+        setRange();
+        setAdvancedCommon();
+        break;
+      case 'VOLUNTEERING':
+        request.roleTitle = text(this.roleTitle());
+        request.organisationContext = text(this.organisationContext());
+        request.description = text(this.description());
+        request.responsibilities = text(this.responsibilities());
+        request.achievements = text(this.achievements());
+        setRange();
+        setAdvancedCommon();
+        break;
+      case 'FREELANCE':
+        request.roleTitle = text(this.roleTitle());
+        request.organisationContext = text(this.organisationContext());
+        request.description = text(this.description());
+        request.responsibilities = text(this.responsibilities());
+        request.achievements = text(this.achievements());
+        setRange();
+        setAdvancedCommon();
+        break;
+      case 'ACHIEVEMENT':
+        request.description = text(this.description());
+        request.achievements = text(this.achievements());
+        request.ongoing = false;
+        if (this.issueDate()) request.issueDate = this.savedDate('issueDate', this.issueDate());
+        setAdvancedCommon();
+        break;
+      case 'CAREER_BREAK':
+        request.description = text(this.description());
+        setRange();
+        break;
+      case 'OTHER':
+        request.organisationContext = text(this.organisationContext());
+        request.description = text(this.description());
+        request.achievements = text(this.achievements());
+        setRange();
+        setAdvancedCommon();
+        break;
+    }
+    return request;
   }
 
   private validationError(): string | null {
-    if (!this.heading().trim()) return 'Add a clear heading.';
-    if (this.needsRole() && (!this.roleTitle().trim() || !this.organisationContext().trim())) {
-      return 'Add the role and organisation or context for this category.';
+    if (!this.effectiveHeading()) return 'Add a clear heading.';
+    if (this.category() === 'EMPLOYMENT'
+      && (!this.roleTitle().trim() || !this.organisationContext().trim())) {
+      return 'Add the role and employer.';
+    }
+    if (this.category() === 'EMPLOYMENT'
+      && (!this.startDate() || (!this.ongoing() && !this.endDate()))) {
+      return 'Add the start date and either an end date or Current.';
     }
     if (this.category() === 'EDUCATION'
       && (!this.programmeOrSubject().trim() || !this.institution().trim())) {
@@ -363,15 +586,30 @@ export class EvidenceLibraryComponent implements OnInit {
       && (!this.qualificationTitle().trim() || !this.issuer().trim())) {
       return 'Add the qualification title and issuer.';
     }
-    if (this.category() === 'ACHIEVEMENT'
-      && !this.achievements().trim() && !this.description().trim()) {
-      return 'Describe the achievement exactly as you want it recorded.';
+    if (this.usesCompletionStatus()) {
+      const date = this.completionStatus() === 'Completed' ? this.issueDate() : this.endDate();
+      if (!date) {
+        return this.completionStatus() === 'Completed'
+          ? 'Add the completion date.'
+          : 'Add the expected completion date.';
+      }
     }
-    if (this.category() === 'OTHER' && !this.description().trim()) {
+    if (this.category() === 'VOLUNTEERING'
+      && (!this.roleTitle().trim() || !this.organisationContext().trim())) {
+      return 'Add the volunteering role and organisation.';
+    }
+    if (this.category() === 'FREELANCE' && !this.roleTitle().trim()) {
+      return 'Add the freelance role or service.';
+    }
+    if (['PROJECT', 'VOLUNTEERING', 'FREELANCE', 'ACHIEVEMENT', 'OTHER']
+      .includes(this.category()) && !this.description().trim()) {
       return 'Add a description for this evidence.';
     }
-    if (this.supportingLinks().split(/\r?\n/).some(value =>
-      value.trim() && !value.trim().startsWith('https://'))) {
+    if ([this.description(), this.responsibilities(), this.achievements()]
+      .some(value => value.length > 2000)) {
+      return 'Keep each description or detail field to 2,000 characters or fewer.';
+    }
+    if (this.links().some(value => !value.startsWith('https://'))) {
       return 'Supporting links must start with https://.';
     }
     return null;
@@ -380,6 +618,13 @@ export class EvidenceLibraryComponent implements OnInit {
   private partialDate(value: string): PartialDate {
     const [year, month, day] = value.split('-').map(Number);
     return {precision: PartialDatePrecisionEnum.Day, year, month, day};
+  }
+
+  private savedDate(field: DateField, value: string): PartialDate {
+    const original = this.originalDates[field];
+    return original && this.dateValue(original) === value
+      ? original
+      : this.partialDate(value);
   }
 
   private dateValue(value?: PartialDate | null): string {
@@ -402,17 +647,58 @@ export class EvidenceLibraryComponent implements OnInit {
     return value.split(',').map(item => item.trim()).filter(Boolean);
   }
 
-  private resetForm(): void {
-    this.category.set(EvidenceEntryCategoryEnum.Employment);
+  private links(): string[] {
+    return this.supportingLinks().split(/\r?\n/)
+      .map(value => value.trim())
+      .filter(Boolean);
+  }
+
+  private derivedHeading(): string {
+    switch (this.category()) {
+      case 'EMPLOYMENT':
+      case 'VOLUNTEERING':
+      case 'FREELANCE':
+        return this.roleTitle().trim();
+      case 'EDUCATION':
+        return this.programmeOrSubject().trim();
+      case 'QUALIFICATION_TRAINING':
+        return this.qualificationTitle().trim();
+      default:
+        return this.heading().trim();
+    }
+  }
+
+  private effectiveHeading(): string {
+    if (!this.hasDerivedHeading()) return this.heading().trim();
+    if (this.editorMode() === 'edit' && this.preserveLegacyHeading) {
+      return this.heading().trim();
+    }
+    return this.derivedHeading();
+  }
+
+  private statusFrom(revision: EvidenceRevision): CompletionStatus {
+    const value = revision.resultOrStatus?.trim().toUpperCase().replace(/\s+/g, '_');
+    return value === 'IN_PROGRESS' || revision.ongoing
+      ? 'In progress'
+      : 'Completed';
+  }
+
+  private resetForm(category: string = EvidenceEntryCategoryEnum.Employment): void {
+    this.category.set(category);
     for (const field of [
       this.heading, this.organisationContext, this.roleTitle,
       this.programmeOrSubject, this.institution, this.qualificationTitle,
       this.issuer, this.resultOrStatus, this.projectRole, this.description,
-      this.responsibilities, this.achievements, this.careerBreakReason,
+      this.responsibilities, this.achievements, this.privateCredentialIdentifier,
       this.startDate, this.endDate, this.issueDate, this.expiryDate,
       this.demonstratedSkills, this.supportingLinks,
     ]) field.set('');
     this.ongoing.set(false);
+    this.completionStatus.set('Completed');
+    this.advancedExpanded.set(false);
+    this.conditionalDateMessage.set('');
+    this.originalDates = {};
+    this.preserveLegacyHeading = false;
   }
 
   private handleWriteError(error: unknown): void {

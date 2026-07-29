@@ -2,15 +2,26 @@
   <header class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
     <div>
       <p class="text-[11px] font-extrabold uppercase tracking-wider text-indigo-700">Your reusable career details</p>
-      <h2 class="text-xl font-extrabold text-slate-900">Experience &amp; achievements</h2>
-      <p class="text-xs text-slate-600 mt-1">
+      <h2 id="evidence-manager-title" class="text-xl font-extrabold text-slate-900">
+        Experience &amp; achievements
+      </h2>
+      <p id="evidence-manager-description" class="text-xs text-slate-600 mt-1">
         Record the experience, training and achievements you may want to use in applications.
       </p>
     </div>
-    <button type="button" (click)="openCreate()"
-            class="rounded-xl bg-slate-900 text-white px-4 py-2 text-xs font-bold">
-      <mat-icon class="align-middle text-base">add</mat-icon> Add experience or achievement
-    </button>
+    <div class="flex flex-wrap items-center gap-2">
+      <button type="button" (click)="openCreate()"
+              class="rounded-xl bg-slate-900 text-white px-4 py-2 text-xs font-bold">
+        <mat-icon class="align-middle text-base">add</mat-icon> Add experience or achievement
+      </button>
+      @if (inDialog) {
+        <button type="button" (click)="closeManager()" aria-label="Close Experience and Evidence manager"
+                class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">
+          <mat-icon class="align-middle text-base" aria-hidden="true">close</mat-icon>
+          Close
+        </button>
+      }
+    </div>
   </header>
 
   @if (migratedReviewCount() > 0) {
@@ -86,41 +97,40 @@
         <button type="button" (click)="cancelEditor()" class="text-xs font-bold text-slate-700">Cancel</button>
       </div>
 
-      <div class="grid sm:grid-cols-2 gap-3">
-        <label class="field-label">Category
-          <select [ngModel]="category()" (ngModelChange)="category.set($event)"
-                  name="category" [disabled]="editorMode() === 'edit'" class="field-control">
-            @for (option of categories; track option[0]) {
-              <option [value]="option[0]">{{ option[1] }}</option>
-            }
-          </select>
-        </label>
-        <label class="field-label">Display heading
-          <input name="heading" maxlength="200" required [ngModel]="heading()"
-                 (ngModelChange)="heading.set($event)" class="field-control" />
-        </label>
-      </div>
+      <label class="field-label">Category
+        <select [ngModel]="category()" (ngModelChange)="changeCategory($event)"
+                name="category" [disabled]="editorMode() === 'edit'" class="field-control">
+          @for (option of categories; track option[0]) {
+            <option [value]="option[0]">{{ option[1] }}</option>
+          }
+        </select>
+      </label>
 
-      @if (needsRole()) {
+      @if (['EMPLOYMENT', 'VOLUNTEERING', 'FREELANCE'].includes(category())) {
         <div class="grid sm:grid-cols-2 gap-3">
-          <label class="field-label">Role
-            <input name="roleTitle" maxlength="200" [ngModel]="roleTitle()"
+          <label class="field-label">
+            {{ category() === 'FREELANCE' ? 'Role or service' : 'Role' }}
+            <input name="roleTitle" maxlength="200" required [ngModel]="roleTitle()"
                    (ngModelChange)="roleTitle.set($event)" class="field-control" />
           </label>
-          <label class="field-label">Organisation or context
-            <input name="organisation" maxlength="200" [ngModel]="organisationContext()"
+          <label class="field-label">
+            {{ category() === 'EMPLOYMENT' ? 'Employer' :
+               category() === 'VOLUNTEERING' ? 'Organisation' : 'Client or context (optional)' }}
+            <input name="organisation" maxlength="200"
+                   [required]="category() !== 'FREELANCE'"
+                   [ngModel]="organisationContext()"
                    (ngModelChange)="organisationContext.set($event)" class="field-control" />
           </label>
         </div>
       }
       @if (category() === 'EDUCATION') {
         <div class="grid sm:grid-cols-2 gap-3">
-          <label class="field-label">Programme or subject
-            <input name="programme" maxlength="200" [ngModel]="programmeOrSubject()"
+          <label class="field-label">Course or subject
+            <input name="programme" maxlength="200" required [ngModel]="programmeOrSubject()"
                    (ngModelChange)="programmeOrSubject.set($event)" class="field-control" />
           </label>
           <label class="field-label">Institution
-            <input name="institution" maxlength="200" [ngModel]="institution()"
+            <input name="institution" maxlength="200" required [ngModel]="institution()"
                    (ngModelChange)="institution.set($event)" class="field-control" />
           </label>
         </div>
@@ -128,81 +138,154 @@
       @if (category() === 'QUALIFICATION_TRAINING') {
         <div class="grid sm:grid-cols-2 gap-3">
           <label class="field-label">Qualification or training title
-            <input name="qualification" maxlength="200" [ngModel]="qualificationTitle()"
+            <input name="qualification" maxlength="200" required [ngModel]="qualificationTitle()"
                    (ngModelChange)="qualificationTitle.set($event)" class="field-control" />
           </label>
-          <label class="field-label">Issuer
-            <input name="issuer" maxlength="200" [ngModel]="issuer()"
+          <label class="field-label">Awarding or issuing body
+            <input name="issuer" maxlength="200" required [ngModel]="issuer()"
                    (ngModelChange)="issuer.set($event)" class="field-control" />
           </label>
         </div>
       }
+      @if (!hasDerivedHeading()) {
+        <label class="field-label">
+          {{ category() === 'PROJECT' ? 'Project title' :
+             category() === 'ACHIEVEMENT' ? 'Achievement title' :
+             category() === 'CAREER_BREAK' ? 'Career break heading' : 'Display heading' }}
+          <input name="heading" maxlength="200" required [ngModel]="heading()"
+                 (ngModelChange)="heading.set($event)" class="field-control" />
+        </label>
+      }
       @if (category() === 'PROJECT') {
-        <label class="field-label">Your role in the project
+        <label class="field-label">Your role in the project (optional)
           <input name="projectRole" maxlength="200" [ngModel]="projectRole()"
                  (ngModelChange)="projectRole.set($event)" class="field-control" />
         </label>
       }
+      @if (category() === 'OTHER') {
+        <label class="field-label">Context (optional)
+          <input name="otherContext" maxlength="200" [ngModel]="organisationContext()"
+                 (ngModelChange)="organisationContext.set($event)" class="field-control" />
+        </label>
+      }
 
-      <label class="field-label">Description
-        <textarea name="description" maxlength="4000" rows="3" [ngModel]="description()"
+      <label class="field-label">
+        Description{{ ['EMPLOYMENT', 'EDUCATION', 'QUALIFICATION_TRAINING', 'CAREER_BREAK'].includes(category())
+          ? ' (optional)' : '' }}
+        <textarea name="description" maxlength="2000" rows="3" [ngModel]="description()"
                   (ngModelChange)="description.set($event)" class="field-control"></textarea>
       </label>
-      @if (needsRole()) {
-        <label class="field-label">Responsibilities
-          <textarea name="responsibilities" maxlength="4000" rows="3" [ngModel]="responsibilities()"
-                    (ngModelChange)="responsibilities.set($event)" class="field-control"></textarea>
-        </label>
-      }
-      @if (category() !== 'CAREER_BREAK') {
-        <label class="field-label">Achievements or exact outcomes
-          <textarea name="achievements" maxlength="4000" rows="3" [ngModel]="achievements()"
-                    (ngModelChange)="achievements.set($event)" class="field-control"></textarea>
-        </label>
-      } @else {
-        <label class="field-label">Reason (optional and never selected automatically)
-          <textarea name="careerBreakReason" maxlength="1000" rows="2" [ngModel]="careerBreakReason()"
-                    (ngModelChange)="careerBreakReason.set($event)" class="field-control"></textarea>
-        </label>
-      }
 
-      <div class="grid sm:grid-cols-2 gap-3">
-        @if (['QUALIFICATION_TRAINING'].includes(category())) {
-          <label class="field-label">Issue date
-            <input type="date" name="issueDate" [ngModel]="issueDate()"
-                   (ngModelChange)="issueDate.set($event)" class="field-control" />
+      @if (usesCompletionStatus()) {
+        <div class="grid sm:grid-cols-2 gap-3">
+          <label class="field-label">Status
+            <select name="completionStatus" required class="field-control"
+                    [ngModel]="completionStatus()"
+                    (ngModelChange)="setCompletionStatus($event)">
+              <option value="Completed">Completed</option>
+              <option value="In progress">In progress</option>
+            </select>
           </label>
-          <label class="field-label">Expiry date
-            <input type="date" name="expiryDate" [ngModel]="expiryDate()"
-                   (ngModelChange)="expiryDate.set($event)" class="field-control" />
-          </label>
-        } @else {
-          <label class="field-label">Start date
-            <input type="date" name="startDate" [ngModel]="startDate()"
+          @if (completionStatus() === 'Completed') {
+            <label class="field-label">Completion date
+              <input type="date" name="completionDate" required [ngModel]="issueDate()"
+                     (ngModelChange)="issueDate.set($event)" class="field-control" />
+            </label>
+          } @else {
+            <label class="field-label">Expected completion date
+              <input type="date" name="expectedCompletionDate" required [ngModel]="endDate()"
+                     (ngModelChange)="endDate.set($event)" class="field-control" />
+            </label>
+          }
+        </div>
+      } @else if (category() === 'ACHIEVEMENT') {
+        <label class="field-label">Date (optional)
+          <input type="date" name="achievementDate" [ngModel]="issueDate()"
+                 (ngModelChange)="issueDate.set($event)" class="field-control" />
+        </label>
+      } @else if (usesDateRange()) {
+        <div class="grid sm:grid-cols-2 gap-3">
+          <label class="field-label">
+            Start date{{ category() === 'EMPLOYMENT' ? '' : ' (optional)' }}
+            <input type="date" name="startDate" [required]="category() === 'EMPLOYMENT'"
+                   [ngModel]="startDate()"
                    (ngModelChange)="startDate.set($event)" class="field-control" />
           </label>
-          <label class="field-label">End date
-            <input type="date" name="endDate" [disabled]="ongoing()" [ngModel]="endDate()"
-                   (ngModelChange)="endDate.set($event)" class="field-control" />
-          </label>
-        }
-      </div>
-      @if (!['QUALIFICATION_TRAINING', 'ACHIEVEMENT'].includes(category())) {
-        <label class="inline-flex items-center gap-2 text-xs font-bold text-slate-700">
-          <input type="checkbox" name="ongoing" [ngModel]="ongoing()"
-                 (ngModelChange)="ongoing.set($event); endDate.set('')" />
-          This is ongoing or current
-        </label>
+          <div class="space-y-3">
+            <label class="inline-flex items-center gap-2 text-xs font-bold text-slate-700">
+              <input type="checkbox" name="ongoing" [ngModel]="ongoing()"
+                     (ngModelChange)="setOngoing($event)" />
+              This is ongoing or current
+            </label>
+            @if (!ongoing()) {
+              <label class="field-label">
+                End date{{ category() === 'EMPLOYMENT' ? '' : ' (optional)' }}
+                <input type="date" name="endDate" [required]="category() === 'EMPLOYMENT'"
+                       [ngModel]="endDate()"
+                       (ngModelChange)="endDate.set($event)" class="field-control" />
+              </label>
+            }
+          </div>
+        </div>
       }
+      <p class="text-[11px] text-slate-600" aria-live="polite">{{ conditionalDateMessage() }}</p>
 
-      <label class="field-label">Demonstrated skills (comma separated)
-        <input name="skills" maxlength="1000" [ngModel]="demonstratedSkills()"
-               (ngModelChange)="demonstratedSkills.set($event)" class="field-control" />
-      </label>
-      <label class="field-label">Supporting HTTPS links (one per line)
-        <textarea name="links" rows="2" [ngModel]="supportingLinks()"
-                  (ngModelChange)="supportingLinks.set($event)" class="field-control"></textarea>
-      </label>
+      @if (supportsAdvancedDetails()) {
+        <button type="button" class="advanced-toggle"
+                [attr.aria-expanded]="advancedExpanded()"
+                aria-controls="evidence-advanced-fields"
+                (click)="advancedExpanded.update(value => !value)">
+          <mat-icon aria-hidden="true">{{ advancedExpanded() ? 'expand_less' : 'expand_more' }}</mat-icon>
+          {{ advancedExpanded() ? 'Hide more detail' : 'Add more detail' }}
+        </button>
+        @if (advancedExpanded()) {
+          <div id="evidence-advanced-fields"
+               class="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
+            @if (showsRoleAdvancedDetail()) {
+              <label class="field-label">Responsibilities (optional)
+                <textarea name="responsibilities" maxlength="2000" rows="3"
+                          [ngModel]="responsibilities()"
+                          (ngModelChange)="responsibilities.set($event)"
+                          class="field-control"></textarea>
+              </label>
+            }
+            @if (showsOutcomeAdvancedDetail()) {
+              <label class="field-label">Outcomes or achievements (optional)
+                <textarea name="achievements" maxlength="2000" rows="3"
+                          [ngModel]="achievements()"
+                          (ngModelChange)="achievements.set($event)"
+                          class="field-control"></textarea>
+              </label>
+            }
+            @if (category() === 'QUALIFICATION_TRAINING') {
+              <label class="field-label">Private credential identifier (optional)
+                <input name="privateCredentialIdentifier" maxlength="500"
+                       autocomplete="off" [ngModel]="privateCredentialIdentifier()"
+                       (ngModelChange)="privateCredentialIdentifier.set($event)"
+                       class="field-control" />
+                <span class="field-help">
+                  Kept private in your evidence record and excluded from document generation.
+                </span>
+              </label>
+              @if (completionStatus() === 'Completed') {
+                <label class="field-label">Expiry date (optional)
+                  <input type="date" name="expiryDate" [ngModel]="expiryDate()"
+                         (ngModelChange)="expiryDate.set($event)" class="field-control" />
+                </label>
+              }
+            }
+            <label class="field-label">Demonstrated skills (optional, comma separated)
+              <input name="skills" maxlength="1000" [ngModel]="demonstratedSkills()"
+                     (ngModelChange)="demonstratedSkills.set($event)" class="field-control" />
+            </label>
+            <label class="field-label">Supporting HTTPS links (optional, one per line)
+              <textarea name="links" rows="2" [ngModel]="supportingLinks()"
+                        (ngModelChange)="supportingLinks.set($event)"
+                        class="field-control"></textarea>
+            </label>
+          </div>
+        }
+      }
       <button type="submit" [disabled]="busy()"
               class="rounded-xl bg-indigo-700 text-white px-5 py-2.5 text-xs font-bold disabled:opacity-50">
         {{ busy() ? 'Saving…' : 'Save as draft' }}
@@ -326,6 +409,22 @@
                 ? 'Reviewed by you and available for new documents. This is not independent verification.'
                 : 'Draft — not available for document generation.' }}
             </p>
+            <div class="revision-history border-t border-slate-200 pt-3">
+              <h4 class="font-extrabold text-slate-900">Revision history</h4>
+              <ol class="mt-2 space-y-2">
+                @for (historicalRevision of revisions(entry); track historicalRevision.revisionId) {
+                  <li class="rounded-lg border border-slate-200 bg-white p-2">
+                    <strong>Revision {{ historicalRevision.revisionNumber }}</strong>
+                    <span>
+                      · {{ historicalRevision.confirmationState === 'USER_CONFIRMED'
+                        ? 'User confirmed' : 'Draft' }}
+                      · {{ revisionCreatedAt(historicalRevision) }}
+                    </span>
+                    <span class="block mt-1">{{ historicalRevision.heading }}</span>
+                  </li>
+                }
+              </ol>
+            </div>
           </div>
         }
         <div class="mt-4 flex flex-wrap gap-2">

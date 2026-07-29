@@ -1,10 +1,11 @@
 import {provideHttpClient} from '@angular/common/http';
 import {signal} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
+import {MatDialog} from '@angular/material/dialog';
 import {provideRouter, Router} from '@angular/router';
 import {of} from 'rxjs';
 import type {User} from './api';
-import {WorkPreferencesWorkplaceArrangementsEnum} from './api';
+import {EvidenceLibraryService, WorkPreferencesWorkplaceArrangementsEnum} from './api';
 import {App} from './app';
 import {routes} from './app.routes';
 import type {BrowserSessionStatus} from './services/browser-session.service';
@@ -84,6 +85,20 @@ describe('App', () => {
           },
         },
         {
+          provide: EvidenceLibraryService,
+          useValue: {
+            listEvidence: () => of([]),
+            createEvidence: vi.fn(),
+            updateEvidence: vi.fn(),
+            confirmEvidence: vi.fn(),
+            archiveEvidence: vi.fn(),
+            restoreEvidence: vi.fn(),
+            hideEvidence: vi.fn(),
+            showEvidence: vi.fn(),
+            supersedeEvidence: vi.fn(),
+          },
+        },
+        {
           provide: PaymentService,
           useValue: {
             wallet,
@@ -92,6 +107,10 @@ describe('App', () => {
         },
       ],
     }).compileComponents();
+  });
+
+  afterEach(() => {
+    TestBed.inject(MatDialog).closeAll();
   });
 
   it('refreshes and displays AI Credit when the secure session is restored', async () => {
@@ -184,15 +203,12 @@ describe('App', () => {
     expect(applicationsTab.classList).toContain('workspace-tab-active');
     expect(applicationsTab.getAttribute('aria-current')).toBe('page');
 
-    fixture.componentInstance.activePersonalWorkspace.set('experience');
-    fixture.detectChanges();
     const documentsTab = fixture.nativeElement.querySelector(
       '[data-testid="workspace-tab-documents"]',
     ) as HTMLButtonElement;
     documentsTab.click();
     fixture.detectChanges();
 
-    expect(fixture.componentInstance.activePersonalWorkspace()).toBeNull();
     expect(fixture.componentInstance.activeWorkspaceTab()).toBe('documents');
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-documents"]'))
       .not.toBeNull();
@@ -200,6 +216,29 @@ describe('App', () => {
       .toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-experience"]'))
       .toBeNull();
+  });
+
+  it('opens one guarded evidence dialog without replacing the centre workspace', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector(
+      '#manage-experience-evidence',
+    ) as HTMLButtonElement).click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(document.body.querySelectorAll('app-evidence-library')).toHaveLength(1);
+    expect(document.body.querySelector('#experience-evidence-dialog')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-search"]'))
+      .not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-experience"]'))
+      .toBeNull();
+
+    fixture.componentInstance.openExperienceAndAchievements('summary');
+    expect(document.body.querySelectorAll('app-evidence-library')).toHaveLength(1);
   });
 
   it('does not mount job search until the required preferences exist', async () => {

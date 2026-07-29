@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, OnInit, signal, PLATFORM_ID, inject, ViewChild } from '@angular/core';
 import { isPlatformBrowser, CommonModule } from '@angular/common';
 import { NavigationEnd, Router } from '@angular/router';
+import {MatDialog, MatDialogModule, MatDialogRef} from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import {firstValueFrom} from 'rxjs';
 import { ClaimantProfileComponent } from './features/claimant-profile/claimant-profile';
@@ -27,13 +28,13 @@ import {
 } from './services/runtime-configuration.service';
 
 type WorkspaceTab = 'search' | 'applications' | 'documents';
-type PersonalWorkspace = 'experience' | null;
 
 @Component({
   changeDetection: ChangeDetectionStrategy.OnPush,
   selector: 'app-root',
   imports: [
     CommonModule,
+    MatDialogModule,
     MatIconModule,
     ClaimantProfileComponent,
     NavigationBar,
@@ -41,7 +42,6 @@ type PersonalWorkspace = 'experience' | null;
     PasswordRecoveryComponent,
     JobResultsComponent,
     MyApplicationsComponent,
-    EvidenceLibraryComponent,
     DocumentsWorkspaceComponent,
     ReportingPanelComponent,
   ],
@@ -54,6 +54,7 @@ export class App implements OnInit {
   private paymentService = inject(PaymentService);
   private browserSession = inject(BrowserSessionService);
   private runtimeConfiguration = inject(RuntimeConfigurationService);
+  private dialog = inject(MatDialog);
   readonly sessionStatus = this.browserSession.status;
 
   // User Onboarding & Auth Details
@@ -99,7 +100,6 @@ export class App implements OnInit {
     }
   });
   activeWorkspaceTab = signal<WorkspaceTab>('search');
-  activePersonalWorkspace = signal<PersonalWorkspace>(null);
   readonly jobSearchReadiness = computed(() => searchReadiness(this.structuredProfile()));
   selectedApplicationId = signal<string | null>(null);
 
@@ -113,6 +113,7 @@ export class App implements OnInit {
   toastMessage = signal<string | null>(null);
   toastType = signal<'success' | 'info' | 'error'>('success');
   private walletSessionKey = '';
+  private evidenceDialogRef?: MatDialogRef<EvidenceLibraryComponent>;
 
   constructor() {
     effect(() => {
@@ -340,6 +341,8 @@ export class App implements OnInit {
   }
 
   private clearAuthenticatedView(): void {
+    this.evidenceDialogRef?.close();
+    this.evidenceDialogRef = undefined;
     this.isLoggedIn.set(false);
     this.profileName.set('');
     this.profileEmail.set('');
@@ -367,12 +370,10 @@ export class App implements OnInit {
   }
 
   selectWorkspace(tab: WorkspaceTab): void {
-    this.activePersonalWorkspace.set(null);
     this.activeWorkspaceTab.set(tab);
   }
 
   openMyProfile(): void {
-    this.activePersonalWorkspace.set(null);
     setTimeout(() => {
       const missing = this.jobSearchReadiness().missing;
       this.claimantProfile?.startEditing(
@@ -390,12 +391,34 @@ export class App implements OnInit {
     });
   }
 
-  openExperienceAndAchievements(): void {
-    this.activePersonalWorkspace.set('experience');
-    if (isPlatformBrowser(this.platformId)) {
-      setTimeout(() => document.querySelector('#center-workspace')
-        ?.scrollIntoView({behavior: 'smooth', block: 'start'}));
-    }
+  openExperienceAndAchievements(origin: 'navigation' | 'summary' = 'navigation'): void {
+    if (!isPlatformBrowser(this.platformId) || this.evidenceDialogRef) return;
+    const dialogRef = this.dialog.open(EvidenceLibraryComponent, {
+      ariaDescribedBy: 'evidence-manager-description',
+      ariaLabelledBy: 'evidence-manager-title',
+      ariaModal: true,
+      autoFocus: 'dialog',
+      closeOnNavigation: true,
+      id: 'experience-evidence-dialog',
+      maxHeight: '100dvh',
+      maxWidth: '100vw',
+      panelClass: 'evidence-library-dialog',
+      restoreFocus: origin === 'summary',
+      width: 'min(72rem, calc(100vw - 2rem))',
+    });
+    this.evidenceDialogRef = dialogRef;
+    dialogRef.componentInstance.notify.subscribe(event =>
+      this.showToast(event.message, event.type));
+    dialogRef.componentInstance.changed.subscribe(() =>
+      void this.claimantProfile?.refreshEvidenceSummary());
+    dialogRef.afterClosed().subscribe(() => {
+      if (this.evidenceDialogRef === dialogRef) {
+        this.evidenceDialogRef = undefined;
+      }
+      if (origin === 'navigation' && isPlatformBrowser(this.platformId)) {
+        document.querySelector<HTMLElement>('#btn-profile-dropdown')?.focus();
+      }
+    });
   }
 
   refreshReporting() {
