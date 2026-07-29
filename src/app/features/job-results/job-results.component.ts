@@ -615,9 +615,24 @@ export class JobResultsComponent implements OnInit {
         const status = typeof error === 'object' && error !== null && 'status' in error
           ? Number((error as {status?: unknown}).status)
           : undefined;
-        const message = status === 400 || status === 409
-          ? 'One of the selected entries changed or is no longer eligible. Review Experience & achievements and choose again.'
-          : 'Generation failed. Please try again.';
+        const responseError = typeof error === 'object' && error !== null && 'error' in error
+          ? (error as {error?: unknown}).error
+          : undefined;
+        const detail = error instanceof Error
+          ? error.message
+          : typeof responseError === 'string'
+            ? responseError
+            : typeof responseError === 'object'
+                && responseError !== null
+                && 'message' in responseError
+                && typeof (responseError as {message?: unknown}).message === 'string'
+              ? (responseError as {message: string}).message
+              : '';
+        const message = detail.includes('Insufficient AI Credit')
+          ? 'Insufficient AI Credit for this job. No OpenAI request was made.'
+          : status === 400 || status === 409
+            ? 'One of the selected entries changed or is no longer eligible. Review Experience & achievements and choose again.'
+            : 'Generation failed. Please try again.';
         this.generationErrors.update(errors => ({ ...errors, [jobId]: message }));
         this.notify.emit({ message, type: 'error' });
         console.error('[JobResults] Document generation failed');

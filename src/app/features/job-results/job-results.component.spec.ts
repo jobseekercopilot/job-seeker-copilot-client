@@ -375,6 +375,34 @@ describe('JobResultsComponent', () => {
     );
   });
 
+  it('reports insufficient credit without implying that OpenAI failed', () => {
+    evidenceEntries = [
+      evidenceEntry(
+        '50000000-0000-4000-8000-000000000001',
+        'PROJECT',
+        'Portfolio project',
+        1,
+      ),
+    ];
+    documentGenerationService.generate.mockReturnValueOnce(
+      throwError(() => new Error(
+        '{"status":402,"message":"Insufficient AI Credit","errors":null}',
+      )),
+    );
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    const [project] = fixture.componentInstance.eligibleEvidence();
+    fixture.componentInstance.toggleEvidence('CV', project);
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', project);
+    fixture.componentInstance.confirmEvidenceGeneration();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.generationErrors()[selectedJob.id!])
+      .toBe('Insufficient AI Credit for this job. No OpenAI request was made.');
+  });
+
   function createFixture(providerMode: 'FIXTURE' | 'REAL_PROVIDERS' | 'REQUIRED_VALIDATION' = 'FIXTURE') {
     const fixture = TestBed.createComponent(JobResultsComponent);
     fixture.componentRef.setInput('authToken', 'token');
