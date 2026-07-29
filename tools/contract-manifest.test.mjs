@@ -68,13 +68,13 @@ test('pins the reporting summary and evidence contract', async () => {
   assert.ok(contract.paths['/api/v1/reports/evidence.txt']);
 });
 
-test('pins the progressive-profile and Evidence Library UMG browser contract', async () => {
+test('pins the stabilised progressive-profile and Evidence Library UMG browser contract', async () => {
   const lock = await verifyContractManifest(rootDir);
   const umg = lock.contracts.find(({id}) => id === 'user-management-gateway');
   const contract = JSON.parse(await readFile(resolve(rootDir, umg.path), 'utf8'));
 
-  assert.equal(umg.version, '2.1.0');
-  assert.equal(contract.info.version, '2.1.0');
+  assert.equal(umg.version, '3.0.0');
+  assert.equal(contract.info.version, '3.0.0');
   assert.equal(contract.components.schemas.User.properties.token, undefined);
   assert.equal(contract.components.securitySchemes.browserSession.in, 'cookie');
   assert.equal(contract.components.securitySchemes.browserRefresh.in, 'cookie');
@@ -130,6 +130,22 @@ test('pins the progressive-profile and Evidence Library UMG browser contract', a
   assert.deepEqual(
     contract.components.schemas.EvidenceEntry.properties.supersededByEntryId.type,
     ['string', 'null'],
+  );
+  assert.equal(
+    contract.components.schemas.EvidenceWriteRequest.properties.description.maxLength,
+    2000,
+  );
+  assert.equal(
+    contract.components.schemas.EvidenceWriteRequest.properties.responsibilities.maxLength,
+    2000,
+  );
+  assert.equal(
+    contract.components.schemas.EvidenceWriteRequest.properties.achievements.maxLength,
+    2000,
+  );
+  assert.equal(
+    contract.components.schemas.EvidenceFact.properties.factValue.maxLength,
+    2000,
   );
   assert.ok(contract.paths['/api/auth/profile'].patch);
   assert.ok(contract.paths['/api/auth/evidence'].post);
