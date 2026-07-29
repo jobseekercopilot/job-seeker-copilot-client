@@ -10,11 +10,11 @@
   "contracts": [
     {
       "id": "user-management-gateway",
-      "version": "2.1.0",
+      "version": "3.0.0",
       "sourceRepository": "jobseekercopilot/user-management-gateway",
-      "sourceCommit": "3ff2890c6e958291d78edd3d3cd44a17a1e582fc",
-      "path": "contracts/user-management-gateway/2.1.0/openapi.json",
-      "sha256": "7ad9e2ca6c98042ef1763e32126e3906c16eb0ac7fe3f4ff7be3ca29651d10ca",
+      "sourceCommit": "90f184fcd7ef578ddebd9a22b8ead159f9bf8338",
+      "path": "contracts/user-management-gateway/3.0.0/openapi.json",
+      "sha256": "6140e0c9f18d39726dfa521913fba192e33bbda932d6304c8db210187cba9582",
       "output": "src/app/api",
       "requiredPaths": [
         "/api/auth/csrf",
