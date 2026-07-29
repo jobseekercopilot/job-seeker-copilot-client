@@ -145,6 +145,9 @@ export class MyApplicationsComponent implements OnInit {
 
   statusLabel(status: string | undefined | null): string {
     if (!status) return 'Unknown';
+    if (status === 'SAVED') return 'Saved to applications';
+    if (status === 'DOCUMENTS_GENERATED') return 'Documents prepared';
+    if (status === 'REJECTED_BY_USER') return 'Offer declined';
     return status.toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase());
   }
 
@@ -254,6 +257,10 @@ export class MyApplicationsComponent implements OnInit {
 
   actions(application: TrackedApplication): { label: string; status: StatusUpdateTarget; danger?: boolean }[] {
     switch (application.status) {
+      case 'SAVED':
+        return [
+          { label: 'Mark as Applied', status: 'APPLIED' },
+        ];
       case 'DOCUMENTS_GENERATED':
         return [
           { label: 'Mark as Applied', status: 'APPLIED' },
@@ -491,7 +498,8 @@ export class MyApplicationsComponent implements OnInit {
       case 'ALL':
         return true;
       case 'NEEDS_ACTION':
-        return application.status === 'DOCUMENTS_GENERATED';
+        return application.status === 'SAVED'
+          || application.status === 'DOCUMENTS_GENERATED';
       case 'APPLIED':
         return application.status === 'APPLIED';
       case 'INTERVIEW':

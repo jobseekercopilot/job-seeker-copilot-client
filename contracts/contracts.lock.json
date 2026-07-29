@@ -52,9 +52,9 @@
       "id": "job-finder-gateway",
       "version": "1.6.0",
       "sourceRepository": "jobseekercopilot/job-finder-gateway",
-      "sourceCommit": "c3b601aa4594c9c884eb89a5b141a0b8801e2cb3",
+      "sourceCommit": "8dfa5f1ecf02ef87a8caeff5001668e584f0f4bf",
       "path": "contracts/job-finder-gateway/1.6.0/openapi.json",
-      "sha256": "d50a8a6ec708f844b9f6cdb76d4ae275f4eb3b0c12f38b2a8ba196edc981f615",
+      "sha256": "0b18fda9fe0ad540c193e3e412233a409b011bb98fd92c5d2584bdcdfeeefa4b",
       "output": "src/app/api/job-finder",
       "requiredPaths": [
         "/api/jobs/search",

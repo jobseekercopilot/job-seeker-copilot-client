@@ -27,7 +27,7 @@
                     aria-haspopup="menu"
                     [attr.aria-controls]="statusMenuId()"
                     [attr.aria-expanded]="statusMenuOpen()">
-              <span>{{ updatingStatus() ? 'UPDATING' : statusLabel() }}</span>
+              <span>{{ updatingStatus() ? 'Updating' : statusDisplayLabel() }}</span>
               <mat-icon class="status-chevron text-base">expand_more</mat-icon>
             </button>
             @if (statusMenuOpen()) {
@@ -48,7 +48,7 @@
             }
           </div>
         } @else {
-          <span class="status-badge" [ngClass]="statusClass()">{{ statusLabel() }}</span>
+          <span class="status-badge" [ngClass]="statusClass()">{{ statusDisplayLabel() }}</span>
         }
         <button type="button"
                 (click)="toggle()"
@@ -150,7 +150,7 @@
             {{ creatingApplication() ? 'Adding application...' : 'Add to My Applications' }}
           </button>
         }
-        @if (statusLabel() === 'NEW' || generating()) {
+        @if (statusLabel() === 'NEW' || statusLabel() === 'SAVED' || generating()) {
           <button type="button"
                   (click)="requestGeneration()"
                   [disabled]="generating() || !applicationToolsAvailable()"

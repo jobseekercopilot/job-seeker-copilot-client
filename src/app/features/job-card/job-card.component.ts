@@ -70,12 +70,12 @@ export class JobCardComponent {
 
   demoFocusId(): string {
     const job = this.job();
-    return `job-card-${this.slug(job.id ?? job.applicationId ?? `${job.title ?? 'role'}-${job.company ?? 'company'}`)}`;
+    return `job-card-${this.slug(job.canonicalJobId ?? job.id ?? job.applicationId ?? `${job.title ?? 'role'}-${job.company ?? 'company'}`)}`;
   }
 
   demoFocusGroup(): string {
     const job = this.job();
-    return `job-card-${this.slug(job.applicationId ?? job.id ?? `${job.title ?? 'role'}-${job.company ?? 'company'}`)}`;
+    return `job-card-${this.slug(job.applicationId ?? job.canonicalJobId ?? job.id ?? `${job.title ?? 'role'}-${job.company ?? 'company'}`)}`;
   }
 
   statusMenuId(): string {
@@ -173,7 +173,8 @@ export class JobCardComponent {
   }
 
   dismissError(): void {
-    const jobId = this.job().id;
+    const job = this.job();
+    const jobId = job.canonicalJobId ?? job.id;
     if (jobId) {
       this.dismissGenerationError.emit(jobId);
     }
@@ -208,12 +209,43 @@ export class JobCardComponent {
     const applicationStatus = this.job().applicationStatus;
     if (applicationStatus) return applicationStatus;
     if (this.downloads()) return 'DOCUMENTS_GENERATED';
-    if (this.generating()) return 'DOCUMENTS_GENERATED';
     return 'NEW';
+  }
+
+  statusDisplayLabel(): string {
+    if (this.generating()) return 'Generation in progress';
+    switch (this.statusLabel()) {
+      case 'NEW':
+        return 'Not saved';
+      case 'SAVED':
+        return 'Saved to applications';
+      case 'DOCUMENTS_GENERATED':
+        return 'Documents prepared';
+      case 'APPLIED':
+        return 'Applied';
+      case 'INTERVIEW':
+        return 'Interview';
+      case 'OFFER':
+        return 'Offer';
+      case 'UNSUCCESSFUL':
+        return 'Unsuccessful';
+      case 'ACCEPTED':
+        return 'Accepted';
+      case 'REJECTED_BY_USER':
+        return 'Offer declined';
+      case 'WITHDRAWN':
+        return 'Withdrawn';
+      default:
+        return 'Application status unavailable';
+    }
   }
 
   statusActions(): StatusAction[] {
     switch (this.statusLabel() as ApplicationStatus) {
+      case 'SAVED':
+        return [
+          { label: 'Mark as Applied', icon: 'send', status: 'APPLIED', variant: 'primary' },
+        ];
       case 'DOCUMENTS_GENERATED':
         return [
           { label: 'Mark as Applied', icon: 'send', status: 'APPLIED', variant: 'primary' },

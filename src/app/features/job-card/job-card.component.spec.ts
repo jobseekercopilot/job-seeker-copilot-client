@@ -39,6 +39,21 @@ describe('JobCardComponent', () => {
     expandCard(fixture);
 
     expect(fixture.nativeElement.textContent).toContain('Generate CV & Cover Letter');
+    expect(fixture.nativeElement.textContent).toContain('Not saved');
+  });
+
+  it('shows a saved job accurately and still allows document generation', () => {
+    const fixture = createFixture({
+      job: {...job, applicationId: 'app-1', applicationStatus: 'SAVED'},
+    });
+    expandCard(fixture);
+
+    expect(fixture.nativeElement.textContent).toContain('Saved to applications');
+    expect(fixture.nativeElement.textContent).toContain('Generate CV & Cover Letter');
+    expect(fixture.nativeElement.textContent).not.toContain('Add to My Applications');
+
+    openStatusMenu(fixture);
+    expect(fixture.nativeElement.textContent).toContain('Mark as Applied');
   });
 
   it('keeps document generation disabled while identifying application tracking as available', () => {
@@ -64,6 +79,7 @@ describe('JobCardComponent', () => {
       .nativeElement;
 
     expect(fixture.nativeElement.textContent).toContain('Generating CV & Cover Letter...');
+    expect(fixture.nativeElement.textContent).toContain('Generation in progress');
     expect(button.disabled).toBe(true);
   });
 
@@ -244,7 +260,7 @@ describe('JobCardComponent', () => {
     const fixture = createFixture({ job: { ...job, applicationId: 'app-1', applicationStatus: 'ACCEPTED' } });
     expandCard(fixture);
 
-    expect(fixture.nativeElement.textContent).toContain('ACCEPTED');
+    expect(fixture.nativeElement.textContent).toContain('Accepted');
     expect(fixture.nativeElement.textContent).not.toContain('Mark as Applied');
     expect(fixture.nativeElement.textContent).not.toContain('Mark Interview');
     expect(fixture.debugElement.query(By.css('.status-dropdown'))).toBeNull();

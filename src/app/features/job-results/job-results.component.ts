@@ -1,8 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
-import { forkJoin, of } from 'rxjs';
-import { catchError } from 'rxjs/operators';
 import { DocumentUploadRequest, JobCardComponent } from '../job-card/job-card.component';
 import { JobService } from '../../services/job.service';
 import {
@@ -26,7 +24,6 @@ import {
 import {logMalformedProviderResult} from '../../../shared/provider-content-policy';
 import {
   ApplicationTrackerService,
-  TrackedApplication,
 } from '../../services/application-tracker.service';
 import type {JobSearchProviderMode} from '../../services/runtime-configuration.service';
 
@@ -59,6 +56,7 @@ export class JobResultsComponent implements OnInit {
   private documentGenerationService = inject(DocumentGenerationService);
   private applicationTracker = inject(ApplicationTrackerService);
   private evidenceLibrary = inject(EvidenceLibraryService);
+  private searchRequestSequence = 0;
 
   // Inputs from the parent App component (profile signals)
   skills = input<string>('');
@@ -207,13 +205,13 @@ export class JobResultsComponent implements OnInit {
 
   sortedJobs = computed(() => {
     const jobs = this.filteredJobs();
-    const index = new Map(jobs.map((job, position) => [job.id ?? String(position), position]));
+    const index = new Map(jobs.map((job, position) => [this.jobStateKey(job) || String(position), position]));
     return [...jobs].sort((left, right) => {
       const comparison = this.compareJobs(left, right);
       if (comparison !== 0) {
         return comparison;
       }
-      return (index.get(left.id ?? '') ?? 0) - (index.get(right.id ?? '') ?? 0);
+      return (index.get(this.jobStateKey(left)) ?? 0) - (index.get(this.jobStateKey(right)) ?? 0);
     });
   });
 
@@ -230,7 +228,11 @@ export class JobResultsComponent implements OnInit {
   }
 
   trackByJobId(index: number, job: Job): string {
-    return job.id ?? String(index);
+    return this.jobStateKey(job) || String(index);
+  }
+
+  jobStateKey(job: Job): string {
+    return job.canonicalJobId ?? job.id ?? '';
   }
 
   private validateJob(job: Job): Job | null {
@@ -252,19 +254,18 @@ export class JobResultsComponent implements OnInit {
   }
 
   search(): void {
+    const requestSequence = ++this.searchRequestSequence;
     this.loading.set(true);
     this.error.set(null);
 
-    forkJoin({
-      response: this.jobService.searchJobs(
-        this.skills(),
-        this.experience(),
-        this.aspirations(),
-        this.workPrefs()
-      ),
-      applications: this.applicationTracker.listApplications().pipe(catchError(() => of([]))),
-    }).subscribe({
-      next: ({response, applications}) => {
+    this.jobService.searchJobs(
+      this.skills(),
+      this.experience(),
+      this.aspirations(),
+      this.workPrefs()
+    ).subscribe({
+      next: (response) => {
+        if (requestSequence !== this.searchRequestSequence) return;
         const roleGroups = response.resultsByTargetRole?.length
           ? response.resultsByTargetRole
           : [{ targetRole: 'All matches', jobs: response.jobs ?? [] }];
@@ -277,9 +278,8 @@ export class JobResultsComponent implements OnInit {
           for (const job of group.jobs ?? []) {
             const validated = this.validateJob(job);
             if (validated) {
-              const reconciled = this.reconcilePersistedApplication(validated, applications);
-              groupJobs.push(reconciled);
-              validJobs.push(reconciled);
+              groupJobs.push(validated);
+              validJobs.push(validated);
             } else {
               skippedCount.value++;
             }
@@ -322,6 +322,7 @@ export class JobResultsComponent implements OnInit {
         });
       },
       error: (err) => {
+        if (requestSequence !== this.searchRequestSequence) return;
         this.loading.set(false);
         this.jobs.set([]);
         this.roleResults.set([]);
@@ -462,7 +463,8 @@ export class JobResultsComponent implements OnInit {
   }
 
   openEvidenceSelection(job: Job): void {
-    if (!job.id || this.generatingJobIds().has(job.id)) return;
+    const jobKey = this.jobStateKey(job);
+    if (!jobKey || this.generatingJobIds().has(jobKey)) return;
     this.evidenceSelectionJob.set(job);
     this.evidenceEntries.set([]);
     this.cvEvidenceIds.set([]);
@@ -584,8 +586,8 @@ export class JobResultsComponent implements OnInit {
     job: Job,
     evidence: Parameters<DocumentGenerationService['generate']>[1],
   ): void {
-    if (!job.id || this.generatingJobIds().has(job.id)) return;
-    const jobId = job.id;
+    const jobId = this.jobStateKey(job);
+    if (!jobId || this.generatingJobIds().has(jobId)) return;
     this.generatingJobIds.update(ids => new Set(ids).add(jobId));
     this.generationMessages.update(messages => ({ ...messages, [jobId]: 'Generating CV & Cover Letter...' }));
     this.generationErrors.update(errors => ({ ...errors, [jobId]: undefined }));
@@ -650,8 +652,8 @@ export class JobResultsComponent implements OnInit {
   }
 
   trackApplication(job: Job): void {
-    if (!job.id || job.applicationId || this.creatingApplicationIds().has(job.id)) return;
-    const jobId = job.id;
+    const jobId = this.jobStateKey(job);
+    if (!jobId || job.applicationId || this.creatingApplicationIds().has(jobId)) return;
     this.creatingApplicationIds.update(ids => new Set(ids).add(jobId));
 
     this.applicationTracker.createApplication(job).subscribe({
@@ -664,6 +666,11 @@ export class JobResultsComponent implements OnInit {
         this.applicationChanged.emit();
       },
       error: () => {
+        this.creatingApplicationIds.update(ids => {
+          const next = new Set(ids);
+          next.delete(jobId);
+          return next;
+        });
         this.notify.emit({
           message: 'Could not add this application. Please try again.',
           type: 'error',
@@ -681,7 +688,8 @@ export class JobResultsComponent implements OnInit {
   }
 
   updateApplicationStatus(job: Job, status: StatusUpdateTarget): void {
-    if (!job.id || !job.applicationId || this.updatingApplicationStatuses()[job.id]) {
+    const jobId = this.jobStateKey(job);
+    if (!jobId || !job.applicationId || this.updatingApplicationStatuses()[jobId]) {
       if (!job.applicationId) {
         this.notify.emit({
           message: 'Application record is missing. Generate documents before updating status.',
@@ -691,7 +699,6 @@ export class JobResultsComponent implements OnInit {
       return;
     }
 
-    const jobId = job.id;
     this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: status }));
     this.applicationTracker.updateStatus(job.applicationId, status).subscribe({
       next: (record) => {
@@ -720,7 +727,8 @@ export class JobResultsComponent implements OnInit {
   }
 
   withdrawGeneratedApplication(job: Job): void {
-    if (!job.id || !job.applicationId || this.updatingApplicationStatuses()[job.id]) {
+    const jobId = this.jobStateKey(job);
+    if (!jobId || !job.applicationId || this.updatingApplicationStatuses()[jobId]) {
       if (!job.applicationId) {
         this.notify.emit({
           message: 'Application record is missing. Generate documents before withdrawing.',
@@ -730,7 +738,6 @@ export class JobResultsComponent implements OnInit {
       return;
     }
 
-    const jobId = job.id;
     this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: 'WITHDRAWN' }));
     this.applicationTracker.withdrawGeneratedApplication(job.applicationId).subscribe({
       next: () => {
@@ -767,8 +774,8 @@ export class JobResultsComponent implements OnInit {
   }
 
   uploadReplacement(job: Job, request: DocumentUploadRequest): void {
-    if (!job.id || this.uploadingDocuments()[job.id]) return;
-    const jobId = job.id;
+    const jobId = this.jobStateKey(job);
+    if (!jobId || this.uploadingDocuments()[jobId]) return;
 
     this.uploadingDocuments.update(uploading => ({ ...uploading, [jobId]: request.documentKind }));
     this.documentGenerationService.uploadReplacement(
@@ -850,72 +857,9 @@ export class JobResultsComponent implements OnInit {
     }));
   }
 
-  private reconcilePersistedApplication(
-    job: Job,
-    applications: TrackedApplication[],
-  ): Job {
-    const application = applications
-      .filter(candidate => this.matchesPersistedApplication(job, candidate))
-      .sort((left, right) => this.applicationTime(right) - this.applicationTime(left))[0];
-
-    if (!application) return job;
-
-    return {
-      ...job,
-      applicationId: application.applicationId ?? application.id,
-      applicationStatus: application.status,
-      cvDocumentId: application.cvDocumentId,
-      coverLetterDocumentId: application.coverLetterDocumentId,
-      appliedAt: application.appliedAt,
-      applicationUpdatedAt: application.updatedAt,
-    };
-  }
-
-  private matchesPersistedApplication(job: Job, application: TrackedApplication): boolean {
-    const jobIds = new Set(
-      [job.canonicalJobId, job.id]
-        .map(value => value?.trim())
-        .filter((value): value is string => Boolean(value))
-    );
-    const applicationJobIds = [
-      application.canonicalJobId,
-      application.jobId,
-    ]
-      .map(value => value?.trim())
-      .filter((value): value is string => Boolean(value));
-
-    if (applicationJobIds.some(id => jobIds.has(id))) return true;
-
-    const jobExternalId = job.externalJobId?.trim();
-    const applicationExternalId = application.externalJobId?.trim();
-    if (!jobExternalId || !applicationExternalId || jobExternalId !== applicationExternalId) {
-      return false;
-    }
-
-    const jobProvider = (
-      job.primarySource
-      ?? job.provider
-      ?? job.sources?.[0]?.integrationProvider
-      ?? job.sources?.[0]?.provider
-    )?.trim().toUpperCase();
-    const applicationProvider = (
-      application.providerName
-      ?? application.provider
-      ?? application.source
-    )?.trim().toUpperCase();
-
-    return Boolean(jobProvider && applicationProvider && jobProvider === applicationProvider);
-  }
-
-  private applicationTime(application: TrackedApplication): number {
-    const value = application.updatedAt ?? application.createdAt;
-    if (!value) return 0;
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? 0 : parsed;
-  }
-
   private updateJobLocally(jobId: string, patch: Partial<Job>): void {
-    const applyPatch = (job: Job): Job => job.id === jobId ? { ...job, ...patch } : job;
+    const applyPatch = (job: Job): Job =>
+      this.jobStateKey(job) === jobId ? { ...job, ...patch } : job;
     this.jobs.update(jobs => jobs.map(applyPatch));
     this.roleResults.update(groups => groups.map(group => ({
       ...group,
@@ -930,14 +874,15 @@ export class JobResultsComponent implements OnInit {
   private reconcileGeneratedState(jobs: Job[]): void {
     const visibleGeneratedJobIds = new Set(
       jobs
-        .filter(job => job.id && this.hasPersistedGeneratedDocuments(job))
-        .map(job => job.id as string)
+        .filter(job => this.jobStateKey(job) && this.hasPersistedGeneratedDocuments(job))
+        .map(job => this.jobStateKey(job))
     );
 
     this.generationDownloads.update(downloads => this.keepKeys(downloads, visibleGeneratedJobIds));
     this.generatedDocumentIds.update(documentIds => this.keepKeys(documentIds, visibleGeneratedJobIds));
     this.generationMessages.update(messages => this.keepKeys(messages, visibleGeneratedJobIds));
-    this.generationErrors.update(errors => this.keepKeys(errors, new Set(jobs.map(job => job.id).filter(Boolean) as string[])));
+    this.generationErrors.update(errors =>
+      this.keepKeys(errors, new Set(jobs.map(job => this.jobStateKey(job)).filter(Boolean))));
   }
 
   private keepKeys<T>(record: Record<string, T | undefined>, keysToKeep: Set<string>): Record<string, T | undefined> {
@@ -959,13 +904,13 @@ export class JobResultsComponent implements OnInit {
   }
 
   private currentJob(jobId: string): Job | undefined {
-    return this.jobs().find(job => job.id === jobId);
+    return this.jobs().find(job => this.jobStateKey(job) === jobId);
   }
 
   private rehydrateGeneratedDownloads(jobs: Job[]): void {
     for (const job of jobs) {
-      if (!job.id || !this.hasPersistedGeneratedDocuments(job)) continue;
-      const jobId = job.id;
+      const jobId = this.jobStateKey(job);
+      if (!jobId || !this.hasPersistedGeneratedDocuments(job)) continue;
       const cvDocumentId = job.cvDocumentId as string;
       const coverLetterDocumentId = job.coverLetterDocumentId as string;
       this.generatedDocumentIds.update(documentIds => ({

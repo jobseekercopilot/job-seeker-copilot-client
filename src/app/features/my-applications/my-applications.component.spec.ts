@@ -31,6 +31,20 @@ describe('MyApplicationsComponent document replacement', () => {
     expect(component.canUploadDocuments(application('DOCUMENTS_GENERATED', ''))).toBe(false);
   });
 
+  it('presents saved and prepared states using claimant-facing labels', () => {
+    expect(component.statusLabel('SAVED')).toBe('Saved to applications');
+    expect(component.statusLabel('DOCUMENTS_GENERATED')).toBe('Documents prepared');
+  });
+
+  it('keeps saved applications in needs action and allows marking them applied', () => {
+    const saved = application('SAVED');
+
+    expect((component as any).matchesFilter(saved, 'NEEDS_ACTION')).toBe(true);
+    expect(component.actions(saved)).toEqual([
+      {label: 'Mark as Applied', status: 'APPLIED'},
+    ]);
+  });
+
   it('derives the uploaded milestone from durable user-uploaded metadata', () => {
     expect(latestUserUploadTimestamp([
       {
@@ -76,7 +90,7 @@ describe('MyApplicationsComponent document replacement', () => {
           profileRevisionId: 'used-profile',
           evidenceSnapshotId: 'used-snapshot',
           evidenceRevisions: [{ revisionNumber: 2 }],
-          sectionOrder: ['PROJECTS'],
+          sectionOrder: ['PROJECT'],
         },
       },
       applicationUsedAt: '2026-07-29T03:00:00Z',
@@ -89,7 +103,7 @@ describe('MyApplicationsComponent document replacement', () => {
     expect(references[0].reference.evidenceProvenance?.profileRevisionId)
       .toBe('used-profile');
     expect(component.evidenceCount(references[0].reference)).toBe(1);
-    expect(component.evidenceSections(references[0].reference)).toBe('Projects');
+    expect(component.evidenceSections(references[0].reference)).toBe('Project');
     expect(component.evidenceScopeText(tracked)).toContain('Frozen when applied');
   });
 

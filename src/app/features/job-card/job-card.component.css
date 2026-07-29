@@ -186,6 +186,12 @@
   color: #166534;
 }
 
+.status-saved {
+  background: var(--color-soft-blue);
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
 .status-documents-generated {
   background: var(--color-soft-amber);
   border-color: #fde68a;

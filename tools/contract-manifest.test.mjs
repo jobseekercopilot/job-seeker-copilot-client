@@ -167,7 +167,7 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
   assert.equal(
     gateway.sourceCommit,
-    'c3b601aa4594c9c884eb89a5b141a0b8801e2cb3',
+    '8dfa5f1ecf02ef87a8caeff5001668e584f0f4bf',
   );
   assert.equal(gateway.output, 'src/app/api/job-finder');
   assert.deepEqual(gateway.requiredPaths, [
@@ -283,7 +283,7 @@ test('rejects unsafe or incomplete Job Finder saved-job drift', async (context) 
         delete contract.components.schemas.DocumentEvidenceProvenance
           .properties.evidenceSnapshotDigest;
       },
-      /must expose exact non-sensitive application evidence provenance/,
+      /must expose canonical application identity, version and exact non-sensitive evidence provenance/,
     ],
   ];
 

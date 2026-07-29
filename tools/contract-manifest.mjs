@@ -64,7 +64,10 @@ function validateJobFinderContract(document) {
     document.components?.schemas?.DocumentVersionReference?.properties ?? {};
   const evidenceProperties =
     document.components?.schemas?.DocumentEvidenceProvenance?.properties ?? {};
-  if (!applicationProperties.cvDocumentReference ||
+  if (!applicationProperties.canonicalJobId ||
+      !applicationProperties.provenance ||
+      applicationProperties.version?.format !== 'int64' ||
+      !applicationProperties.cvDocumentReference ||
       !applicationProperties.applicationUsedCvDocumentReference ||
       !applicationProperties.applicationUsedAt ||
       !documentReferenceProperties.contentSha256 ||
@@ -77,7 +80,7 @@ function validateJobFinderContract(document) {
       !evidenceProperties.evidenceRevisions ||
       !evidenceProperties.claimLedger) {
     throw new Error(
-      'job-finder-gateway must expose exact non-sensitive application evidence provenance',
+      'job-finder-gateway must expose canonical application identity, version and exact non-sensitive evidence provenance',
     );
   }
 

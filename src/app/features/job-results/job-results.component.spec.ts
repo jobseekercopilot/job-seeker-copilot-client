@@ -1,13 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { of, throwError } from 'rxjs';
+import { Observable, of, Subject, throwError } from 'rxjs';
 import { JobResultsComponent } from './job-results.component';
 import { JobService } from '../../services/job.service';
 import { DocumentGenerationService } from '../../services/document-generation.service';
 import { Job, JobSearchResponse } from '../../models/job-search.model';
 import { ProviderResultStatusStatusEnum } from '../../api/job-finder';
 import { DocumentEvidenceSelectionSectionOrderEnum } from '../../api/document-generation-gateway';
-import { ApplicationTrackerService, TrackedApplication } from '../../services/application-tracker.service';
+import { ApplicationTrackerService } from '../../services/application-tracker.service';
 import { EvidenceLibraryService } from '../../api';
 
 describe('JobResultsComponent', () => {
@@ -20,13 +20,17 @@ describe('JobResultsComponent', () => {
   };
   let currentResponse = response;
   let searchErrorStatus: number | undefined;
-  let trackedApplications: TrackedApplication[] = [];
+  let queuedSearchResponses: Observable<JobSearchResponse>[] = [];
   let evidenceEntries: any[] = [];
 
   const jobService = {
     callCount: 0,
     searchJobs: () => {
       jobService.callCount++;
+      const queuedResponse = queuedSearchResponses.shift();
+      if (queuedResponse) {
+        return queuedResponse;
+      }
       if (searchErrorStatus != null) {
         return throwError(() => ({status: searchErrorStatus}));
       }
@@ -45,7 +49,7 @@ describe('JobResultsComponent', () => {
   };
 
   const applicationTracker = {
-    listApplications: () => of(trackedApplications),
+    listApplications: vi.fn(() => of([])),
   };
   const evidenceLibrary = {
     listEvidence: () => of(evidenceEntries),
@@ -55,8 +59,9 @@ describe('JobResultsComponent', () => {
     jobService.callCount = 0;
     currentResponse = response;
     searchErrorStatus = undefined;
-    trackedApplications = [];
+    queuedSearchResponses = [];
     evidenceEntries = [];
+    applicationTracker.listApplications.mockClear();
     documentGenerationService.generate.mockClear();
     await TestBed.configureTestingModule({
       imports: [JobResultsComponent],
@@ -265,51 +270,73 @@ describe('JobResultsComponent', () => {
       .toContain('No job matches found based on your current profile.');
   });
 
-  it('rehydrates a generated application into matching search results after reload', () => {
+  it('renders authoritative application enrichment on initial load and reload without listing applications', () => {
     currentResponse = singleRoleResponse([
       job('persisted role', {
         id: 'canonical-job-1',
         canonicalJobId: 'canonical-job-1',
         primarySource: 'REED',
         externalJobId: 'reed-123',
+        applicationId: 'application-1',
+        applicationStatus: 'DOCUMENTS_GENERATED',
+        cvDocumentId: 'cv-1',
+        coverLetterDocumentId: 'letter-1',
+        applicationUpdatedAt: '2026-07-28T09:04:00Z',
       }),
     ]);
-    trackedApplications = [{
-      id: 'application-1',
+
+    const initialFixture = createFixture();
+    initialFixture.debugElement.query(By.css('.job-main-toggle')).nativeElement.click();
+    initialFixture.detectChanges();
+
+    expect(initialFixture.componentInstance.jobs()[0]).toMatchObject({
+      id: 'canonical-job-1',
       applicationId: 'application-1',
-      jobId: 'canonical-job-1',
-      status: 'DOCUMENTS_GENERATED',
+      applicationStatus: 'DOCUMENTS_GENERATED',
       cvDocumentId: 'cv-1',
       coverLetterDocumentId: 'letter-1',
-      updatedAt: '2026-07-28T09:04:00Z',
-    }];
+    });
+    expect(initialFixture.nativeElement.textContent).toContain('Documents prepared');
+    expect(initialFixture.nativeElement.textContent).not.toContain('Generate CV & Cover Letter');
+    expect(initialFixture.nativeElement.textContent).toContain('Upload CV');
+    initialFixture.destroy();
 
-    const fixture = createFixture();
-    fixture.debugElement.query(By.css('.job-main-toggle')).nativeElement.click();
-    fixture.detectChanges();
+    const reloadedFixture = createFixture();
+    reloadedFixture.debugElement.query(By.css('.job-main-toggle')).nativeElement.click();
+    reloadedFixture.detectChanges();
 
-    expect(fixture.nativeElement.textContent).toContain('DOCUMENTS_GENERATED');
-    expect(fixture.nativeElement.textContent).not.toContain('Generate CV & Cover Letter');
-    expect(fixture.nativeElement.textContent).toContain('Upload CV');
+    expect(reloadedFixture.componentInstance.jobs()[0]).toMatchObject({
+      id: 'canonical-job-1',
+      applicationId: 'application-1',
+      applicationStatus: 'DOCUMENTS_GENERATED',
+      cvDocumentId: 'cv-1',
+      coverLetterDocumentId: 'letter-1',
+    });
+    expect(reloadedFixture.nativeElement.textContent).toContain('Documents prepared');
+    expect(reloadedFixture.nativeElement.textContent).toContain('Upload CV');
+    expect(applicationTracker.listApplications).not.toHaveBeenCalled();
   });
 
-  it('does not reconcile an external id from a different provider', () => {
-    currentResponse = singleRoleResponse([
-      job('untracked role', {primarySource: 'REED', externalJobId: 'shared-123'}),
-    ]);
-    trackedApplications = [{
-      id: 'application-1',
-      jobId: 'different-canonical-job',
-      provider: 'ADZUNA',
-      externalJobId: 'shared-123',
-      status: 'DOCUMENTS_GENERATED',
-    }];
-
+  it('does not allow a stale overlapping search response to overwrite newer results', () => {
+    const staleResponse = new Subject<JobSearchResponse>();
+    const newerResponse = new Subject<JobSearchResponse>();
+    queuedSearchResponses = [staleResponse, newerResponse];
     const fixture = createFixture();
-    fixture.debugElement.query(By.css('.job-main-toggle')).nativeElement.click();
+
+    fixture.componentInstance.refresh();
+    newerResponse.next(singleRoleResponse([job('newer result', {})]));
+    newerResponse.complete();
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.textContent).toContain('Generate CV & Cover Letter');
+    expect(fixture.componentInstance.jobs().map(result => result.title)).toEqual(['newer result']);
+    expect(fixture.nativeElement.textContent).toContain('newer result');
+
+    staleResponse.next(singleRoleResponse([job('stale result', {})]));
+    staleResponse.complete();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.jobs().map(result => result.title)).toEqual(['newer result']);
+    expect(fixture.nativeElement.textContent).not.toContain('stale result');
   });
 
   it('requires separate explicit evidence selections and preserves claimant order', () => {

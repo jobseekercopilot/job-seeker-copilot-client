@@ -1,6 +1,7 @@
 import {TestBed} from '@angular/core/testing';
 import {of} from 'rxjs';
 import {
+  ApplicationRecordResponse,
   JobApplicationsService,
   UpdateApplicationStatusRequestStatusEnum,
 } from '../api/job-finder';
@@ -10,7 +11,7 @@ import {BrowserSessionService} from './browser-session.service';
 
 describe('ApplicationTrackerService', () => {
   const ensureCsrf = vi.fn(() => of(undefined));
-  const getApplications = vi.fn(() => of([]));
+  const getApplications = vi.fn(() => of([] as ApplicationRecordResponse[]));
   const createApplication = vi.fn(() => of({
     id: '00000000-0000-0000-0000-000000000001',
     status: 'APPLIED',
@@ -48,6 +49,30 @@ describe('ApplicationTrackerService', () => {
     );
   });
 
+  it('preserves the authoritative canonical identity, provenance and version when listing applications', () => {
+    getApplications.mockReturnValueOnce(of([{
+      id: '00000000-0000-0000-0000-000000000001',
+      jobId: 'legacy-job-1',
+      canonicalJobId: 'canonical-job-1',
+      provider: 'REED',
+      externalJobId: 'reed-1',
+      provenance: 'JOB_SEARCH',
+      status: 'DOCUMENTS_GENERATED',
+      version: 7,
+    }]));
+
+    TestBed.inject(ApplicationTrackerService).listApplications().subscribe(applications => {
+      expect(applications).toEqual([expect.objectContaining({
+        id: '00000000-0000-0000-0000-000000000001',
+        applicationId: '00000000-0000-0000-0000-000000000001',
+        jobId: 'legacy-job-1',
+        canonicalJobId: 'canonical-job-1',
+        provenance: 'JOB_SEARCH',
+        version: 7,
+      })]);
+    });
+  });
+
   it('creates an application from job provenance without user identity', () => {
     const job: Job = {
       id: 'canonical-1',
@@ -77,6 +102,23 @@ describe('ApplicationTrackerService', () => {
       'body',
       false,
       {transferCache: false},
+    );
+  });
+
+  it('describes a newly saved application without inventing generated documents', () => {
+    const service = TestBed.inject(ApplicationTrackerService);
+    const [event] = service.eventsForApplication({
+      id: '00000000-0000-0000-0000-000000000001',
+      status: 'SAVED',
+      jobTitle: 'Platform Engineer',
+      companyName: 'Example Ltd',
+      createdAt: '2026-07-29T15:00:00Z',
+    });
+
+    expect(event.eventType).toBe('SAVED');
+    expect(event.label).toBe('Saved to applications');
+    expect(service.journalPreview([event])).toContain(
+      'Saved Platform Engineer at Example Ltd to applications.',
     );
   });
 
