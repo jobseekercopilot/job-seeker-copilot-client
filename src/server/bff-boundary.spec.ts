@@ -167,6 +167,26 @@ describe('bounded downstream requests', () => {
     expect(downstreamFailureCategory(new DownstreamTimeoutError())).toBe('timeout');
   });
 
+  it('enforces the deadline when the transport ignores abort', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const abortIgnoringFetch = vi.fn(
+      (_input: string | URL | Request, init?: RequestInit) => {
+        capturedSignal = init?.signal ?? undefined;
+        return new Promise<Response>(() => undefined);
+      },
+    ) as typeof fetch;
+
+    await expect(
+      fetchWithTimeout(
+        'https://stale-downstream.example.test/private',
+        {},
+        5,
+        abortIgnoringFetch,
+      ),
+    ).rejects.toBeInstanceOf(DownstreamTimeoutError);
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
   it('classifies non-timeout failures without exposing their message', async () => {
     const failedFetch = vi.fn(async () => {
       throw new Error('getaddrinfo ENOTFOUND secret.internal.test');

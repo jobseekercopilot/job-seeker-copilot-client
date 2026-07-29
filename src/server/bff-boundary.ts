@@ -260,14 +260,24 @@ export async function fetchWithTimeout(
   fetchImplementation: typeof fetch = fetch,
 ): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(new DownstreamTimeoutError());
+    }, timeoutMs);
+  });
   try {
-    return await fetchImplementation(input, {...init, signal: controller.signal});
-  } catch (error: unknown) {
-    if (controller.signal.aborted) throw new DownstreamTimeoutError();
-    throw error;
+    const downstream = fetchImplementation(
+      input,
+      {...init, signal: controller.signal},
+    ).catch((error: unknown) => {
+      if (controller.signal.aborted) throw new DownstreamTimeoutError();
+      throw error;
+    });
+    return await Promise.race([downstream, deadline]);
   } finally {
-    clearTimeout(timeout);
+    if (timeout) clearTimeout(timeout);
   }
 }
 
