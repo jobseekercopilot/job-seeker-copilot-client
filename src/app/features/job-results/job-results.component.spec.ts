@@ -6,7 +6,9 @@ import { JobService } from '../../services/job.service';
 import { DocumentGenerationService } from '../../services/document-generation.service';
 import { Job, JobSearchResponse } from '../../models/job-search.model';
 import { ProviderResultStatusStatusEnum } from '../../api/job-finder';
+import { DocumentEvidenceSelectionSectionOrderEnum } from '../../api/document-generation-gateway';
 import { ApplicationTrackerService, TrackedApplication } from '../../services/application-tracker.service';
+import { EvidenceLibraryService } from '../../api';
 
 describe('JobResultsComponent', () => {
   const response: JobSearchResponse = {
@@ -18,6 +20,7 @@ describe('JobResultsComponent', () => {
   };
   let currentResponse = response;
   let trackedApplications: TrackedApplication[] = [];
+  let evidenceEntries: any[] = [];
 
   const jobService = {
     callCount: 0,
@@ -29,22 +32,34 @@ describe('JobResultsComponent', () => {
 
   const documentGenerationService = {
     latestFiles: () => of({}),
+    generate: vi.fn(() => of({
+      applicationId: 'application-1',
+      cvDocumentId: 'cv-1',
+      coverLetterDocumentId: 'cover-1',
+      downloads: {},
+    })),
   };
 
   const applicationTracker = {
     listApplications: () => of(trackedApplications),
+  };
+  const evidenceLibrary = {
+    listEvidence: () => of(evidenceEntries),
   };
 
   beforeEach(async () => {
     jobService.callCount = 0;
     currentResponse = response;
     trackedApplications = [];
+    evidenceEntries = [];
+    documentGenerationService.generate.mockClear();
     await TestBed.configureTestingModule({
       imports: [JobResultsComponent],
       providers: [
         { provide: JobService, useValue: jobService },
         { provide: DocumentGenerationService, useValue: documentGenerationService },
         { provide: ApplicationTrackerService, useValue: applicationTracker },
+        { provide: EvidenceLibraryService, useValue: evidenceLibrary },
       ],
     }).compileComponents();
   });
@@ -276,6 +291,69 @@ describe('JobResultsComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Generate CV & Cover Letter');
   });
 
+  it('requires separate explicit evidence selections and preserves claimant order', () => {
+    evidenceEntries = [
+      evidenceEntry(
+        '50000000-0000-4000-8000-000000000001',
+        'PROJECT',
+        'Job Seeker Copilot project',
+        3,
+      ),
+      evidenceEntry(
+        '50000000-0000-4000-8000-000000000002',
+        'VOLUNTEERING',
+        'Community support volunteer',
+        2,
+      ),
+      evidenceEntry(
+        '50000000-0000-4000-8000-000000000003',
+        'EMPLOYMENT',
+        'Unconfirmed role',
+        1,
+        'DRAFT',
+      ),
+    ];
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Nothing is included automatically');
+    expect(fixture.nativeElement.textContent).toContain('confirmed revision 3');
+    expect(fixture.nativeElement.textContent).not.toContain('Unconfirmed role');
+    expect(fixture.componentInstance.canGenerateFromSelection()).toBe(false);
+
+    const [project, volunteering] = fixture.componentInstance.eligibleEvidence();
+    fixture.componentInstance.toggleEvidence('CV', project);
+    fixture.componentInstance.toggleEvidence('CV', volunteering);
+    fixture.componentInstance.moveEvidence('CV', volunteering.entryId, -1);
+    fixture.componentInstance.moveEvidenceSection(
+      'CV',
+      DocumentEvidenceSelectionSectionOrderEnum.Volunteering,
+      -1,
+    );
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', project);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.canGenerateFromSelection()).toBe(true);
+    fixture.componentInstance.confirmEvidenceGeneration();
+
+    expect(documentGenerationService.generate).toHaveBeenCalledWith(
+      selectedJob,
+      {
+        cv: {
+          entryIds: [volunteering.entryId, project.entryId],
+          sectionOrder: ['VOLUNTEERING', 'PROJECT'],
+        },
+        coverLetter: {
+          entryIds: [project.entryId],
+          sectionOrder: ['PROJECT'],
+        },
+      },
+    );
+  });
+
   function createFixture(providerMode: 'FIXTURE' | 'REAL_PROVIDERS' | 'REQUIRED_VALIDATION' = 'FIXTURE') {
     const fixture = TestBed.createComponent(JobResultsComponent);
     fixture.componentRef.setInput('authToken', 'token');
@@ -335,5 +413,35 @@ describe('JobResultsComponent', () => {
       url: 'https://example.com/job',
       sources: [{ publisher }],
     }));
+  }
+
+  function evidenceEntry(
+    entryId: string,
+    category: string,
+    heading: string,
+    revisionNumber: number,
+    confirmationState = 'USER_CONFIRMED',
+  ): any {
+    return {
+      entryId,
+      category,
+      visibility: 'VISIBLE',
+      lifecycle: 'ACTIVE',
+      reviewRequired: false,
+      version: revisionNumber,
+      revisions: [{
+        revisionId: entryId.replace('50000000', '60000000'),
+        revisionNumber,
+        confirmationState,
+        contentDigest: 'a'.repeat(64),
+        heading,
+        ongoing: false,
+        demonstratedSkills: [],
+        supportingLinks: [],
+        facts: [],
+        createdAt: '2026-07-29T00:00:00Z',
+        createdBy: 'USER',
+      }],
+    };
   }
 });

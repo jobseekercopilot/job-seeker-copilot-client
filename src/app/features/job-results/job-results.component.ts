@@ -5,13 +5,24 @@ import { forkJoin, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { DocumentUploadRequest, JobCardComponent } from '../job-card/job-card.component';
 import { JobService } from '../../services/job.service';
-import { DocumentGenerationService } from '../../services/document-generation.service';
+import {
+  DocumentGenerationService,
+  GenerationDownloadsResponse,
+} from '../../services/document-generation.service';
 import { Job } from '../../models/job-search.model';
 import { ApplicationRecordResponse } from '../../api/job-finder';
 import {
   DownloadFileResponse,
-  GenerationDownloadsResponse,
+  DocumentEvidenceSelectionSectionOrderEnum,
 } from '../../api/document-generation-gateway';
+import {
+  EvidenceEntry,
+  EvidenceEntryLifecycleEnum,
+  EvidenceEntryVisibilityEnum,
+  EvidenceLibraryService,
+  EvidenceRevision,
+  EvidenceRevisionConfirmationStateEnum,
+} from '../../api';
 import {logMalformedProviderResult} from '../../../shared/provider-content-policy';
 import {
   ApplicationTrackerService,
@@ -29,6 +40,8 @@ type StatusUpdateTarget =
   | 'REJECTED_BY_USER'
   | 'WITHDRAWN';
 type SortOption = 'MOST_RELEVANT' | 'CLOSEST' | 'HIGHEST_SALARY' | 'NEWEST_POSTED' | 'OLDEST_POSTED' | 'COMPANY_AZ' | 'JOB_TITLE_AZ';
+type EvidencePurpose = 'CV' | 'COVER_LETTER';
+type EvidenceSection = DocumentEvidenceSelectionSectionOrderEnum;
 
 @Component({
   selector: 'app-job-results',
@@ -45,6 +58,7 @@ export class JobResultsComponent implements OnInit {
   private jobService = inject(JobService);
   private documentGenerationService = inject(DocumentGenerationService);
   private applicationTracker = inject(ApplicationTrackerService);
+  private evidenceLibrary = inject(EvidenceLibraryService);
 
   // Inputs from the parent App component (profile signals)
   skills = input<string>('');
@@ -121,9 +135,18 @@ export class JobResultsComponent implements OnInit {
   uploadingDocuments = signal<Record<string, 'CV' | 'COVER_LETTER' | undefined>>({});
   updatingApplicationStatuses = signal<Record<string, StatusUpdateTarget | undefined>>({});
   creatingApplicationIds = signal<Set<string>>(new Set());
+  evidenceSelectionJob = signal<Job | null>(null);
+  evidenceEntries = signal<EvidenceEntry[]>([]);
+  evidenceLoading = signal(false);
+  evidenceSelectionError = signal<string | null>(null);
+  cvEvidenceIds = signal<string[]>([]);
+  coverLetterEvidenceIds = signal<string[]>([]);
+  cvSectionOrder = signal<EvidenceSection[]>([]);
+  coverLetterSectionOrder = signal<EvidenceSection[]>([]);
   readonly jobsPerPage = 10;
   readonly Math = Math;
   readonly futureFilterSections = ['Status', 'Date Posted', 'Salary', 'Location', 'Remote / On-site'];
+  readonly evidencePurposes: EvidencePurpose[] = ['CV', 'COVER_LETTER'];
   readonly sortOptions: { value: SortOption; label: string }[] = [
     { value: 'MOST_RELEVANT', label: 'Most relevant' },
     { value: 'CLOSEST', label: 'Closest to me' },
@@ -134,6 +157,21 @@ export class JobResultsComponent implements OnInit {
     { value: 'JOB_TITLE_AZ', label: 'Job title A-Z' },
   ];
   readonly futureSortOptions = ['Best match', 'Recently updated', 'Remote first', 'Most sources', 'Application status'];
+  readonly eligibleEvidence = computed(() => this.evidenceEntries().filter(entry => {
+    const latest = this.latestEvidence(entry);
+    return entry.lifecycle === EvidenceEntryLifecycleEnum.Active
+      && entry.visibility === EvidenceEntryVisibilityEnum.Visible
+      && !entry.reviewRequired
+      && latest?.confirmationState === EvidenceRevisionConfirmationStateEnum.UserConfirmed;
+  }));
+  readonly ineligibleEvidenceCount = computed(() =>
+    this.evidenceEntries().length - this.eligibleEvidence().length);
+  readonly canGenerateFromSelection = computed(() =>
+    !this.evidenceLoading()
+    && this.cvEvidenceIds().length > 0
+    && this.coverLetterEvidenceIds().length > 0
+    && this.cvSectionOrder().length > 0
+    && this.coverLetterSectionOrder().length > 0);
 
   activeRoleResults = computed(() =>
     this.roleResults().find(group => group.targetRole === this.selectedTargetRole()) ?? this.roleResults()[0]
@@ -416,14 +454,136 @@ export class JobResultsComponent implements OnInit {
     return Number.isNaN(time) ? null : time;
   }
 
-  generateDocuments(job: Job): void {
+  openEvidenceSelection(job: Job): void {
+    if (!job.id || this.generatingJobIds().has(job.id)) return;
+    this.evidenceSelectionJob.set(job);
+    this.evidenceEntries.set([]);
+    this.cvEvidenceIds.set([]);
+    this.coverLetterEvidenceIds.set([]);
+    this.cvSectionOrder.set([]);
+    this.coverLetterSectionOrder.set([]);
+    this.evidenceSelectionError.set(null);
+    this.evidenceLoading.set(true);
+    this.evidenceLibrary.listEvidence(false, 'body', false, {transferCache: false}).subscribe({
+      next: entries => {
+        this.evidenceEntries.set(entries);
+        this.evidenceLoading.set(false);
+      },
+      error: () => {
+        this.evidenceLoading.set(false);
+        this.evidenceSelectionError.set(
+          'Your confirmed evidence could not be loaded. Please try again.',
+        );
+      },
+    });
+  }
+
+  closeEvidenceSelection(): void {
+    if (!this.evidenceLoading()) {
+      this.evidenceSelectionJob.set(null);
+      this.evidenceSelectionError.set(null);
+    }
+  }
+
+  latestEvidence(entry: EvidenceEntry): EvidenceRevision | undefined {
+    return [...entry.revisions].sort((left, right) =>
+      right.revisionNumber - left.revisionNumber)[0];
+  }
+
+  selectedEvidence(purpose: EvidencePurpose): EvidenceEntry[] {
+    const ids = purpose === 'CV' ? this.cvEvidenceIds() : this.coverLetterEvidenceIds();
+    const entries = new Map(this.eligibleEvidence().map(entry => [entry.entryId, entry]));
+    return ids.map(id => entries.get(id)).filter((entry): entry is EvidenceEntry => Boolean(entry));
+  }
+
+  isEvidenceSelected(purpose: EvidencePurpose, entryId: string): boolean {
+    return (purpose === 'CV' ? this.cvEvidenceIds() : this.coverLetterEvidenceIds())
+      .includes(entryId);
+  }
+
+  toggleEvidence(purpose: EvidencePurpose, entry: EvidenceEntry): void {
+    if (!this.eligibleEvidence().some(candidate => candidate.entryId === entry.entryId)) return;
+    const selected = purpose === 'CV' ? this.cvEvidenceIds : this.coverLetterEvidenceIds;
+    const sections = purpose === 'CV' ? this.cvSectionOrder : this.coverLetterSectionOrder;
+    const current = selected();
+    const removing = current.includes(entry.entryId);
+    const next = removing
+      ? current.filter(id => id !== entry.entryId)
+      : [...current, entry.entryId];
+    selected.set(next);
+
+    const category = entry.category as unknown as EvidenceSection;
+    const selectedCategories = new Set(
+      this.eligibleEvidence()
+        .filter(candidate => next.includes(candidate.entryId))
+        .map(candidate => candidate.category as unknown as EvidenceSection),
+    );
+    sections.update(order => {
+      if (!removing && !order.includes(category)) return [...order, category];
+      return order.filter(section => selectedCategories.has(section));
+    });
+  }
+
+  moveEvidence(
+    purpose: EvidencePurpose,
+    entryId: string,
+    direction: -1 | 1,
+  ): void {
+    const selected = purpose === 'CV' ? this.cvEvidenceIds : this.coverLetterEvidenceIds;
+    selected.update(ids => this.move(ids, entryId, direction));
+  }
+
+  moveEvidenceSection(
+    purpose: EvidencePurpose,
+    section: EvidenceSection,
+    direction: -1 | 1,
+  ): void {
+    const sections = purpose === 'CV' ? this.cvSectionOrder : this.coverLetterSectionOrder;
+    sections.update(order => this.move(order, section, direction));
+  }
+
+  sectionOrder(purpose: EvidencePurpose): EvidenceSection[] {
+    return purpose === 'CV' ? this.cvSectionOrder() : this.coverLetterSectionOrder();
+  }
+
+  categoryLabel(category: string): string {
+    return category.toLowerCase().replaceAll('_', ' ')
+      .replace(/\b\w/g, character => character.toUpperCase());
+  }
+
+  confirmEvidenceGeneration(): void {
+    const job = this.evidenceSelectionJob();
+    if (!job || !this.canGenerateFromSelection()) {
+      this.evidenceSelectionError.set(
+        'Choose at least one confirmed evidence item for both documents.',
+      );
+      return;
+    }
+    const evidence = {
+      cv: {
+        entryIds: [...this.cvEvidenceIds()],
+        sectionOrder: [...this.cvSectionOrder()],
+      },
+      coverLetter: {
+        entryIds: [...this.coverLetterEvidenceIds()],
+        sectionOrder: [...this.coverLetterSectionOrder()],
+      },
+    };
+    this.evidenceSelectionJob.set(null);
+    this.generateDocuments(job, evidence);
+  }
+
+  private generateDocuments(
+    job: Job,
+    evidence: Parameters<DocumentGenerationService['generate']>[1],
+  ): void {
     if (!job.id || this.generatingJobIds().has(job.id)) return;
     const jobId = job.id;
     this.generatingJobIds.update(ids => new Set(ids).add(jobId));
     this.generationMessages.update(messages => ({ ...messages, [jobId]: 'Generating CV & Cover Letter...' }));
     this.generationErrors.update(errors => ({ ...errors, [jobId]: undefined }));
 
-    this.documentGenerationService.generate(job).subscribe({
+    this.documentGenerationService.generate(job, evidence).subscribe({
       next: (response) => {
         this.generationDownloads.update(downloads => ({ ...downloads, [jobId]: response.downloads }));
         this.generatedDocumentIds.update(documentIds => ({
@@ -443,13 +603,28 @@ export class JobResultsComponent implements OnInit {
         this.notify.emit({ message: 'CV and cover letter generated successfully.', type: 'success' });
         this.applicationChanged.emit();
       },
-      error: () => {
+      error: (error) => {
         this.finishGeneration(jobId, undefined);
-        this.generationErrors.update(errors => ({ ...errors, [jobId]: 'Generation failed. Please try again.' }));
-        this.notify.emit({ message: 'Generation failed. Please try again.', type: 'error' });
+        const status = typeof error === 'object' && error !== null && 'status' in error
+          ? Number((error as {status?: unknown}).status)
+          : undefined;
+        const message = status === 400 || status === 409
+          ? 'One of the selected evidence items changed or is no longer eligible. Review the Evidence Library and choose again.'
+          : 'Generation failed. Please try again.';
+        this.generationErrors.update(errors => ({ ...errors, [jobId]: message }));
+        this.notify.emit({ message, type: 'error' });
         console.error('[JobResults] Document generation failed');
       }
     });
+  }
+
+  private move<T>(values: T[], value: T, direction: -1 | 1): T[] {
+    const index = values.indexOf(value);
+    const destination = index + direction;
+    if (index < 0 || destination < 0 || destination >= values.length) return values;
+    const next = [...values];
+    [next[index], next[destination]] = [next[destination], next[index]];
+    return next;
   }
 
   trackApplication(job: Job): void {
