@@ -112,11 +112,13 @@ export class App implements OnInit {
   // Notice/Alert Toast triggers
   toastMessage = signal<string | null>(null);
   toastType = signal<'success' | 'info' | 'error'>('success');
+  private walletSessionKey = '';
 
   constructor() {
     effect(() => {
       const user = this.browserSession.user();
       if (user) {
+        this.userAccountId.set(user.id ?? '');
         this.profileName.set(user.name ?? '');
         this.profileEmail.set(user.email ?? '');
         this.structuredProfile.set(user.profile ?? null);
@@ -126,6 +128,12 @@ export class App implements OnInit {
         this.profileAspirations.set(searchText.aspirations);
         this.profileWorkPrefs.set(searchText.workPrefs);
         this.isLoggedIn.set(true);
+        const walletSessionKey = user.id ?? user.email ?? '';
+        if (walletSessionKey
+            && walletSessionKey !== this.walletSessionKey) {
+          this.walletSessionKey = walletSessionKey;
+          this.refreshAiTokenBalance();
+        }
         return;
       }
       if (this.sessionStatus() === 'anonymous') {
@@ -341,6 +349,8 @@ export class App implements OnInit {
     this.profileAspirations.set('');
     this.profileWorkPrefs.set('');
     this.userAccountId.set('');
+    this.aiTokenBalance.set(null);
+    this.walletSessionKey = '';
   }
 
   triggerJobSearch() {

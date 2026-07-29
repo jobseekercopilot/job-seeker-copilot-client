@@ -29,10 +29,12 @@ describe('App', () => {
     },
   });
   const searchJobs = vi.fn(() => of({jobs: [], totalResults: 0}));
+  const wallet = vi.fn(() => of({balanceTokens: 70000}));
 
   beforeEach(async () => {
     status.set('authenticated');
     user.set({
+      id: 'user-1',
       name: 'Alex Taylor',
       email: 'alex@example.test',
       profile: {
@@ -45,6 +47,7 @@ describe('App', () => {
       },
     });
     searchJobs.mockClear();
+    wallet.mockClear();
 
     await TestBed.configureTestingModule({
       imports: [App],
@@ -83,12 +86,23 @@ describe('App', () => {
         {
           provide: PaymentService,
           useValue: {
-            wallet: () => of({balanceTokens: 0}),
+            wallet,
             pricing: () => of({plans: []}),
           },
         },
       ],
     }).compileComponents();
+  });
+
+  it('refreshes and displays AI Credit when the secure session is restored', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(wallet).toHaveBeenCalledWith('user-1', '');
+    expect(fixture.componentInstance.aiTokenBalance()).toBe(70000);
+    expect(fixture.nativeElement.textContent).toContain('AI Credit: £5.59');
   });
 
   it('renders the canonical product workspace with honest capability states', async () => {
