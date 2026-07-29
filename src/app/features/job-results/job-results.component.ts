@@ -112,6 +112,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   private readonly resumedGenerationIds = new Set<string>();
   private readonly generationSubscriptions = new Map<string, Subscription>();
   private readonly cancellationSubscriptions = new Map<string, Subscription>();
+  private readonly localApplicationMutationSequence = new Map<string, number>();
   private destroyed = false;
 
   // Inputs from the parent App component (profile signals)
@@ -527,12 +528,14 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       ?? response.jobs
       ?? [];
     let skippedCount = 0;
-    const validJobs = responseJobs.flatMap(job => {
-      const validated = this.validateJob(job);
-      if (validated) return [validated];
-      skippedCount++;
-      return [];
-    });
+    const validJobs = responseJobs
+      .flatMap(job => {
+        const validated = this.validateJob(job);
+        if (validated) return [validated];
+        skippedCount++;
+        return [];
+      })
+      .map(job => this.preserveNewerLocalApplicationState(job, requestSequence));
     if (skippedCount > 0) {
       console.warn(`[JobResults] Filtered out ${skippedCount} malformed job(s)`);
     }
@@ -1659,6 +1662,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   }
 
   private updateJobLocally(jobId: string, patch: Partial<Job>): void {
+    this.localApplicationMutationSequence.set(jobId, this.searchRequestSequence);
     const applyPatch = (job: Job): Job =>
       this.jobStateKey(job) === jobId ? { ...job, ...patch } : job;
     this.roleStates.update(states => Object.fromEntries(
@@ -1678,6 +1682,28 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         },
       ]),
     ));
+  }
+
+  private preserveNewerLocalApplicationState(
+    job: Job,
+    requestSequence: number,
+  ): Job {
+    const jobId = this.jobStateKey(job);
+    const mutationSequence = this.localApplicationMutationSequence.get(jobId);
+    if (mutationSequence == null || mutationSequence < requestSequence) {
+      return job;
+    }
+    const current = this.currentJob(jobId);
+    if (!current) return job;
+    return {
+      ...job,
+      applicationId: current.applicationId,
+      applicationStatus: current.applicationStatus,
+      cvDocumentId: current.cvDocumentId,
+      coverLetterDocumentId: current.coverLetterDocumentId,
+      appliedAt: current.appliedAt,
+      applicationUpdatedAt: current.applicationUpdatedAt,
+    };
   }
 
   private friendlyStatus(status: string): string {

@@ -1119,6 +1119,55 @@ describe('JobResultsComponent', () => {
     expect(fixture.componentInstance.generatingJobIds().has('cleaning-1')).toBe(false);
   });
 
+  it('does not let an older in-flight search overwrite authoritative generation completion', () => {
+    const generation = new Subject<any>();
+    const staleSearch = new Subject<JobSearchResponse>();
+    const evidenceId = '50000000-0000-4000-8000-000000000001';
+    evidenceEntries = [
+      evidenceEntry(evidenceId, 'PROJECT', 'Portfolio project', 1),
+    ];
+    documentGenerationService.generate.mockReturnValueOnce(generation);
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    const [project] = fixture.componentInstance.eligibleEvidence();
+    fixture.componentInstance.toggleEvidence('CV', project);
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', project);
+    fixture.componentInstance.confirmEvidenceGeneration();
+
+    queuedSearchResponses = [staleSearch];
+    fixture.componentInstance.refresh();
+
+    generation.next({
+      applicationId: 'application-authoritative',
+      cvDocumentId: 'cv-authoritative',
+      coverLetterDocumentId: 'cover-authoritative',
+      downloads: {cv: {}, coverLetter: {}},
+    });
+    generation.complete();
+    staleSearch.next(rolePageResponse(
+      'cleaning',
+      jobsFor('cleaning', 10),
+      12,
+      1,
+      2,
+    ));
+    staleSearch.complete();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.jobs().find(candidate =>
+      fixture.componentInstance.jobStateKey(candidate) === 'cleaning-1'))
+      .toEqual(expect.objectContaining({
+        applicationId: 'application-authoritative',
+        applicationStatus: 'DOCUMENTS_GENERATED',
+        cvDocumentId: 'cv-authoritative',
+        coverLetterDocumentId: 'cover-authoritative',
+      }));
+    expect(fixture.componentInstance.generationDownloads()['cleaning-1'])
+      .toEqual({cv: {}, coverLetter: {}});
+  });
+
   it('restores owner-scoped pending generation without legacy token inputs', () => {
     const generation = new Subject<any>();
     const evidenceId = '50000000-0000-4000-8000-000000000001';
