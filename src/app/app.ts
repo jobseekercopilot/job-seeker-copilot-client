@@ -408,7 +408,7 @@ export class App implements OnInit {
 
   openApplicationFromDocument(applicationId: string): void {
     this.selectedApplicationId.set(applicationId);
-    this.activeWorkspaceTab.set('applications');
+    this.selectWorkspace('applications');
   }
 
   updateAiTokenBalance(balance: number) {

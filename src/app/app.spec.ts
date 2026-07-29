@@ -100,8 +100,8 @@ describe('App', () => {
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('Profile');
     expect(text).toContain('Job search');
-    expect(text).toContain('Application tracking');
-    expect(text).toContain('Documents, storage and export');
+    expect(text).toContain('Applications');
+    expect(text).toContain('Documents');
     expect(text).toContain('Reporting & job-search evidence');
     expect(text).toContain('AI Credit');
     expect(text).toContain('Fixture-backed');
@@ -110,6 +110,14 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-evidence"]')).toBeNull();
     expect(fixture.nativeElement.querySelectorAll('.workspace-tab')).toHaveLength(3);
     expect(fixture.nativeElement.querySelector('.workspace-navigation')).toBeNull();
+
+    fixture.nativeElement.querySelector('[data-testid="workspace-tab-applications"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Application tracking');
+
+    fixture.nativeElement.querySelector('[data-testid="workspace-tab-documents"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Documents, storage and export');
 
     fixture.nativeElement.querySelector('#btn-profile-dropdown').click();
     fixture.detectChanges();
@@ -132,6 +140,7 @@ describe('App', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.componentInstance.documentGenerationMode.set('REAL_LLM');
+    fixture.nativeElement.querySelector('[data-testid="workspace-tab-documents"]').click();
     fixture.detectChanges();
 
     expect(fixture.nativeElement.textContent).toContain('Real OpenAI generation');
@@ -139,6 +148,44 @@ describe('App', () => {
     expect(fixture.nativeElement.textContent).not.toContain(
       'Document wording is fixture-generated',
     );
+  });
+
+  it('mounts only the workspace selected by the Applications and Documents tabs', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const applicationsTab = fixture.nativeElement.querySelector(
+      '[data-testid="workspace-tab-applications"]',
+    ) as HTMLButtonElement;
+    applicationsTab.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activeWorkspaceTab()).toBe('applications');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-applications"]'))
+      .not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-search"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-documents"]')).toBeNull();
+    expect(applicationsTab.classList).toContain('workspace-tab-active');
+    expect(applicationsTab.getAttribute('aria-current')).toBe('page');
+
+    fixture.componentInstance.activePersonalWorkspace.set('experience');
+    fixture.detectChanges();
+    const documentsTab = fixture.nativeElement.querySelector(
+      '[data-testid="workspace-tab-documents"]',
+    ) as HTMLButtonElement;
+    documentsTab.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activePersonalWorkspace()).toBeNull();
+    expect(fixture.componentInstance.activeWorkspaceTab()).toBe('documents');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-documents"]'))
+      .not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-applications"]'))
+      .toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-experience"]'))
+      .toBeNull();
   });
 
   it('does not mount job search until the required preferences exist', async () => {
