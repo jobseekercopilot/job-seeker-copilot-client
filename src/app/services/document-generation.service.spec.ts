@@ -179,6 +179,33 @@ describe('DocumentGenerationService', () => {
     expect(TestBed.inject(DocumentGenerationService).pendingGenerations()).toEqual([]);
   });
 
+  it('removes transient application enrichment from the canonical saved-job snapshot', async () => {
+    const enrichedJob = {
+      ...job,
+      matchScore: 0.91,
+      distanceMiles: 4.2,
+      applicationStatus: 'NEW',
+      applicationId,
+      cvDocumentId,
+      coverLetterDocumentId,
+      appliedAt: '2026-07-29T22:20:00',
+      applicationUpdatedAt: '2026-07-29T22:23:45.703863984',
+    } satisfies Job;
+    const original = structuredClone(enrichedJob);
+
+    await expect(firstValueFrom(
+      TestBed.inject(DocumentGenerationService).generate(enrichedJob, evidence),
+    )).resolves.toMatchObject({applicationId});
+
+    expect(save).toHaveBeenCalledWith(
+      job,
+      'body',
+      false,
+      {transferCache: false},
+    );
+    expect(enrichedJob).toEqual(original);
+  });
+
   it('polls after asynchronous approval instead of treating 202 as completion', async () => {
     vi.useFakeTimers();
     getOperation

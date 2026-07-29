@@ -290,7 +290,7 @@ export class DocumentGenerationService {
   ): Observable<DocumentGenerationResponse> {
     return this.browserSession.refreshCsrf().pipe(
       switchMap(() => this.savedJobs.save(
-        job as SavedJob,
+        this.canonicalJobSnapshot(job),
         'body',
         false,
         {transferCache: false},
@@ -312,6 +312,19 @@ export class DocumentGenerationService {
         return this.monitorAttempt(attempt, true);
       }),
     );
+  }
+
+  private canonicalJobSnapshot(job: Job): SavedJob {
+    const snapshot = {...job} as SavedJob;
+    delete snapshot.matchScore;
+    delete snapshot.distanceMiles;
+    delete snapshot.applicationStatus;
+    delete snapshot.applicationId;
+    delete snapshot.cvDocumentId;
+    delete snapshot.coverLetterDocumentId;
+    delete snapshot.appliedAt;
+    delete snapshot.applicationUpdatedAt;
+    return snapshot;
   }
 
   private restartAttempt(
