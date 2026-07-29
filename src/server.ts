@@ -28,6 +28,7 @@ import {
   documentGenerationMode,
   jobSearchProviderMode,
 } from './server/runtime-configuration';
+import {setStaticAssetCacheHeaders} from './server/static-cache-policy';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 const bffConfig = loadBffConfig();
@@ -233,6 +234,7 @@ app.use(
     maxAge: '1y',
     index: false,
     redirect: false,
+    setHeaders: setStaticAssetCacheHeaders,
   }),
 );
 
