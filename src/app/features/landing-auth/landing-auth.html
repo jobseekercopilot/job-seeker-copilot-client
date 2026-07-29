@@ -1,426 +1,132 @@
-<!-- LANDING & CLAIMANT ONBOARDING CONTAINER -->
-<div class="min-h-screen bg-slate-50 flex flex-col justify-between py-12 px-4 sm:px-6 lg:px-8 font-sans transition-all duration-300">
-  
+<div class="min-h-screen bg-slate-50 flex flex-col justify-between py-12 px-4 sm:px-6 lg:px-8 font-sans">
   <div class="max-w-md w-full mx-auto space-y-8 my-auto">
-    <!-- Header branding segment -->
     <div class="text-center select-none">
-      <img
-        class="brand-logo mx-auto mb-4 animate-pulse"
-        src="brand/jobseeker-copilot-logo.svg"
-        alt="Job Seeker Copilot logo"
-        width="52"
-        height="52" />
+      <img class="brand-logo mx-auto mb-4" src="brand/jobseeker-copilot-logo.svg"
+           alt="Job Seeker Copilot logo" width="52" height="52" />
       <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 font-display">
         Jobseeker Copilot
       </h1>
-      <p class="text-xs sm:text-sm text-slate-500 mt-1.5 font-medium uppercase tracking-wider">
-        Job search planning and application support
+      <p class="text-xs sm:text-sm text-slate-600 mt-1.5 font-medium">
+        Create your account now. Add job preferences and evidence when you are ready.
       </p>
-      <div class="inline-flex items-center gap-1.5 mt-3.5 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100 text-[10px] font-extrabold tracking-wide">
-        <mat-icon class="text-xs text-emerald-600">verified</mat-icon>
-        Supportive career workspace
-      </div>
     </div>
 
-    <!-- MAIN FORM WINDOW CARD -->
-    <div id="auth-panel-card" class="bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 sm:p-8 space-y-6">
-      <!-- Top switcher tabs: Create Account vs Sign In -->
-      <div class="flex p-1 bg-slate-100 border border-slate-200/50 rounded-2xl select-none"
-           role="tablist"
-           aria-label="Account access">
-        <button id="tab-btn-create"
-                type="button"
-                role="tab"
+    <div id="auth-panel-card" class="bg-white rounded-3xl border border-slate-200 shadow-md p-6 sm:p-8 space-y-6">
+      <div class="flex p-1 bg-slate-100 border border-slate-200 rounded-2xl" role="tablist" aria-label="Account access">
+        <button id="tab-btn-create" type="button" role="tab"
                 [attr.aria-selected]="mode() === 'create'"
                 [attr.tabindex]="mode() === 'create' ? 0 : -1"
                 aria-controls="mode-create-segment"
-                (keydown)="onModeTabKeydown($event)"
-                (click)="setMode('create')"
-                class="flex-1 py-2.5 text-2xs font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                [class.bg-white]="mode() === 'create'"
-                [class.text-slate-900]="mode() === 'create'"
-                [class.shadow-2xs]="mode() === 'create'"
+                (keydown)="onModeTabKeydown($event)" (click)="setMode('create')"
+                class="flex-1 py-2.5 text-xs font-extrabold rounded-xl cursor-pointer"
+                [class.bg-white]="mode() === 'create'" [class.text-slate-900]="mode() === 'create'"
                 [class.text-slate-700]="mode() !== 'create'">
-          <mat-icon class="text-sm">person_add</mat-icon>
-          Create Profile
+          Create account
         </button>
-        <button id="tab-btn-signin"
-                type="button"
-                role="tab"
+        <button id="tab-btn-signin" type="button" role="tab"
                 [attr.aria-selected]="mode() === 'signin'"
                 [attr.tabindex]="mode() === 'signin' ? 0 : -1"
                 aria-controls="mode-signin-segment"
-                (keydown)="onModeTabKeydown($event)"
-                (click)="setMode('signin')"
-                class="flex-1 py-2.5 text-2xs font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                [class.bg-white]="mode() === 'signin'"
-                [class.text-slate-900]="mode() === 'signin'"
-                [class.shadow-2xs]="mode() === 'signin'"
+                (keydown)="onModeTabKeydown($event)" (click)="setMode('signin')"
+                class="flex-1 py-2.5 text-xs font-extrabold rounded-xl cursor-pointer"
+                [class.bg-white]="mode() === 'signin'" [class.text-slate-900]="mode() === 'signin'"
                 [class.text-slate-700]="mode() !== 'signin'">
-          <mat-icon class="text-sm">login</mat-icon>
-          Sign In
+          Sign in
         </button>
       </div>
 
-      <!-- Error Feedback Panel -->
       @if (errorMessage()) {
-        <div id="auth-error-alert"
-             role="alert"
-             aria-live="assertive"
-             tabindex="-1"
-             class="flex gap-2.5 items-start bg-rose-50 border border-rose-150 text-rose-800 px-4 py-3.5 rounded-2xl text-2xs font-semibold animate-fade-in text-left shadow-sm">
-          <mat-icon class="text-sm shrink-0 leading-none text-rose-600 mt-0.5">error_outline</mat-icon>
-          <div>
-            <span class="block text-slate-900 font-extrabold text-3xs uppercase tracking-wider mb-0.5">Something needs attention</span>
-            {{ errorMessage() }}
-          </div>
+        <div id="auth-error-alert" role="alert" aria-live="assertive" tabindex="-1"
+             class="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-2xl text-xs font-semibold">
+          {{ errorMessage() }}
         </div>
       }
 
-      <!-- ================= CREATE ACCOUNT WORDING & STEP COMPONENT ================= -->
       @if (mode() === 'create') {
-        <div id="mode-create-segment"
-             role="tabpanel"
-             aria-labelledby="tab-btn-create"
+        <div id="mode-create-segment" role="tabpanel" aria-labelledby="tab-btn-create"
              [attr.aria-busy]="isLoading()">
-          <form ngNoForm
-                novalidate
-                class="space-y-4 animate-fade-in"
-                (submit)="submitRegistrationStep(); $event.preventDefault()">
-          
-          <!-- Onboarding step indicators -->
-          <div class="flex items-center justify-between px-1.5 pb-2 text-slate-600 border-b border-slate-100 select-none">
-            <span class="text-2xs font-black uppercase tracking-widest text-slate-600">Step {{ currentStep() }} of 3</span>
-            <div class="flex gap-1.5">
-              <span class="h-1.5 w-6 rounded-full transition-colors" [class.bg-indigo-600]="currentStep() >= 1" [class.bg-slate-200]="currentStep() < 1"></span>
-              <span class="h-1.5 w-6 rounded-full transition-colors" [class.bg-indigo-600]="currentStep() >= 2" [class.bg-slate-200]="currentStep() < 2"></span>
-              <span class="h-1.5 w-6 rounded-full transition-colors" [class.bg-indigo-600]="currentStep() >= 3" [class.bg-slate-200]="currentStep() < 3"></span>
+          <form ngNoForm novalidate class="space-y-4"
+                (submit)="completeRegistration(); $event.preventDefault()">
+            <div>
+              <h2 class="text-base font-extrabold text-slate-900">Your account details</h2>
+              <p class="text-xs text-slate-600 mt-1">No CV, work history, skills or postcode required.</p>
             </div>
-          </div>
 
-          <!-- STEP 1: PERSONAL & CREDENTIALS -->
-          @if (currentStep() === 1) {
-            <div id="step-1" class="space-y-4 animate-fade-in text-left">
-              <div>
-                <h2 tabindex="-1" class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Your account details</h2>
-                <p class="text-2xs text-slate-600 mt-0.5">Add the details you will use to sign in.</p>
-              </div>
-
-              <div class="flex flex-col gap-1">
-                <label for="reg-name" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Full Name</label>
-                <div class="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white">
-                  <mat-icon class="absolute left-3 text-slate-400 text-sm">person</mat-icon>
-                  <input id="reg-name"
-                         type="text"
-                         autocomplete="name"
-                         required
-                         [attr.aria-describedby]="isRegistrationFieldInvalid('name') ? 'reg-name-help reg-name-error' : 'reg-name-help'"
-                         [attr.aria-invalid]="isRegistrationFieldInvalid('name')"
-                         placeholder="Alex Taylor"
-                         class="text-xs pl-10 pr-3 py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
-                         [value]="formName()"
-                         (input)="formName.set($any($event.target).value)" />
-                </div>
-                <p id="reg-name-help" class="text-[10px] text-slate-500">Use between 1 and 100 characters.</p>
-                @if (isRegistrationFieldInvalid('name')) {
-                  <p id="reg-name-error" class="text-[10px] font-semibold text-rose-700">{{ registrationFieldError('name') }}</p>
-                }
-              </div>
-
-              <div class="flex flex-col gap-1">
-                <label for="reg-email" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Contact Email Address</label>
-                <div class="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white">
-                  <mat-icon class="absolute left-3 text-slate-400 text-sm">email</mat-icon>
-                  <input id="reg-email"
-                         type="email"
-                         autocomplete="email"
-                         required
-                         [attr.aria-describedby]="isRegistrationFieldInvalid('email') ? 'reg-email-help reg-email-error' : 'reg-email-help'"
-                         [attr.aria-invalid]="isRegistrationFieldInvalid('email')"
-                         placeholder="alex.taylor@example.com"
-                         class="text-xs pl-10 pr-3 py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
-                         [value]="formEmail()"
-                         (input)="formEmail.set($any($event.target).value)" />
-                </div>
-                <p id="reg-email-help" class="text-[10px] text-slate-500">Enter a valid email address.</p>
-                @if (isRegistrationFieldInvalid('email')) {
-                  <p id="reg-email-error" class="text-[10px] font-semibold text-rose-700">{{ registrationFieldError('email') }}</p>
-                }
-              </div>
-
-              <div class="flex flex-col gap-1">
-                <label for="reg-password" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Password</label>
-                <div class="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white">
-                  <mat-icon class="absolute left-3 text-slate-400 text-sm">lock</mat-icon>
-                  <input id="reg-password"
-                         type="password"
-                         autocomplete="new-password"
-                         required
-                         [attr.aria-describedby]="isRegistrationFieldInvalid('password') ? 'reg-password-help reg-password-error' : 'reg-password-help'"
-                         [attr.aria-invalid]="isRegistrationFieldInvalid('password')"
-                         placeholder="••••••••"
-                         class="text-xs pl-10 pr-3 py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
-                         [value]="formPassword()"
-                         (input)="formPassword.set($any($event.target).value)" />
-                </div>
-                <p id="reg-password-help" class="text-[10px] text-slate-600">Use 15 to 128 characters. Spaces are kept exactly as entered.</p>
-                @if (isRegistrationFieldInvalid('password')) {
-                  <p id="reg-password-error" class="text-[10px] font-semibold text-rose-700">{{ registrationFieldError('password') }}</p>
-                }
-              </div>
+            <div class="flex flex-col gap-1">
+              <label for="reg-name" class="text-xs font-bold text-slate-700">Full name</label>
+              <input id="reg-name" type="text" autocomplete="name" required
+                     [attr.aria-invalid]="isRegistrationFieldInvalid('name')"
+                     [attr.aria-describedby]="isRegistrationFieldInvalid('name') ? 'reg-name-help reg-name-error' : 'reg-name-help'"
+                     [value]="formName()" (input)="formName.set($any($event.target).value)"
+                     class="text-sm px-3 py-3 bg-slate-50 border border-slate-300 rounded-xl" />
+              <p id="reg-name-help" class="text-[11px] text-slate-600">Use between 1 and 100 characters.</p>
+              @if (isRegistrationFieldInvalid('name')) {
+                <p id="reg-name-error" class="text-[11px] font-semibold text-rose-700">{{ registrationFieldError('name') }}</p>
+              }
             </div>
-          }
 
-          <!-- STEP 2: PROFESSIONAL BACKGROUND (SKILLS & HISTORY) -->
-          @if (currentStep() === 2) {
-            <div id="step-2" class="space-y-4 animate-fade-in text-left">
-              <div>
-                <h2 tabindex="-1" class="text-xs font-extrabold text-slate-900 uppercase tracking-wider px-1">Professional History & Skills</h2>
-                <p class="text-2xs text-slate-600 mt-0.5 px-1">Describe your strengths so the copilot can find more relevant roles.</p>
-              </div>
-
-              <!-- Skills Tag Input (using [(tags)] two-way binding to signal) -->
-              <app-tag-input label="Core Skills"
-                             placeholder="Type a skill and press Enter"
-                             [error]="validationAttempted() && localSkills().length === 0 ? 'Add at least one core skill.' : ''"
-                             [(tags)]="localSkills">
-              </app-tag-input>
-
-              <!-- Target Roles Tag Input -->
-              <app-tag-input label="Target Roles & Aspirations"
-                             placeholder="Type a target role and press Enter"
-                             [(tags)]="localTargetRoles">
-              </app-tag-input>
-
-              <!-- Target Weekly Hours -->
-              <div class="flex flex-col gap-1.5">
-                <label for="registration-target-hours" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Target Weekly Hours</label>
-                <select id="registration-target-hours"
-                        [ngModel]="localTargetWeeklyHours()"
-                        (ngModelChange)="localTargetWeeklyHours.set($event)"
-                        class="text-xs font-semibold py-2.5 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-800 cursor-pointer">
-                  @for (opt of targetHoursOptions; track opt.value) {
-                    <option [value]="opt.value">{{ opt.label }}</option>
-                  }
-                </select>
-              </div>
-
-              <!-- Qualifications (Step 2 - repeatable cards) -->
-              <div class="flex flex-col gap-1.5">
-                <p class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Qualifications</p>
-                <app-qualification-form [(items)]="localQualifications"></app-qualification-form>
-              </div>
-
-              <!-- Work History (Step 3 - repeatable cards) -->
-              <div class="flex flex-col gap-1.5">
-                <p class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Work History</p>
-                <app-role-form [(items)]="localRoles"></app-role-form>
-              </div>
+            <div class="flex flex-col gap-1">
+              <label for="reg-email" class="text-xs font-bold text-slate-700">Email address</label>
+              <input id="reg-email" type="email" autocomplete="email" required
+                     [attr.aria-invalid]="isRegistrationFieldInvalid('email')"
+                     [value]="formEmail()" (input)="formEmail.set($any($event.target).value)"
+                     class="text-sm px-3 py-3 bg-slate-50 border border-slate-300 rounded-xl" />
+              @if (isRegistrationFieldInvalid('email')) {
+                <p class="text-[11px] font-semibold text-rose-700">{{ registrationFieldError('email') }}</p>
+              }
             </div>
-          }
 
-          <!-- STEP 3: WORKSEARCH OBJECTIVES & COMMITMENTS -->
-          @if (currentStep() === 3) {
-            <div id="step-3" class="space-y-4 animate-fade-in text-left">
-              <div>
-                <h2 tabindex="-1" class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Job search preferences</h2>
-                <p class="text-2xs text-slate-600 mt-0.5 font-medium">Set your location and commute preferences.</p>
-              </div>
-
-              <!-- Postcode & Commute bounds radius selection -->
-              <div class="grid grid-cols-2 gap-3.5">
-                <div class="flex flex-col gap-1 relative">
-                  <label for="reg-postcode" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Home Location</label>
-                  <div class="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white pl-3.5 pr-2">
-                    <input id="reg-postcode"
-                           data-testid="registration-home-location-input"
-                           type="text"
-                           autocomplete="postal-code"
-                           role="combobox"
-                           aria-autocomplete="list"
-                           required
-                           [attr.aria-controls]="showLocationDropdown() && locationSuggestions().length > 0 ? 'registration-location-suggestions' : null"
-                           [attr.aria-expanded]="showLocationDropdown() && locationSuggestions().length > 0"
-                           [attr.aria-invalid]="isRegistrationFieldInvalid('postcode')"
-                           placeholder="Leeds, G1, etc."
-                           class="text-xs py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
-                           [value]="localPostcode()"
-                           [attr.aria-busy]="locationLookup().status === 'loading'"
-                           [attr.aria-describedby]="locationLookup().message ? 'registration-location-status' : null"
-                           (input)="onLocationInputChange($any($event.target).value)"
-                           (focus)="showLocationDropdown.set(locationSuggestions().length > 0)"
-                           (blur)="hideLocationDropdownWithDelay()" />
-                  </div>
-
-                  @if (locationLookup().message) {
-                    <p id="registration-location-status"
-                       data-testid="registration-location-status"
-                       [attr.role]="locationLookup().status === 'invalid' || locationLookup().status === 'rate-limited' || locationLookup().status === 'unavailable' ? 'alert' : 'status'"
-                       aria-live="polite"
-                       class="text-[10px] font-semibold text-slate-600 mt-1">
-                      {{ locationLookup().message }}
-                    </p>
-                  }
-                  
-                  @if (showLocationDropdown() && locationSuggestions().length > 0) {
-                    <div id="registration-location-suggestions"
-                         role="region"
-                         aria-label="Location suggestions"
-                         data-testid="registration-location-suggestions"
-                         class="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-250 rounded-xl shadow-lg max-h-48 overflow-y-auto divide-y divide-slate-100">
-                      @for (loc of locationSuggestions(); track loc.id) {
-                        <button type="button"
-                                (click)="selectLocation(loc)"
-                                class="w-full text-left px-3 py-2 hover:bg-slate-50 flex flex-col transition-colors cursor-pointer text-slate-700">
-                          <span class="text-xs font-bold">{{ loc.name }}</span>
-                          <span class="text-[9px] font-black text-slate-600 uppercase tracking-wider">{{ loc.region }} ({{ loc.postcode }})</span>
-                        </button>
-                      }
-                    </div>
-                  }
-                </div>
-
-                <div class="flex flex-col gap-1">
-                  <label for="reg-commute" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Commute Range</label>
-                  <div class="relative bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white px-3.5 flex items-center">
-                    <select id="reg-commute"
-                            class="text-xs font-semibold py-3 w-full bg-transparent border-none focus:outline-none text-slate-800 cursor-pointer appearance-none pr-8"
-                            [ngModel]="localCommuteRange()"
-                            (ngModelChange)="localCommuteRange.set(+$event)">
-                      @for (dist of commuteDistanceOptions; track dist) {
-                        <option [value]="dist">within {{ dist }} miles</option>
-                      }
-                    </select>
-                    <mat-icon class="text-slate-400 text-sm select-none absolute right-3 pointer-events-none">expand_more</mat-icon>
-                  </div>
-                </div>
-              </div>
-
+            <div class="flex flex-col gap-1">
+              <label for="reg-password" class="text-xs font-bold text-slate-700">Password</label>
+              <input id="reg-password" type="password" autocomplete="new-password" required
+                     [attr.aria-invalid]="isRegistrationFieldInvalid('password')"
+                     [value]="formPassword()" (input)="formPassword.set($any($event.target).value)"
+                     class="text-sm px-3 py-3 bg-slate-50 border border-slate-300 rounded-xl" />
+              <p class="text-[11px] text-slate-600">Use 15 to 128 characters. Spaces are kept exactly.</p>
+              @if (isRegistrationFieldInvalid('password')) {
+                <p class="text-[11px] font-semibold text-rose-700">{{ registrationFieldError('password') }}</p>
+              }
             </div>
-          }
 
-          <!-- Flow Buttons Footer -->
-          <div class="flex gap-2.5 pt-2">
-            @if (currentStep() > 1) {
-              <button id="btn-back-step"
-                      type="button"
-                      (click)="prevStep()"
-                      class="flex-1 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 py-3 rounded-xl cursor-pointer transition-colors">
-                Back
-              </button>
-            }
-            
-            @if (currentStep() < 3) {
-              <button id="btn-next-step"
-                      type="submit"
-                      class="flex-1 text-xs font-bold uppercase tracking-wide text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-45 disabled:pointer-events-none py-3 rounded-xl cursor-pointer transition-colors shadow-sm">
-                Next Step
-              </button>
-            } @else {
-              <button id="btn-submit-signup"
-                      type="submit"
-                      [disabled]="isLoading()"
-                      class="flex-1 text-xs font-extrabold uppercase tracking-wide text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-45 disabled:pointer-events-none py-3 rounded-xl cursor-pointer transition-colors shadow-md shadow-indigo-100 flex items-center justify-center gap-1.5 duration-200">
-                @if (isLoading()) {
-                  <mat-icon class="animate-spin text-sm">hourglass_empty</mat-icon>
-                  Creating profile...
-                } @else {
-                  Create profile
-                  <mat-icon class="text-sm">arrow_forward</mat-icon>
-                }
-              </button>
-            }
-          </div>
-
-          <p class="sr-only" role="status" aria-live="polite">
-            @if (isLoading()) { Creating your profile. Please wait. }
-          </p>
+            <button id="btn-submit-signup" type="submit" [disabled]="isLoading()"
+                    class="w-full py-3 rounded-xl bg-slate-900 text-white text-sm font-bold disabled:opacity-50">
+              {{ isLoading() ? 'Creating account…' : 'Create account' }}
+            </button>
           </form>
         </div>
-      }
-
-      <!-- ================= SIGN IN MODE ================= -->
-      @if (mode() === 'signin') {
-        <div id="mode-signin-segment"
-             role="tabpanel"
-             aria-labelledby="tab-btn-signin"
+      } @else {
+        <div id="mode-signin-segment" role="tabpanel" aria-labelledby="tab-btn-signin"
              [attr.aria-busy]="isLoading()">
-          <form ngNoForm
-                novalidate
-                class="space-y-4 animate-fade-in text-left"
+          <form ngNoForm novalidate class="space-y-4"
                 (submit)="submitLogin(); $event.preventDefault()">
-          
-          <div class="flex flex-col gap-1">
-            <label for="login-email" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Email Address</label>
-            <div class="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white">
-              <mat-icon class="absolute left-3 text-slate-400 text-sm">email</mat-icon>
-              <input id="login-email"
-                     type="email"
-                     autocomplete="email"
-                     required
-                     [attr.aria-describedby]="isLoginFieldInvalid('email') ? 'login-email-error' : null"
+            <div>
+              <h2 class="text-base font-extrabold text-slate-900">Welcome back</h2>
+              <p class="text-xs text-slate-600 mt-1">Continue your profile whenever you are ready.</p>
+            </div>
+            <div class="flex flex-col gap-1">
+              <label for="login-email" class="text-xs font-bold text-slate-700">Email address</label>
+              <input id="login-email" type="email" autocomplete="email" required
                      [attr.aria-invalid]="isLoginFieldInvalid('email')"
-                     placeholder="clara.oswald@gmail.com"
-                     class="text-xs pl-10 pr-3 py-3.5 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
-                     [value]="loginEmail()"
-                     (input)="loginEmail.set($any($event.target).value)" />
+                     [value]="loginEmail()" (input)="loginEmail.set($any($event.target).value)"
+                     class="text-sm px-3 py-3 bg-slate-50 border border-slate-300 rounded-xl" />
             </div>
-            @if (isLoginFieldInvalid('email')) {
-              <p id="login-email-error" class="text-[10px] font-semibold text-rose-700">{{ loginFieldError('email') }}</p>
-            }
-          </div>
-
-          <div class="flex flex-col gap-1">
-            <label for="login-password" class="text-3xs uppercase font-extrabold tracking-widest text-slate-500">Password</label>
-            <div class="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl focus-within:border-slate-400 focus-within:bg-white">
-              <mat-icon class="absolute left-3 text-slate-400 text-sm">lock</mat-icon>
-              <input id="login-password"
-                     type="password"
-                     autocomplete="current-password"
-                     required
-                     [attr.aria-describedby]="isLoginFieldInvalid('password') ? 'login-password-error' : null"
+            <div class="flex flex-col gap-1">
+              <label for="login-password" class="text-xs font-bold text-slate-700">Password</label>
+              <input id="login-password" type="password" autocomplete="current-password" required
                      [attr.aria-invalid]="isLoginFieldInvalid('password')"
-                     placeholder="••••••••"
-                     class="text-xs pl-10 pr-3 py-3.5 w-full bg-transparent border-none focus:outline-none text-slate-800 font-semibold"
-                     [value]="loginPassword()"
-                     (input)="loginPassword.set($any($event.target).value)" />
+                     [value]="loginPassword()" (input)="loginPassword.set($any($event.target).value)"
+                     class="text-sm px-3 py-3 bg-slate-50 border border-slate-300 rounded-xl" />
             </div>
-            @if (isLoginFieldInvalid('password')) {
-              <p id="login-password-error" class="text-[10px] font-semibold text-rose-700">{{ loginFieldError('password') }}</p>
-            }
-            <a href="/forgot-password" class="text-xs font-bold text-blue-700 hover:underline">
+            <button type="submit" [disabled]="isLoading()"
+                    class="w-full py-3 rounded-xl bg-slate-900 text-white text-sm font-bold disabled:opacity-50">
+              {{ isLoading() ? 'Signing in…' : 'Sign in' }}
+            </button>
+            <a href="/forgot-password" class="block text-center text-xs font-semibold text-indigo-700">
               Forgot your password?
             </a>
-          </div>
-
-          <button id="btn-submit-signin"
-                  type="submit"
-                  [disabled]="isLoading()"
-                  class="w-full text-xs font-extrabold uppercase tracking-widest text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-45 disabled:pointer-events-none py-3.5 rounded-xl shadow-md transition-all cursor-pointer text-center flex items-center justify-center gap-2">
-            @if (isLoading()) {
-              <mat-icon class="animate-spin text-sm">hourglass_empty</mat-icon>
-              Signing in...
-            } @else {
-              Sign in
-            }
-          </button>
-
-          <p class="sr-only" role="status" aria-live="polite">
-            @if (isLoading()) { Signing in. Please wait. }
-          </p>
           </form>
         </div>
       }
-
     </div>
-
-    <!-- UK digital standards guidelines citation -->
-    <div class="text-center select-none">
-      <p class="text-[10px] text-slate-600 leading-relaxed max-w-[340px] mx-auto">
-        Jobseeker Copilot helps organise your job search. You stay in control of every application and message.
-      </p>
-    </div>
-
   </div>
-
 </div>

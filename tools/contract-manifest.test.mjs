@@ -68,13 +68,13 @@ test('pins the reporting summary and evidence contract', async () => {
   assert.ok(contract.paths['/api/v1/reports/evidence.txt']);
 });
 
-test('pins the token-free UMG browser-session contract', async () => {
+test('pins the progressive-profile and Evidence Library UMG browser contract', async () => {
   const lock = await verifyContractManifest(rootDir);
   const umg = lock.contracts.find(({id}) => id === 'user-management-gateway');
   const contract = JSON.parse(await readFile(resolve(rootDir, umg.path), 'utf8'));
 
-  assert.equal(umg.version, '2.0.0');
-  assert.equal(contract.info.version, '2.0.0');
+  assert.equal(umg.version, '2.1.0');
+  assert.equal(contract.info.version, '2.1.0');
   assert.equal(contract.components.schemas.User.properties.token, undefined);
   assert.equal(contract.components.securitySchemes.browserSession.in, 'cookie');
   assert.equal(contract.components.securitySchemes.browserRefresh.in, 'cookie');
@@ -122,8 +122,29 @@ test('pins the token-free UMG browser-session contract', async () => {
     maxLength: 128,
     minLength: 1,
   });
+  assert.equal(
+    contract.components.schemas.RegisterRequest.required.includes('profile'),
+    false,
+  );
+  assert.equal(contract.components.schemas.PartialDate.type, 'object');
+  assert.deepEqual(
+    contract.components.schemas.EvidenceEntry.properties.supersededByEntryId.type,
+    ['string', 'null'],
+  );
+  assert.ok(contract.paths['/api/auth/profile'].patch);
+  assert.ok(contract.paths['/api/auth/evidence'].post);
+  assert.ok(contract.paths['/api/auth/evidence/{entryId}/confirm'].post);
+  assert.ok(contract.paths['/api/auth/evidence/{entryId}/archive'].post);
   assert.deepEqual(umg.requiredPaths, [
     '/api/auth/csrf',
+    '/api/auth/evidence',
+    '/api/auth/evidence/{entryId}',
+    '/api/auth/evidence/{entryId}/archive',
+    '/api/auth/evidence/{entryId}/confirm',
+    '/api/auth/evidence/{entryId}/hide',
+    '/api/auth/evidence/{entryId}/restore',
+    '/api/auth/evidence/{entryId}/show',
+    '/api/auth/evidence/{entryId}/supersede',
     '/api/auth/login',
     '/api/auth/logout',
     '/api/auth/password-reset/complete',

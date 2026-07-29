@@ -16,19 +16,7 @@ interface ProfileInputShape {
 export const emptyUserProfile = (): UserProfile => ({
   skills: [],
   qualifications: [],
-  roles: [],
-  aspirations: {
-    targetRoles: [],
-    targetWeeklyHours: AspirationsTargetWeeklyHoursEnum.FullTime
-  },
-  workPreferences: {
-    location: {
-      postcode: '',
-      region: '',
-      adminDistrict: ''
-    },
-    commuteRange: 10
-  }
+  roles: []
 });
 
 export const splitTags = (value?: string | string[]): string[] => {
@@ -39,30 +27,21 @@ export const splitTags = (value?: string | string[]): string[] => {
     .filter(Boolean);
 };
 
-const targetHoursLabelToEnum = (value?: string): TargetWeeklyHours => {
-  if (!value) return AspirationsTargetWeeklyHoursEnum.FullTime;
+const targetHoursLabelToEnum = (value?: string): TargetWeeklyHours | undefined => {
+  if (!value) return undefined;
   if (value.includes('16-30')) return AspirationsTargetWeeklyHoursEnum.PartTime1630;
   if (value.includes('Under 16')) return AspirationsTargetWeeklyHoursEnum.PartTimeUnder16;
   if (value.includes('Flexible')) return AspirationsTargetWeeklyHoursEnum.Flexible;
-  return AspirationsTargetWeeklyHoursEnum.FullTime;
+  return undefined;
 };
 
-const commuteToNumber = (value?: string | number): number => {
+const commuteToNumber = (value?: string | number): number | undefined => {
   if (typeof value === 'number') return value;
   const match = `${value || ''}`.match(/\d+/);
-  return match ? Number(match[0]) : 10;
+  return match ? Number(match[0]) : undefined;
 };
 
-const defaultWorkPreferences = (): WorkPreferences => emptyUserProfile().workPreferences ?? {
-  location: {
-    postcode: '',
-    region: '',
-    adminDistrict: ''
-  },
-  commuteRange: 10
-};
-
-const parseWorkPrefs = (value?: string | WorkPreferences): WorkPreferences => {
+const parseWorkPrefs = (value?: string | WorkPreferences): WorkPreferences | undefined => {
   if (value && typeof value === 'object' && 'location' in value) return value as WorkPreferences;
   if (value && typeof value === 'object') {
     const wp = value as Record<string, string | number>;
@@ -75,7 +54,7 @@ const parseWorkPrefs = (value?: string | WorkPreferences): WorkPreferences => {
       commuteRange: commuteToNumber(wp['distance'] || wp['commuteRange'])
     };
   }
-  if (!value) return defaultWorkPreferences();
+  if (!value) return undefined;
 
   try {
     const parsed = JSON.parse(value) as Record<string, string | number>;
@@ -102,6 +81,7 @@ const parseWorkPrefs = (value?: string | WorkPreferences): WorkPreferences => {
 export const normaliseProfile = (profile?: ProfileInputShape | UserProfile | null): UserProfile => {
   const base = emptyUserProfile();
   if (!profile) return base;
+  const versionedProfile = profile as UserProfile;
 
   const aspirations = typeof profile.aspirations === 'object' && profile.aspirations !== null
     ? profile.aspirations
@@ -110,29 +90,53 @@ export const normaliseProfile = (profile?: ProfileInputShape | UserProfile | nul
   const hasStoredWorkPrefs = (p: ProfileInputShape | UserProfile): p is ProfileInputShape =>
     'workPrefs' in p;
 
-  const baseAspirations = base.aspirations ?? { targetRoles: [], targetWeeklyHours: AspirationsTargetWeeklyHoursEnum.FullTime };
-  const workPreferences: WorkPreferences = profile.workPreferences || (hasStoredWorkPrefs(profile) ? parseWorkPrefs(profile.workPrefs) : defaultWorkPreferences());
+  const workPreferences = profile.workPreferences
+    || (hasStoredWorkPrefs(profile) ? parseWorkPrefs(profile.workPrefs) : undefined);
+  const legacyTargetHours = hasStoredWorkPrefs(profile)
+    ? targetHoursLabelToEnum(typeof profile.workPrefs === 'string' ? profile.workPrefs : undefined)
+    : undefined;
+  const targetRoles = aspirations
+    ? splitTags(aspirations.targetRoles)
+    : splitTags(profile.aspirations as string);
+  const normalisedAspirations = aspirations || targetRoles.length > 0 || legacyTargetHours
+    ? {
+        targetRoles,
+        ...(aspirations?.targetWeeklyHours || legacyTargetHours
+          ? {targetWeeklyHours: aspirations?.targetWeeklyHours || legacyTargetHours}
+          : {}),
+      }
+    : undefined;
 
   return {
+    ...(versionedProfile.id == null ? {} : {id: versionedProfile.id}),
+    ...(versionedProfile.userId == null ? {} : {userId: versionedProfile.userId}),
+    ...(versionedProfile.revision == null ? {} : {revision: versionedProfile.revision}),
+    ...(versionedProfile.revisionId == null
+      ? {}
+      : {revisionId: versionedProfile.revisionId}),
+    ...(versionedProfile.contentDigest == null
+      ? {}
+      : {contentDigest: versionedProfile.contentDigest}),
     skills: splitTags(profile.skills),
     qualifications: (profile.qualifications || []).filter(isValidQualification),
     roles: (profile.roles || []).filter(isValidRole),
-    aspirations: {
-      targetRoles: aspirations
-        ? splitTags(aspirations.targetRoles)
-        : splitTags(profile.aspirations as string),
-      targetWeeklyHours: aspirations?.targetWeeklyHours || (hasStoredWorkPrefs(profile) ? targetHoursLabelToEnum(typeof profile.workPrefs === 'string' ? profile.workPrefs : undefined) : baseAspirations.targetWeeklyHours)
-    },
-    workPreferences: {
-      location: {
-        postcode: (workPreferences.location?.postcode || '').trim().toUpperCase(),
-        region: workPreferences.location?.region || '',
-        adminDistrict: workPreferences.location?.adminDistrict?.trim() || '',
-        latitude: workPreferences.location?.latitude,
-        longitude: workPreferences.location?.longitude
+    ...(normalisedAspirations ? {aspirations: normalisedAspirations} : {}),
+    ...(workPreferences ? {
+      workPreferences: {
+        ...workPreferences,
+        ...(workPreferences.location ? {
+          location: {
+            ...workPreferences.location,
+            postcode: workPreferences.location.postcode?.trim().toUpperCase(),
+            region: workPreferences.location.region?.trim(),
+            adminDistrict: workPreferences.location.adminDistrict?.trim(),
+          },
+        } : {}),
+        ...(commuteToNumber(workPreferences.commuteRange) == null
+          ? {}
+          : {commuteRange: commuteToNumber(workPreferences.commuteRange)}),
       },
-      commuteRange: commuteToNumber(workPreferences.commuteRange)
-    }
+    } : {}),
   };
 };
 
@@ -146,20 +150,28 @@ export const serialiseProfile = (profile: UserProfile): UserProfile => ({
   skills: splitTags(profile.skills),
   qualifications: (profile.qualifications || []).filter(isValidQualification),
   roles: (profile.roles || []).filter(isValidRole),
-  aspirations: {
-    targetRoles: splitTags(profile.aspirations?.targetRoles),
-    targetWeeklyHours: profile.aspirations?.targetWeeklyHours || AspirationsTargetWeeklyHoursEnum.FullTime
-  },
-  workPreferences: {
-    location: {
-      postcode: profile.workPreferences?.location?.postcode?.trim().toUpperCase() || '',
-      region: profile.workPreferences?.location?.region?.trim() || '',
-      adminDistrict: profile.workPreferences?.location?.adminDistrict?.trim() || '',
-      latitude: profile.workPreferences?.location?.latitude,
-      longitude: profile.workPreferences?.location?.longitude
+  ...(profile.aspirations ? {
+    aspirations: {
+      targetRoles: splitTags(profile.aspirations.targetRoles),
+      ...(profile.aspirations.targetWeeklyHours
+        ? {targetWeeklyHours: profile.aspirations.targetWeeklyHours}
+        : {}),
     },
-    commuteRange: commuteToNumber(profile.workPreferences?.commuteRange)
-  }
+  } : {}),
+  ...(profile.workPreferences ? {
+    workPreferences: {
+      ...profile.workPreferences,
+      ...(profile.workPreferences.location ? {
+        location: {
+          ...profile.workPreferences.location,
+          postcode: profile.workPreferences.location.postcode?.trim().toUpperCase(),
+          region: profile.workPreferences.location.region?.trim(),
+          adminDistrict: profile.workPreferences.location.adminDistrict?.trim(),
+        },
+      } : {}),
+      commuteRange: commuteToNumber(profile.workPreferences.commuteRange),
+    },
+  } : {}),
 });
 
 export const profileToSearchText = (profile: UserProfile) => ({
@@ -169,7 +181,9 @@ export const profileToSearchText = (profile: UserProfile) => ({
   workPrefs: JSON.stringify({
     hours: profile.aspirations?.targetWeeklyHours,
     postcode: profile.workPreferences?.location?.postcode,
-    distance: `${profile.workPreferences?.commuteRange || 10} miles`,
+    distance: profile.workPreferences?.commuteRange == null
+      ? undefined
+      : `${profile.workPreferences.commuteRange} miles`,
     region: profile.workPreferences?.location?.region,
     adminDistrict: profile.workPreferences?.location?.adminDistrict,
     latitude: profile.workPreferences?.location?.latitude,

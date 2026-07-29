@@ -1,0 +1,341 @@
+<section class="evidence-workspace bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+  <header class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+    <div>
+      <p class="text-[11px] font-extrabold uppercase tracking-wider text-indigo-700">Reusable application evidence</p>
+      <h2 class="text-xl font-extrabold text-slate-900">Evidence Library</h2>
+      <p class="text-xs text-slate-600 mt-1">
+        Drafts are private working copies. “Confirmed” means you confirmed the wording; it is not independently verified.
+      </p>
+    </div>
+    <button type="button" (click)="openCreate()"
+            class="rounded-xl bg-slate-900 text-white px-4 py-2 text-xs font-bold">
+      <mat-icon class="align-middle text-base">add</mat-icon> Add evidence
+    </button>
+  </header>
+
+  @if (migratedReviewCount() > 0) {
+    <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4" role="status">
+      <strong class="block text-sm text-slate-900">We moved your existing work history into the new Evidence Library.</strong>
+      <p class="text-xs text-slate-700 mt-1">
+        Please review and confirm {{ migratedReviewCount() }} item(s) before they are used in new documents.
+      </p>
+    </div>
+  }
+
+  @if (error()) {
+    <p role="alert" class="mt-4 rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs font-semibold text-rose-800">
+      {{ error() }}
+    </p>
+  }
+
+  <div class="mt-5 flex flex-wrap gap-3 items-end">
+    <label class="text-xs font-bold text-slate-700">
+      Category
+      <select [ngModel]="categoryFilter()" (ngModelChange)="categoryFilter.set($event)"
+              class="block mt-1 rounded-lg border border-slate-300 px-2 py-2">
+        <option value="ALL">All categories</option>
+        @for (option of categories; track option[0]) {
+          <option [value]="option[0]">{{ option[1] }}</option>
+        }
+      </select>
+    </label>
+    <label class="text-xs font-bold text-slate-700">
+      Readiness
+      <select [ngModel]="stateFilter()" (ngModelChange)="stateFilter.set($event)"
+              class="block mt-1 rounded-lg border border-slate-300 px-2 py-2">
+        <option value="ALL">All states</option>
+        <option value="DRAFT">Draft</option>
+        <option value="CONFIRMED">Confirmed</option>
+        <option value="ARCHIVED">Archived</option>
+      </select>
+    </label>
+    <label class="inline-flex items-center gap-2 text-xs font-bold text-slate-700 pb-2">
+      <input type="checkbox" [checked]="includeArchived()" (change)="toggleArchived()" />
+      Show archived
+    </label>
+  </div>
+
+  @if (editorMode()) {
+    <form ngNoForm novalidate class="mt-5 rounded-2xl border-2 border-indigo-100 bg-indigo-50/40 p-5 space-y-4"
+          (submit)="saveDraft(); $event.preventDefault()">
+      <div class="flex justify-between gap-3">
+        <div>
+          <h3 class="font-extrabold text-slate-900">
+            {{ editorMode() === 'create' ? 'Add evidence' : 'Edit as a new draft revision' }}
+          </h3>
+          <p class="text-xs text-slate-600">Only fields relevant to the selected category are shown.</p>
+        </div>
+        <button type="button" (click)="cancelEditor()" class="text-xs font-bold text-slate-700">Cancel</button>
+      </div>
+
+      <div class="grid sm:grid-cols-2 gap-3">
+        <label class="field-label">Category
+          <select [ngModel]="category()" (ngModelChange)="category.set($event)"
+                  name="category" [disabled]="editorMode() === 'edit'" class="field-control">
+            @for (option of categories; track option[0]) {
+              <option [value]="option[0]">{{ option[1] }}</option>
+            }
+          </select>
+        </label>
+        <label class="field-label">Display heading
+          <input name="heading" maxlength="200" required [ngModel]="heading()"
+                 (ngModelChange)="heading.set($event)" class="field-control" />
+        </label>
+      </div>
+
+      @if (needsRole()) {
+        <div class="grid sm:grid-cols-2 gap-3">
+          <label class="field-label">Role
+            <input name="roleTitle" maxlength="200" [ngModel]="roleTitle()"
+                   (ngModelChange)="roleTitle.set($event)" class="field-control" />
+          </label>
+          <label class="field-label">Organisation or context
+            <input name="organisation" maxlength="200" [ngModel]="organisationContext()"
+                   (ngModelChange)="organisationContext.set($event)" class="field-control" />
+          </label>
+        </div>
+      }
+      @if (category() === 'EDUCATION') {
+        <div class="grid sm:grid-cols-2 gap-3">
+          <label class="field-label">Programme or subject
+            <input name="programme" maxlength="200" [ngModel]="programmeOrSubject()"
+                   (ngModelChange)="programmeOrSubject.set($event)" class="field-control" />
+          </label>
+          <label class="field-label">Institution
+            <input name="institution" maxlength="200" [ngModel]="institution()"
+                   (ngModelChange)="institution.set($event)" class="field-control" />
+          </label>
+        </div>
+      }
+      @if (category() === 'QUALIFICATION_TRAINING') {
+        <div class="grid sm:grid-cols-2 gap-3">
+          <label class="field-label">Qualification or training title
+            <input name="qualification" maxlength="200" [ngModel]="qualificationTitle()"
+                   (ngModelChange)="qualificationTitle.set($event)" class="field-control" />
+          </label>
+          <label class="field-label">Issuer
+            <input name="issuer" maxlength="200" [ngModel]="issuer()"
+                   (ngModelChange)="issuer.set($event)" class="field-control" />
+          </label>
+        </div>
+      }
+      @if (category() === 'PROJECT') {
+        <label class="field-label">Your role in the project
+          <input name="projectRole" maxlength="200" [ngModel]="projectRole()"
+                 (ngModelChange)="projectRole.set($event)" class="field-control" />
+        </label>
+      }
+
+      <label class="field-label">Description
+        <textarea name="description" maxlength="4000" rows="3" [ngModel]="description()"
+                  (ngModelChange)="description.set($event)" class="field-control"></textarea>
+      </label>
+      @if (needsRole()) {
+        <label class="field-label">Responsibilities
+          <textarea name="responsibilities" maxlength="4000" rows="3" [ngModel]="responsibilities()"
+                    (ngModelChange)="responsibilities.set($event)" class="field-control"></textarea>
+        </label>
+      }
+      @if (category() !== 'CAREER_BREAK') {
+        <label class="field-label">Achievements or exact outcomes
+          <textarea name="achievements" maxlength="4000" rows="3" [ngModel]="achievements()"
+                    (ngModelChange)="achievements.set($event)" class="field-control"></textarea>
+        </label>
+      } @else {
+        <label class="field-label">Reason (optional and never selected automatically)
+          <textarea name="careerBreakReason" maxlength="1000" rows="2" [ngModel]="careerBreakReason()"
+                    (ngModelChange)="careerBreakReason.set($event)" class="field-control"></textarea>
+        </label>
+      }
+
+      <div class="grid sm:grid-cols-2 gap-3">
+        @if (['QUALIFICATION_TRAINING'].includes(category())) {
+          <label class="field-label">Issue date
+            <input type="date" name="issueDate" [ngModel]="issueDate()"
+                   (ngModelChange)="issueDate.set($event)" class="field-control" />
+          </label>
+          <label class="field-label">Expiry date
+            <input type="date" name="expiryDate" [ngModel]="expiryDate()"
+                   (ngModelChange)="expiryDate.set($event)" class="field-control" />
+          </label>
+        } @else {
+          <label class="field-label">Start date
+            <input type="date" name="startDate" [ngModel]="startDate()"
+                   (ngModelChange)="startDate.set($event)" class="field-control" />
+          </label>
+          <label class="field-label">End date
+            <input type="date" name="endDate" [disabled]="ongoing()" [ngModel]="endDate()"
+                   (ngModelChange)="endDate.set($event)" class="field-control" />
+          </label>
+        }
+      </div>
+      @if (!['QUALIFICATION_TRAINING', 'ACHIEVEMENT'].includes(category())) {
+        <label class="inline-flex items-center gap-2 text-xs font-bold text-slate-700">
+          <input type="checkbox" name="ongoing" [ngModel]="ongoing()"
+                 (ngModelChange)="ongoing.set($event); endDate.set('')" />
+          This is ongoing or current
+        </label>
+      }
+
+      <label class="field-label">Demonstrated skills (comma separated)
+        <input name="skills" maxlength="1000" [ngModel]="demonstratedSkills()"
+               (ngModelChange)="demonstratedSkills.set($event)" class="field-control" />
+      </label>
+      <label class="field-label">Supporting HTTPS links (one per line)
+        <textarea name="links" rows="2" [ngModel]="supportingLinks()"
+                  (ngModelChange)="supportingLinks.set($event)" class="field-control"></textarea>
+      </label>
+      <button type="submit" [disabled]="busy()"
+              class="rounded-xl bg-indigo-700 text-white px-5 py-2.5 text-xs font-bold disabled:opacity-50">
+        {{ busy() ? 'Saving…' : 'Save as draft' }}
+      </button>
+    </form>
+  }
+
+  @if (pendingArchive()) {
+    <div class="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4" role="alertdialog"
+         aria-labelledby="archive-title">
+      <h3 id="archive-title" class="font-extrabold text-slate-900">Archive this evidence?</h3>
+      <p class="text-xs text-slate-700 mt-1">It will be retained for history but unavailable for new documents.</p>
+      <div class="flex gap-2 mt-3">
+        <button type="button" (click)="pendingArchive.set(null)"
+                class="rounded-lg border px-3 py-2 text-xs font-bold">Cancel</button>
+        <button type="button" (click)="confirmArchive()"
+                class="rounded-lg bg-rose-700 text-white px-3 py-2 text-xs font-bold">Archive</button>
+      </div>
+    </div>
+  }
+
+  @if (pendingSupersede()) {
+    <div class="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4"
+         role="alertdialog" aria-labelledby="supersede-title">
+      <h3 id="supersede-title" class="font-extrabold text-slate-900">
+        Mark this evidence as superseded?
+      </h3>
+      <p class="text-xs text-slate-700 mt-1">
+        The older item will be retained for history and replaced by the active item you select.
+      </p>
+      @if (replacementEntries().length) {
+        <label class="field-label mt-3">Replacement evidence
+          <select name="replacementEntryId" class="field-control"
+                  [ngModel]="replacementEntryId()"
+                  (ngModelChange)="replacementEntryId.set($event)">
+            <option value="">Choose replacement evidence</option>
+            @for (replacement of replacementEntries(); track replacement.entryId) {
+              <option [value]="replacement.entryId">
+                {{ latest(replacement)?.heading }}
+              </option>
+            }
+          </select>
+        </label>
+      } @else {
+        <p class="text-xs font-semibold text-amber-900 mt-3">
+          Add the replacement evidence before superseding this item.
+        </p>
+      }
+      <div class="flex gap-2 mt-3">
+        <button type="button"
+                (click)="pendingSupersede.set(null); replacementEntryId.set('')"
+                class="rounded-lg border px-3 py-2 text-xs font-bold">Cancel</button>
+        <button type="button" (click)="confirmSupersede()"
+                [disabled]="busy() || !replacementEntryId()"
+                class="rounded-lg bg-amber-700 text-white px-3 py-2 text-xs font-bold disabled:opacity-50">
+          Supersede
+        </button>
+      </div>
+    </div>
+  }
+
+  <div class="mt-5 grid md:grid-cols-2 gap-4" aria-live="polite">
+    @if (loading()) {
+      <p class="text-sm text-slate-600">Loading your evidence…</p>
+    } @else if (!filteredEntries().length) {
+      <div class="rounded-xl border border-dashed border-slate-300 p-6 text-center">
+        <strong class="block text-sm text-slate-900">No matching evidence yet</strong>
+        <span class="text-xs text-slate-600">Add a project, role, qualification, volunteering or another achievement.</span>
+      </div>
+    }
+    @for (entry of filteredEntries(); track entry.entryId) {
+      @let revision = latest(entry);
+      <article class="evidence-card rounded-xl border border-slate-200 p-4"
+               [class.archived]="entry.lifecycle === 'ARCHIVED'">
+        <div class="flex justify-between gap-3">
+          <div>
+            <span class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">
+              {{ categoryLabel(entry.category) }}
+            </span>
+            <h3 class="text-sm font-extrabold text-slate-900">{{ revision?.heading }}</h3>
+            <p class="text-xs text-slate-600">{{ revision?.organisationContext || revision?.institution || revision?.issuer }}</p>
+          </div>
+          <span class="state-badge"
+                [class.confirmed]="revision?.confirmationState === 'USER_CONFIRMED'"
+                [class.archived]="entry.lifecycle !== 'ACTIVE'">
+            {{ entry.lifecycle === 'ARCHIVED' ? 'Archived' :
+               entry.lifecycle === 'SUPERSEDED' ? 'Superseded' :
+               revision?.confirmationState === 'USER_CONFIRMED' ? 'Confirmed' : 'Draft' }}
+          </span>
+        </div>
+        <p class="mt-2 text-[11px] font-semibold text-slate-600">{{ dateRange(revision) }}</p>
+        @if (entry.reviewRequired) {
+          <p class="mt-3 rounded-lg bg-amber-50 p-2 text-[11px] font-semibold text-amber-900">
+            Migrated item — review before confirming.
+          </p>
+        }
+        @if (revision?.demonstratedSkills?.length) {
+          <p class="mt-3 text-[11px] text-slate-600">{{ revision?.demonstratedSkills?.join(' · ') }}</p>
+        }
+        @if (viewingEntryId() === entry.entryId) {
+          <div class="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-700 space-y-2">
+            @if (revision?.roleTitle) { <p><strong>Role:</strong> {{ revision?.roleTitle }}</p> }
+            @if (revision?.programmeOrSubject) {
+              <p><strong>Programme:</strong> {{ revision?.programmeOrSubject }}</p>
+            }
+            @if (revision?.qualificationTitle) {
+              <p><strong>Qualification:</strong> {{ revision?.qualificationTitle }}</p>
+            }
+            @if (revision?.description) { <p>{{ revision?.description }}</p> }
+            @if (revision?.responsibilities) {
+              <p><strong>Responsibilities:</strong> {{ revision?.responsibilities }}</p>
+            }
+            @if (revision?.achievements) {
+              <p><strong>Achievements:</strong> {{ revision?.achievements }}</p>
+            }
+            @if (revision?.careerBreakReason) {
+              <p><strong>Reason:</strong> {{ revision?.careerBreakReason }}</p>
+            }
+            <p>
+              {{ revision?.confirmationState === 'USER_CONFIRMED'
+                ? 'You confirmed this wording; it is not independently verified.'
+                : 'Draft — not available to AI.' }}
+            </p>
+          </div>
+        }
+        <div class="mt-4 flex flex-wrap gap-2">
+          <button type="button" (click)="toggleView(entry)" class="card-action">
+            {{ viewingEntryId() === entry.entryId ? 'Close' : 'View' }}
+          </button>
+          @if (entry.lifecycle === 'ACTIVE') {
+            <button type="button" (click)="openEdit(entry)" class="card-action">Edit</button>
+            @if (revision?.confirmationState === 'DRAFT') {
+              <button type="button" (click)="perform(entry, 'confirm')" [disabled]="busy()"
+                      class="card-action primary">Review &amp; confirm</button>
+            }
+            <button type="button"
+                    (click)="perform(entry, entry.visibility === 'VISIBLE' ? 'hide' : 'show')"
+                    class="card-action">
+              {{ entry.visibility === 'VISIBLE' ? 'Hide' : 'Show' }}
+            </button>
+            <button type="button" (click)="openSupersede(entry)"
+                    class="card-action danger">Supersede</button>
+            <button type="button" (click)="perform(entry, 'archive')" class="card-action danger">Archive</button>
+          } @else if (entry.lifecycle === 'ARCHIVED') {
+            <button type="button" (click)="perform(entry, 'restore')" class="card-action">Restore</button>
+          }
+        </div>
+        <p class="mt-3 text-[10px] text-slate-500">
+          Revision {{ revision?.revisionNumber }} · {{ entry.visibility === 'VISIBLE' ? 'Visible' : 'Hidden' }}
+        </p>
+      </article>
+    }
+  </div>
+</section>

@@ -73,11 +73,14 @@ into `.cache/`; its locked SHA-256 is verified before execution. See the
 [dependency security baseline](docs/dependency-security.md) for audit policy and
 current residual findings.
 
-The normal application enables secure authentication, profile management, Job
-Search, Application Tracking, fixture-backed document generation, storage and
-export. Reporting and Payments remain fail-closed until their session-derived
-integrations are approved. Versioned Job Finder and Document Generation
-contracts are generated reproducibly. See
+The normal application enables credential-only registration, progressive
+profile management, a versioned Evidence Library, Job Search, Application
+Tracking, fixture-backed document generation, storage and export. Evidence can
+be drafted, reviewed, confirmed, hidden, archived, restored or superseded;
+migrated history remains review-required until the claimant confirms it.
+Reporting and Payments remain fail-closed until their session-derived
+integrations are approved. Versioned User Management, Job Finder and Document
+Generation contracts are generated reproducibly. See
 [ADR 0001](docs/adr/0001-reproducible-api-clients.md) and the
 [browser-session ADR](docs/adr/0002-browser-session-client.md), plus the
 [document-generation contract ADR](docs/adr/0003-document-generation-typescript-contract.md)
@@ -116,12 +119,14 @@ browser-supplied `Authorization`, `X-User-Id`, and profile identity selectors.
 Access and refresh tokens remain in UMG-owned HttpOnly cookies and never enter
 Angular state, browser storage, response models, logs, or generated source.
 
-Registration, login, profile update, and logout first bootstrap CSRF through
-`GET /api/auth/csrf`. Angular validates the fixed header name and holds the
-random value only in application memory. Local HTTP cookie names and production
-Secure `__Host-` names are owned by UMG; Angular must not read them. On first
-load the beta shell deletes all obsolete `jc_*` session/profile values from both
-`localStorage` and `sessionStorage`.
+Registration, login, profile and Evidence Library updates, and logout first
+bootstrap CSRF through `GET /api/auth/csrf`. Registration submits only name,
+email and password; all profile sections remain optional and are saved later
+through the subject-bound profile endpoint. Angular validates the fixed CSRF
+header name and holds the random value only in application memory. Local HTTP
+cookie names and production Secure `__Host-` names are owned by UMG; Angular
+must not read them. On first load the beta shell deletes all obsolete `jc_*`
+session/profile values from both `localStorage` and `sessionStorage`.
 
 For the reviewed Job Finder routes, the server BFF selects UMG's fixed local or
 production access-cookie name, validates a compact access JWT, and creates the
@@ -174,12 +179,12 @@ configured location gateway. Client transaction logs record the fixed action and
 bounded result count only. Failure logs use a fixed category and never include
 the query, postcode, upstream URL or raw exception.
 
-Registration and profile location inputs expose the same stable lookup states:
-loading, results, no matches, invalid input, rate limiting and temporary provider
-failure. Only the latest request may update suggestions. Editing a selected
-location clears its derived region, district and coordinates before searching,
-and selecting a canonical result restores those fields. Public messages never
-render raw downstream response details.
+The progressive profile location input exposes stable lookup states: loading,
+results, no matches, invalid input, rate limiting and temporary provider failure.
+Only the latest request may update suggestions. Editing a selected location
+clears its derived region, district and coordinates before searching, and
+selecting a canonical result restores those fields. Public messages never render
+raw downstream response details.
 
 Focused service and component tests own deterministic state, routing and race
 coverage. Browser regression evidence reuses the root Playwright/Cucumber suite;

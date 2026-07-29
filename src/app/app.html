@@ -156,6 +156,17 @@
             </button>
             <button type="button"
                     class="workspace-tab"
+                    data-testid="workspace-tab-evidence"
+                    [class.workspace-tab-active]="activeWorkspaceTab() === 'evidence'"
+                    (click)="activeWorkspaceTab.set('evidence')">
+              <mat-icon>inventory_2</mat-icon>
+              <span>
+                Evidence
+                <small>Review and reuse</small>
+              </span>
+            </button>
+            <button type="button"
+                    class="workspace-tab"
                     data-testid="workspace-tab-documents"
                     [class.workspace-tab-active]="activeWorkspaceTab() === 'documents'"
                     (click)="activeWorkspaceTab.set('documents')">
@@ -200,6 +211,12 @@
               (notify)="showToast($event.message, $event.type)"
               (applicationChanged)="refreshApplicationTracking()">
             </app-my-applications>
+          </div>
+
+          <div data-testid="workspace-panel-evidence" [hidden]="activeWorkspaceTab() !== 'evidence'">
+            <app-evidence-library
+              (notify)="showToast($event.message, $event.type)">
+            </app-evidence-library>
           </div>
 
           <div data-testid="workspace-panel-documents" [hidden]="activeWorkspaceTab() !== 'documents'">
