@@ -1,0 +1,62 @@
+.field-label {
+  display: block;
+  color: #334155;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.field-control {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  background: white;
+  padding: 0.6rem 0.75rem;
+  color: #0f172a;
+  font-size: 0.875rem;
+}
+
+.state-badge {
+  height: fit-content;
+  border-radius: 9999px;
+  background: #fff7ed;
+  color: #9a3412;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.625rem;
+  font-weight: 800;
+}
+
+.state-badge.confirmed {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.state-badge.archived {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.evidence-card.archived {
+  background: #f8fafc;
+}
+
+.card-action {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.55rem;
+  color: #334155;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.card-action.primary {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.card-action.danger {
+  border-color: #fecdd3;
+  color: #be123c;
+}

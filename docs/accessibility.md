@@ -8,8 +8,8 @@ Accessibility is a release requirement, not an optional visual enhancement.
 - Create-account and sign-in controls use the ARIA tabs pattern. `Left`,
   `Right`, `Home` and `End` switch tabs and move focus.
 - Registration and sign-in use native forms, so Enter submits the current form.
-  Buttons inside repeatable qualification and role editors are explicitly
-  non-submit controls.
+  Progressive profile and Evidence Library actions use explicit button types so
+  section editing does not accidentally submit an unrelated form.
 - Required account fields have persistent instructions, autocomplete purpose
   and `aria-invalid` state after validation. Invalid steps render an assertive,
   programmatically focused summary instead of silently disabling progression.
@@ -18,6 +18,9 @@ Accessibility is a release requirement, not an optional visual enhancement.
   as disabling their visible controls.
 - Profile-save failures use a focused, assertive summary containing stable public
   guidance rather than upstream error detail.
+- Evidence Library filters, lifecycle labels, migrated-review notices and
+  destructive confirmations remain text-labelled and keyboard operable. Draft,
+  confirmed and archived states never rely on colour alone.
 - Location lookup exposes loading, empty, invalid, throttled and unavailable
   outcomes. Suggestion controls remain native buttons, and their region is
   connected to an ARIA combobox.
@@ -27,9 +30,9 @@ Accessibility is a release requirement, not an optional visual enhancement.
 ## Automated verification
 
 `npm test -- --watch=false` runs axe-core against the rendered create, sign-in,
-profile-read and profile-edit states. It also verifies tab keyboard behavior,
-form relationships, focused error summaries, accessible field guidance,
-provider-failure feedback and duplicate-request suppression.
+profile-read, profile-edit and Evidence Library states. It also verifies tab
+keyboard behavior, form relationships, focused error summaries, accessible
+field guidance, provider-failure feedback and duplicate-request suppression.
 
 The jsdom runner cannot calculate rendered colour contrast, zoom/reflow or
 screen-reader speech. Those checks belong to the existing

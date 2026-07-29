@@ -1,287 +1,214 @@
-<!-- CARD 1: CLAIMANT PROFESSIONAL PROFILE (DWP COMMITMENTS BASIS) -->
-<div id="card-claimant-profile" class="claimant-card bg-white rounded-3xl border border-slate-200/80 shadow-2xs p-6 transition-all hover:shadow-xs hover:border-slate-300">
-  <div class="flex items-center justify-between pb-3 mb-1 border-b border-slate-100">
-    <h2 class="font-bold tracking-tight text-slate-900 flex items-center gap-2 font-display">
-      <mat-icon class="text-slate-500">person</mat-icon>
-      Claimant Profile
-    </h2>
-    
-    <div class="flex items-center gap-1.5">
-      <button id="btn-logout"
-              type="button"
-              (click)="triggerLogout()"
-              class="text-2xs font-bold uppercase tracking-wide text-slate-700 bg-white hover:bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200 transition-colors cursor-pointer">
-        Sign out
-      </button>
-      @if (!isEditing()) {
-        <button id="btn-edit-profile"
-                type="button"
-                (click)="startEditing()"
-                class="text-2xs font-bold uppercase tracking-wide text-slate-700 bg-slate-50 hover:bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200 transition-colors cursor-pointer flex items-center gap-1">
-          <mat-icon class="text-xs">edit</mat-icon>
-          Edit
-        </button>
-      } @else {
-        <button id="btn-save-profile"
-                type="button"
-                [disabled]="isSaving()"
-                (click)="save()"
-                class="text-2xs font-bold uppercase tracking-wide text-white bg-slate-900 hover:bg-slate-800 px-2.5 py-1.5 rounded-xl flex items-center gap-1 transition-colors cursor-pointer">
-          <mat-icon class="text-xs">check</mat-icon>
-          {{ isSaving() ? 'Saving...' : 'Save' }}
-        </button>
-      }
-    </div>
-  </div>
-
-  <!-- Claimant identity badge -->
-  <div id="claimant-identity-badge" class="flex items-center gap-3 bg-gradient-to-r from-slate-50 to-slate-100/50 rounded-2xl p-3 border border-slate-200/40 mb-4 select-none">
-    <div class="w-8 h-8 rounded-xl bg-indigo-600/10 text-indigo-700 flex items-center justify-center font-bold text-xs font-display">
-      {{ claimantName() ? claimantName().substring(0, 1).toUpperCase() : 'C' }}
-    </div>
-    <div class="flex-1 min-w-0">
-      <h3 class="text-xs font-bold text-slate-900 truncate leading-tight">{{ claimantName() || 'Claimant' }}</h3>
-      <p class="text-[10px] text-slate-400 truncate leading-none mt-0.5">{{ claimantEmail() || 'No email provided' }}</p>
-    </div>
-    <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[9px] font-extrabold uppercase bg-emerald-50 text-emerald-800 border border-emerald-100/80 scale-90 origin-right">
-      Active
-    </span>
-  </div>
-
-  <!-- Profile content container -->
-  <div class="space-y-4">
-    @if (saveError()) {
-      <div id="profile-save-error"
-           role="alert"
-           aria-live="assertive"
-           tabindex="-1"
-           class="text-xs font-semibold text-rose-800 bg-rose-50 border border-rose-200 rounded-xl p-3">
-        {{ saveError() }}
+<section class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+  <header class="p-5 border-b border-slate-200 bg-slate-50">
+    <p class="text-[11px] font-extrabold uppercase tracking-wider text-indigo-700">Your profile</p>
+    <h2 class="text-lg font-extrabold text-slate-900">{{ claimantName() || 'Your job search' }}</h2>
+    <p class="text-xs text-slate-600">{{ claimantEmail() }}</p>
+    <div class="mt-4 grid grid-cols-2 gap-2" aria-label="Journey readiness">
+      <div class="rounded-xl border p-3"
+           [class.bg-emerald-50]="searchReady()" [class.border-emerald-200]="searchReady()">
+        <strong class="block text-xs text-slate-900">
+          {{ searchReady() ? 'Search can begin' : 'Add a target role or skill' }}
+        </strong>
+        <span class="text-[11px] text-slate-600">Job search readiness</span>
       </div>
-    }
-    <p class="sr-only" role="status" aria-live="polite">
-      @if (isSaving()) { Saving your profile. Please wait. }
+      <div class="rounded-xl border border-amber-200 bg-amber-50 p-3">
+        <strong class="block text-xs text-slate-900">Documents need confirmed evidence</strong>
+        <span class="text-[11px] text-slate-600">Independent of job search</span>
+      </div>
+    </div>
+    <p class="mt-3 text-[11px] font-semibold text-slate-600">
+      {{ profileProgress() }} of 4 optional preference areas added. Skip any area and return later.
     </p>
-    @if (!isEditing()) {
-      <!-- READ MODE (Structured display) -->
-      <div id="profile-read-mode" class="space-y-3.5">
-        <!-- Skills -->
-        <div class="p-3 bg-slate-50/75 rounded-2xl border border-slate-100">
-          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Core Skills</h3>
-          <div class="flex flex-wrap gap-1 mt-1">
-            @for (skill of localSkills(); track skill) {
-              <span class="inline-flex px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-lg text-[10px] font-semibold border border-indigo-100">{{ skill }}</span>
-            } @empty {
-              <p class="text-xs font-medium text-slate-400">No core skills added yet.</p>
-            }
-          </div>
-        </div>
+  </header>
 
-        <!-- Qualifications Summary -->
-        <div class="p-3 bg-slate-50/75 rounded-2xl border border-slate-100">
-          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Qualifications</h3>
-          <div class="space-y-1 mt-1">
-            @for (q of localQualifications(); track q) {
-              <p class="text-xs font-semibold text-slate-700">
-                {{ q.qualificationName }} &middot;
-                <span class="font-medium text-slate-500">{{ q.issuingBody }}</span>
-                <span class="text-[10px] text-slate-400 ml-1">
-                  ({{ q.status === 'COMPLETED' ? 'Completed' : 'In Progress' }})
-                </span>
-              </p>
-            } @empty {
-              <p class="text-xs font-medium text-slate-400">No qualifications added yet.</p>
-            }
-          </div>
-        </div>
+  @if (saveError()) {
+    <p id="profile-save-error" role="alert" tabindex="-1"
+       class="m-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800">
+      {{ saveError() }}
+    </p>
+  }
 
-        <!-- Work History Summary -->
-        <div class="p-3 bg-slate-50/75 rounded-2xl border border-slate-100">
-          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Work History</h3>
-          <div class="space-y-1 mt-1">
-            @for (r of localRoles(); track r) {
-              <p class="text-xs font-semibold text-slate-700">
-                {{ r.jobTitle }} at {{ r.employer }}
-                <span class="text-[10px] font-medium text-slate-400 ml-1">({{ r.startDate }}@if (r.endDate) { &ndash; {{ r.endDate }} })</span>
-              </p>
-            } @empty {
-              <p class="text-xs font-medium text-slate-400">No work history added yet.</p>
-            }
-          </div>
-        </div>
-
-        <!-- Target Roles & Commitments -->
-        <div class="p-3 bg-indigo-50/40 rounded-2xl border border-indigo-50">
-          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-indigo-500">Target Roles & Commitments</h3>
-          <div class="flex flex-wrap gap-1 mt-1">
-            @for (role of localTargetRoles(); track role) {
-              <span class="inline-flex px-2 py-0.5 bg-indigo-100/60 text-indigo-800 rounded-lg text-[10px] font-semibold border border-indigo-200">{{ role }}</span>
-            } @empty {
-              <p class="text-xs font-medium text-indigo-400">No target roles added yet.</p>
-            }
-          </div>
-          <p class="text-[10px] font-semibold text-indigo-600 mt-1">
-            {{ targetWeeklyHoursLabel() }}
+  <div class="p-4 space-y-3">
+    <article class="rounded-xl border border-slate-200 p-4">
+      <div class="flex justify-between gap-3">
+        <div>
+          <h3 class="font-extrabold text-sm text-slate-900">What jobs are you looking for?</h3>
+          <p class="text-xs text-slate-600 mt-1">
+            {{ localTargetRoles().length ? localTargetRoles().join(', ') : 'Not provided yet' }}
           </p>
         </div>
+        <button type="button" class="text-xs font-bold text-indigo-700"
+                (click)="startEditing('jobs')">Edit</button>
+      </div>
+      @if (editingSection() === 'jobs') {
+        <div class="mt-4 space-y-3">
+          <app-tag-input label="Target roles" placeholder="Type a role and press Enter"
+                         [(tags)]="localTargetRoles"></app-tag-input>
+          <app-tag-input label="Skills" placeholder="Type a skill and press Enter"
+                         [(tags)]="localSkills"></app-tag-input>
+        </div>
+      }
+    </article>
 
-        <!-- Hours & Commute Area -->
-        <div class="p-3 bg-slate-50/75 rounded-2xl border border-slate-100">
-          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Hours & Commute Area</h3>
-          <div class="commute-summary mt-1">
-            <div class="commute-summary-row">
-              <mat-icon class="text-slate-400">schedule</mat-icon>
-              <strong>Commitment:</strong>
-              <span>{{ targetWeeklyHoursLabel() }}</span>
-            </div>
-            <div class="commute-summary-row">
-              <mat-icon class="text-slate-400">location_on</mat-icon>
-              <strong>Home Location:</strong>
-              <span>
-                @if (localAdminDistrict() || localRegion()) {
-                  {{ localAdminDistrict() }}@if (localAdminDistrict() && localRegion()) {, }{{ localRegion() }} ({{ localPostcode() }})
-                } @else if (localPostcode()) {
-                  {{ localPostcode() }}
-                } @else {
-                  No home location added yet.
+    <article class="rounded-xl border border-slate-200 p-4">
+      <div class="flex justify-between gap-3">
+        <div>
+          <h3 class="font-extrabold text-sm text-slate-900">Where do you want to work?</h3>
+          <p class="text-xs text-slate-600 mt-1">
+            {{ localPostcode() || 'Not provided yet' }}
+            @if (localCommuteRange() !== undefined) { · within {{ localCommuteRange() }} miles }
+          </p>
+        </div>
+        <button type="button" class="text-xs font-bold text-indigo-700"
+                (click)="startEditing('location')">Edit</button>
+      </div>
+      @if (editingSection() === 'location') {
+        <div class="mt-4 grid grid-cols-1 gap-3">
+          <div class="relative">
+            <label for="profile-postcode" class="block text-xs font-bold text-slate-700 mb-1">Town or postcode</label>
+            <input id="profile-postcode" type="text" role="combobox" autocomplete="postal-code"
+                   aria-controls="profile-location-options"
+                   [attr.aria-expanded]="showLocationDropdown()"
+                   [attr.aria-busy]="locationLookup().status === 'loading'"
+                   [value]="localPostcode()"
+                   (input)="onLocationInputChange($any($event.target).value)"
+                   (focus)="showLocationDropdown.set(locationSuggestions().length > 0)"
+                   class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+            @if (locationLookup().message) {
+              <p role="status" class="text-[11px] text-slate-600 mt-1">{{ locationLookup().message }}</p>
+            }
+            @if (showLocationDropdown() && locationSuggestions().length) {
+              <div id="profile-location-options"
+                   class="absolute z-20 left-0 right-0 bg-white border rounded-xl shadow-lg">
+                @for (location of locationSuggestions(); track location.id) {
+                  <button type="button" (click)="selectLocation(location)"
+                          class="block w-full text-left px-3 py-2 text-xs hover:bg-slate-50">
+                    <strong>{{ location.name }}</strong>
+                    <span class="block text-slate-600">{{ location.postcode }}</span>
+                  </button>
                 }
-              </span>
-            </div>
-            <div class="commute-summary-row">
-              <mat-icon class="text-slate-400">commute</mat-icon>
-              <strong>Commute Range:</strong>
-              <span>within {{ localCommuteRange() }} miles</span>
-            </div>
+              </div>
+            }
+          </div>
+          <div>
+            <label for="profile-commute" class="block text-xs font-bold text-slate-700 mb-1">Commute distance</label>
+            <select id="profile-commute" [ngModel]="localCommuteRange()"
+                    (ngModelChange)="localCommuteRange.set($event === '' ? undefined : +$event)"
+                    class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm">
+              <option value="">Not provided</option>
+              @for (distance of commuteDistanceOptions; track distance) {
+                <option [value]="distance">Within {{ distance }} miles</option>
+              }
+            </select>
           </div>
         </div>
+      }
+    </article>
 
-        <button id="btn-finder-search"
-                type="button"
-                (click)="triggerFinderSearch()"
-                class="w-full text-xs font-bold uppercase tracking-wider text-white bg-indigo-600 hover:bg-indigo-700 py-3 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-indigo-100 hover:scale-[1.01] active:scale-[0.99]">
-          <mat-icon class="text-sm">search</mat-icon>
-          Find Jobs
-        </button>
+    <article class="rounded-xl border border-slate-200 p-4">
+      <div class="flex justify-between gap-3">
+        <div>
+          <h3 class="font-extrabold text-sm text-slate-900">What working patterns suit you?</h3>
+          <p class="text-xs text-slate-600 mt-1">
+            {{ localWorkingPatterns().length + localEmploymentTypes().length + localWorkplaceArrangements().length
+              ? 'Preferences added' : 'Not provided yet' }}
+          </p>
+        </div>
+        <button type="button" class="text-xs font-bold text-indigo-700"
+                (click)="startEditing('patterns')">Edit</button>
       </div>
-    } @else {
-      <!-- WRITE MODE (Reactive structured forms) -->
-      <div id="profile-write-mode" class="space-y-4">
-
-        <!-- Skills Tag Input (Step 1) -->
-        <app-tag-input label="Skills"
-                       placeholder="Type a skill and press Enter"
-                       [(tags)]="localSkills">
-        </app-tag-input>
-
-        <!-- Target Roles Tag Input (Step 2) -->
-        <app-tag-input label="Target Roles"
-                       placeholder="Type a target role and press Enter"
-                       [(tags)]="localTargetRoles">
-        </app-tag-input>
-
-        <!-- Target Weekly Hours -->
-        <div class="flex flex-col gap-1.5">
-          <label for="profile-target-hours" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Target Weekly Hours</label>
-          <select id="profile-target-hours"
-                  [ngModel]="localTargetWeeklyHours()"
-                  (ngModelChange)="localTargetWeeklyHours.set($event)"
-                  class="text-xs font-semibold py-2.5 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-800 cursor-pointer">
-            <option value="FULL_TIME">Full-Time (35-40 hours)</option>
-            <option value="PART_TIME_16_30">Part-Time (16-30 hours)</option>
-            <option value="PART_TIME_UNDER_16">Part-Time (Under 16 hours)</option>
-            <option value="FLEXIBLE">Flexible / Any Hours</option>
-          </select>
-        </div>
-
-        <!-- Qualifications (Step 2 - repeatable cards) -->
-        <div class="flex flex-col gap-1.5">
-          <p class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Qualifications</p>
-          <app-qualification-form [(items)]="localQualifications"></app-qualification-form>
-        </div>
-
-        <!-- Work History (Step 3 - repeatable cards) -->
-        <div class="flex flex-col gap-1.5">
-          <p class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Work History</p>
-          <app-role-form [(items)]="localRoles"></app-role-form>
-        </div>
-
-        <!-- Work Preferences: Postcode / Location -->
-        <div class="flex flex-col gap-1.5 relative">
-          <label for="profile-postcode-input" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Postcode / Location</label>
-          <input id="profile-postcode-input"
-                 data-testid="profile-home-location-input"
-                 type="text"
-                 autocomplete="postal-code"
-                 role="combobox"
-                 aria-autocomplete="list"
-                 [attr.aria-controls]="showLocationDropdown() && locationSuggestions().length > 0 ? 'profile-location-suggestions' : null"
-                 [attr.aria-expanded]="showLocationDropdown() && locationSuggestions().length > 0"
-                 class="text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-slate-900"
-                 [ngModel]="localPostcode()"
-                 [attr.aria-busy]="locationLookup().status === 'loading'"
-                 [attr.aria-describedby]="locationLookup().message ? 'profile-location-status' : null"
-                 (ngModelChange)="onLocationInputChange($event)"
-                 (blur)="hideLocationDropdownWithDelay()" />
-
-          @if (locationLookup().message) {
-            <p id="profile-location-status"
-               data-testid="profile-location-status"
-               [attr.role]="locationLookup().status === 'invalid' || locationLookup().status === 'rate-limited' || locationLookup().status === 'unavailable' ? 'alert' : 'status'"
-               aria-live="polite"
-               class="text-[10px] font-semibold text-slate-600">
-              {{ locationLookup().message }}
-            </p>
-          }
-          
-          <!-- Suggestions Dropdown -->
-          @if (showLocationDropdown() && locationSuggestions().length > 0) {
-            <div id="profile-location-suggestions"
-                 role="region"
-                 aria-label="Location suggestions"
-                 data-testid="profile-location-suggestions"
-                 class="absolute top-[100%] left-0 right-0 z-50 mt-1 max-h-40 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg flex flex-col p-1.5 gap-1">
-              @for (loc of locationSuggestions(); track loc.id) {
-                <button type="button"
-                        (click)="selectLocation(loc)"
-                        class="text-left px-3 py-2 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer flex flex-col gap-0.5 border-none bg-transparent w-full">
-                  <span class="text-xs font-bold text-slate-800">{{ loc.name }}</span>
-                  <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">{{ loc.region }} ({{ loc.postcode }})</span>
-                </button>
+      @if (editingSection() === 'patterns') {
+        <div class="mt-4 space-y-4">
+          <fieldset>
+            <legend class="text-xs font-extrabold text-slate-700 mb-2">Employment types</legend>
+            <div class="flex flex-wrap gap-2">
+              @for (option of employmentTypeOptions; track option[0]) {
+                <label class="choice-chip">
+                  <input type="checkbox" [checked]="isSelected(localEmploymentTypes(), option[0])"
+                         (change)="toggleSelection(localEmploymentTypes, option[0])" />
+                  {{ option[1] }}
+                </label>
               }
             </div>
-          }
+          </fieldset>
+          <fieldset>
+            <legend class="text-xs font-extrabold text-slate-700 mb-2">Working patterns</legend>
+            <div class="flex flex-wrap gap-2">
+              @for (option of workingPatternOptions; track option[0]) {
+                <label class="choice-chip">
+                  <input type="checkbox" [checked]="isSelected(localWorkingPatterns(), option[0])"
+                         (change)="toggleSelection(localWorkingPatterns, option[0])" />
+                  {{ option[1] }}
+                </label>
+              }
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend class="text-xs font-extrabold text-slate-700 mb-2">Workplace</legend>
+            <div class="flex flex-wrap gap-2">
+              @for (option of workplaceOptions; track option[0]) {
+                <label class="choice-chip">
+                  <input type="checkbox" [checked]="isSelected(localWorkplaceArrangements(), option[0])"
+                         (change)="toggleSelection(localWorkplaceArrangements, option[0])" />
+                  {{ option[1] }}
+                </label>
+              }
+            </div>
+          </fieldset>
         </div>
+      }
+    </article>
 
-        <!-- Commute Range -->
-        <div class="flex flex-col gap-1.5">
-          <label for="profile-commute-select" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Commute Range</label>
-          <select id="profile-commute-select"
-                  [ngModel]="localCommuteRange()"
-                  (ngModelChange)="localCommuteRange.set($event)"
-                  class="text-xs font-semibold py-2.5 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-800 cursor-pointer">
-            @for (dist of commuteDistanceOptions; track dist) {
-              <option [value]="dist">within {{ dist }} miles</option>
-            }
-          </select>
+    <article class="rounded-xl border border-slate-200 p-4">
+      <div class="flex justify-between gap-3">
+        <div>
+          <h3 class="font-extrabold text-sm text-slate-900">When can you start?</h3>
+          <p class="text-xs text-slate-600 mt-1">
+            @if (localAvailableFrom()) { From {{ localAvailableFrom() }} }
+            @else if (localNoticePeriodDays() !== undefined) { {{ localNoticePeriodDays() }} days' notice }
+            @else { Not provided yet }
+          </p>
         </div>
+        <button type="button" class="text-xs font-bold text-indigo-700"
+                (click)="startEditing('availability')">Edit</button>
+      </div>
+      @if (editingSection() === 'availability') {
+        <div class="mt-4 grid grid-cols-1 gap-3">
+          <div>
+            <label for="available-from" class="block text-xs font-bold text-slate-700 mb-1">Available from</label>
+            <input id="available-from" type="date" [value]="localAvailableFrom()"
+                   (input)="localAvailableFrom.set($any($event.target).value); localNoticePeriodDays.set(undefined)"
+                   class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label for="notice-days" class="block text-xs font-bold text-slate-700 mb-1">Or notice period in days</label>
+            <input id="notice-days" type="number" min="0" max="3650"
+                   [value]="localNoticePeriodDays() ?? ''"
+                   (input)="localNoticePeriodDays.set($any($event.target).value === '' ? undefined : +$any($event.target).value); localAvailableFrom.set('')"
+                   class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+        </div>
+      }
+    </article>
 
-        <div class="flex items-center gap-2 pt-2">
-          <button id="btn-cancel-edit"
-                  type="button"
-                  [disabled]="isSaving()"
-                  (click)="cancelEditing()"
-                  class="w-1/2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 py-2 rounded-lg border border-slate-300 hover:border-slate-400 transition-colors cursor-pointer">
-            Cancel
-          </button>
-          <button id="btn-save-inline"
-                  type="button"
-                  [disabled]="isSaving()"
-                  (click)="save()"
-                  class="w-1/2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 py-2 rounded-lg shadow-md transition-colors cursor-pointer">
-            {{ isSaving() ? 'Saving...' : 'Save Profile' }}
-          </button>
-        </div>
+    @if (editingSection()) {
+      <div class="flex gap-2">
+        <button type="button" (click)="cancelEditing()" [disabled]="isSaving()"
+                class="flex-1 rounded-xl border border-slate-300 py-2 text-xs font-bold">Cancel</button>
+        <button type="button" (click)="saveSection()" [disabled]="isSaving()"
+                class="flex-1 rounded-xl bg-slate-900 text-white py-2 text-xs font-bold">
+          {{ isSaving() ? 'Saving…' : 'Save this section' }}
+        </button>
       </div>
     }
+
+    <div class="flex gap-2 pt-2">
+      <button type="button" (click)="triggerFinderSearch()" [disabled]="!searchReady()"
+              class="flex-1 rounded-xl bg-indigo-700 text-white py-2 text-xs font-bold disabled:opacity-50">
+        Find jobs
+      </button>
+      <button type="button" (click)="triggerLogout()"
+              class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold">Sign out</button>
+    </div>
   </div>
-</div>
+</section>

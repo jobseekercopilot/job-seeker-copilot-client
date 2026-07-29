@@ -12,6 +12,7 @@ import { ReportingPanelComponent } from './features/reporting-panel/reporting-pa
 import { PaymentPanelComponent } from './features/payment-panel/payment-panel';
 import { MyApplicationsComponent } from './features/my-applications/my-applications.component';
 import { DocumentsWorkspaceComponent } from './features/documents-workspace/documents-workspace.component';
+import { EvidenceLibraryComponent } from './features/evidence-library/evidence-library';
 import { PaymentService } from './services/payment.service';
 import type { GatewayResponse, UserProfile } from './api';
 import { normaliseProfile, profileToSearchText } from './models/user-profile.model';
@@ -24,7 +25,7 @@ import {
   RuntimeConfigurationService,
 } from './services/runtime-configuration.service';
 
-type WorkspaceTab = 'search' | 'applications' | 'documents';
+type WorkspaceTab = 'search' | 'applications' | 'evidence' | 'documents';
 
 @Component({
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -38,6 +39,7 @@ type WorkspaceTab = 'search' | 'applications' | 'documents';
     PasswordRecoveryComponent,
     JobResultsComponent,
     MyApplicationsComponent,
+    EvidenceLibraryComponent,
     DocumentsWorkspaceComponent,
     ReportingPanelComponent,
   ],

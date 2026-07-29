@@ -1,97 +1,130 @@
-import { ChangeDetectionStrategy, Component, ElementRef, input, output, signal, inject, effect } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { MatIconModule } from '@angular/material/icon';
-import { FormsModule } from '@angular/forms';
-import {firstValueFrom, Subject, switchMap} from 'rxjs';
+import {CommonModule} from '@angular/common';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  input,
+  output,
+  signal,
+  type WritableSignal,
+} from '@angular/core';
+import {FormsModule} from '@angular/forms';
+import {MatIconModule} from '@angular/material/icon';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
+import {firstValueFrom, Subject, switchMap} from 'rxjs';
+import {
+  ProfileService,
+  WorkPreferencesEmploymentTypesEnum,
+  WorkPreferencesWorkingPatternsEnum,
+  WorkPreferencesWorkplaceArrangementsEnum,
+} from '../../api';
+import type {
+  GatewayResponse,
+  ProfilePreferencesUpdate,
+  UserProfile,
+  WorkPreferences,
+} from '../../api';
+import {normaliseProfile} from '../../models/user-profile.model';
+import {BrowserSessionService} from '../../services/browser-session.service';
 import {
   idleLocationLookup,
   LocationService,
   type LocationLookupState,
   type UKLocation,
 } from '../../services/location.service';
-import { TagInputComponent } from '../../shared/tag-input/tag-input';
-import { QualificationFormComponent } from '../../shared/qualification-form/qualification-form';
-import { RoleFormComponent } from '../../shared/role-form/role-form';
-import type {
-  GatewayResponse,
-  UserProfile,
-  Qualification,
-  Role
-} from '../../api';
-import { AspirationsTargetWeeklyHoursEnum, ProfileService } from '../../api';
-import {BrowserSessionService} from '../../services/browser-session.service';
-import {
-  normaliseProfile,
-  serialiseProfile
-} from '../../models/user-profile.model';
+import {TagInputComponent} from '../../shared/tag-input/tag-input';
 
-type TargetWeeklyHours = AspirationsTargetWeeklyHoursEnum;
+type ProfileSection = 'jobs' | 'location' | 'patterns' | 'availability';
 
 @Component({
   selector: 'app-claimant-profile',
-  imports: [
-    CommonModule,
-    MatIconModule,
-    FormsModule,
-    TagInputComponent,
-    QualificationFormComponent,
-    RoleFormComponent
-  ],
+  imports: [CommonModule, MatIconModule, FormsModule, TagInputComponent],
   host: {
     'data-demo-focus': 'app-claimant-profile',
-    'data-demo-focus-id': 'claimant-profile'
+    'data-demo-focus-id': 'claimant-profile',
   },
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './claimant-profile.html',
-  styleUrl: './claimant-profile.css'
+  styleUrl: './claimant-profile.css',
 })
 export class ClaimantProfileComponent {
-  private userManagementApi = inject(ProfileService);
-  private browserSession = inject(BrowserSessionService);
-  private locationService = inject(LocationService);
-  private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly profileApi = inject(ProfileService);
+  private readonly browserSession = inject(BrowserSessionService);
+  private readonly locationService = inject(LocationService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
-  // Free-text inputs remain for compatibility with the retained non-beta shell.
-  claimantName = input<string>('');
-  claimantEmail = input<string>('');
-  profile = input<UserProfile | null>(null);
-  skills = input<string>('');
-  experience = input<string>('');
-  aspirations = input<string>('');
-  workPrefs = input<string>('');
+  readonly claimantName = input('');
+  readonly claimantEmail = input('');
+  readonly profile = input<UserProfile | null>(null);
+  readonly skills = input('');
+  readonly experience = input('');
+  readonly aspirations = input('');
+  readonly workPrefs = input('');
 
-  // Emit structured UserProfile JSON for API submission
-  profileSaved = output<{ profile: UserProfile; apiResult?: GatewayResponse; apiError?: unknown }>();
-  logoutRequested = output<void>();
-  findJobsRequested = output<void>();
+  readonly profileSaved = output<{profile: UserProfile; apiResult?: GatewayResponse; apiError?: unknown}>();
+  readonly logoutRequested = output<void>();
+  readonly findJobsRequested = output<void>();
 
-  isEditing = signal(false);
-  isSaving = signal(false);
-  saveError = signal<string | null>(null);
+  readonly editingSection = signal<ProfileSection | null>(null);
+  readonly isSaving = signal(false);
+  readonly saveError = signal<string | null>(null);
 
-  // ===== Structured Form State =====
-  // These are initialised from the free-text inputs when editing begins.
-  localSkills = signal<string[]>([]);
-  localQualifications = signal<Qualification[]>([]);
-  localRoles = signal<Role[]>([]);
-  localTargetRoles = signal<string[]>([]);
-  localTargetWeeklyHours = signal<TargetWeeklyHours>(AspirationsTargetWeeklyHoursEnum.FullTime);
+  readonly localSkills = signal<string[]>([]);
+  readonly localTargetRoles = signal<string[]>([]);
+  readonly localPostcode = signal('');
+  readonly localRegion = signal('');
+  readonly localAdminDistrict = signal('');
+  readonly localLatitude = signal<number | undefined>(undefined);
+  readonly localLongitude = signal<number | undefined>(undefined);
+  readonly localCommuteRange = signal<number | undefined>(undefined);
+  readonly localEmploymentTypes = signal<string[]>([]);
+  readonly localWorkingPatterns = signal<string[]>([]);
+  readonly localWorkplaceArrangements = signal<string[]>([]);
+  readonly localAvailableFrom = signal('');
+  readonly localNoticePeriodDays = signal<number | undefined>(undefined);
 
-  // Work Preferences
-  localPostcode = signal('');
-  localRegion = signal('');
-  localAdminDistrict = signal('');
-  localLatitude = signal<number | undefined>(undefined);
-  localLongitude = signal<number | undefined>(undefined);
-  localCommuteRange = signal<number>(10);
+  readonly locationSuggestions = signal<UKLocation[]>([]);
+  readonly showLocationDropdown = signal(false);
+  readonly locationLookup = signal<LocationLookupState>(idleLocationLookup);
+  private readonly locationQueries = new Subject<string>();
 
-  locationSuggestions = signal<UKLocation[]>([]);
-  showLocationDropdown = signal<boolean>(false);
-  locationLookup = signal<LocationLookupState>(idleLocationLookup);
-  private locationQueries = new Subject<string>();
+  readonly searchReady = computed(() =>
+    this.localTargetRoles().length > 0 || this.localSkills().length > 0);
+  readonly profileProgress = computed(() => [
+    this.localTargetRoles().length > 0,
+    Boolean(this.localPostcode()),
+    this.localWorkingPatterns().length > 0
+      || this.localEmploymentTypes().length > 0
+      || this.localWorkplaceArrangements().length > 0,
+    Boolean(this.localAvailableFrom()) || this.localNoticePeriodDays() != null,
+  ].filter(Boolean).length);
 
-  commuteDistanceOptions = [5, 10, 15, 25, 50];
+  readonly employmentTypeOptions = [
+    ['PERMANENT', 'Permanent'],
+    ['FIXED_TERM', 'Fixed term'],
+    ['TEMPORARY', 'Temporary'],
+    ['APPRENTICESHIP', 'Apprenticeship'],
+    ['CONTRACT', 'Contract'],
+  ] as const;
+  readonly workingPatternOptions = [
+    ['FULL_TIME', 'Full time'],
+    ['PART_TIME', 'Part time'],
+    ['FLEXIBLE', 'Flexible'],
+    ['DAY', 'Day'],
+    ['EVENING', 'Evening'],
+    ['NIGHT', 'Night'],
+    ['WEEKEND', 'Weekend'],
+    ['SHIFT', 'Shift'],
+  ] as const;
+  readonly workplaceOptions = [
+    ['ONSITE', 'On-site'],
+    ['HYBRID', 'Hybrid'],
+    ['REMOTE', 'Remote'],
+  ] as const;
+  readonly commuteDistanceOptions = [5, 10, 15, 25, 50];
 
   constructor() {
     this.locationQueries.pipe(
@@ -104,85 +137,61 @@ export class ClaimantProfileComponent {
     });
 
     effect(() => {
-      const profile = this.profile() || normaliseProfile({
-        skills: this.skills(),
-        experience: this.experience(),
-        aspirations: this.aspirations(),
-        workPrefs: this.workPrefs()
-      });
-
-      if (!this.isEditing()) this.populateForm(profile);
+      const profile = normaliseProfile(this.profile());
+      if (!this.editingSection()) this.populate(profile);
     });
   }
 
-  startEditing() {
-    const profile = this.profile() || normaliseProfile({
-      skills: this.skills(),
-      experience: this.experience(),
-      aspirations: this.aspirations(),
-      workPrefs: this.workPrefs()
-    });
-
-    this.populateForm(profile);
+  startEditing(section: ProfileSection): void {
+    this.populate(normaliseProfile(this.profile()));
     this.saveError.set(null);
-    this.isEditing.set(true);
+    this.editingSection.set(section);
   }
 
-  private populateForm(profile: UserProfile): void {
-    this.localSkills.set(profile.skills || []);
-    this.localQualifications.set(profile.qualifications || []);
-    this.localRoles.set(profile.roles || []);
-    this.localTargetRoles.set(profile.aspirations?.targetRoles || []);
-    this.localTargetWeeklyHours.set(profile.aspirations?.targetWeeklyHours || AspirationsTargetWeeklyHoursEnum.FullTime);
-    this.localPostcode.set(profile.workPreferences?.location?.postcode || '');
-    this.localRegion.set(profile.workPreferences?.location?.region || '');
-    this.localAdminDistrict.set(profile.workPreferences?.location?.adminDistrict || '');
-    this.localLatitude.set(profile.workPreferences?.location?.latitude);
-    this.localLongitude.set(profile.workPreferences?.location?.longitude);
-    this.localCommuteRange.set(profile.workPreferences?.commuteRange || 10);
-  }
-
-  cancelEditing() {
+  cancelEditing(): void {
     if (this.isSaving()) return;
+    this.populate(normaliseProfile(this.profile()));
     this.saveError.set(null);
-    this.isEditing.set(false);
+    this.editingSection.set(null);
   }
 
-  async save(): Promise<void> {
+  async saveSection(): Promise<void> {
     if (this.isSaving()) return;
-    const profile: UserProfile = serialiseProfile({
+    const update: ProfilePreferencesUpdate = {
       skills: this.localSkills(),
-      qualifications: this.localQualifications(),
-      roles: this.localRoles(),
       aspirations: {
         targetRoles: this.localTargetRoles(),
-        targetWeeklyHours: this.localTargetWeeklyHours()
+        ...(this.profile()?.aspirations?.targetWeeklyHours
+          ? {targetWeeklyHours: this.profile()!.aspirations!.targetWeeklyHours}
+          : {}),
       },
-      workPreferences: {
-        location: {
-          postcode: this.localPostcode().trim().toUpperCase(),
-          region: this.localRegion(),
-          adminDistrict: this.localAdminDistrict(),
-          latitude: this.localLatitude(),
-          longitude: this.localLongitude()
-        },
-        commuteRange: this.localCommuteRange()
-      }
-    });
+      workPreferences: this.workPreferencesPayload(),
+    };
+    const ifMatch = this.profile()?.revision == null
+      ? undefined
+      : `"${this.profile()!.revision}"`;
 
-    this.saveError.set(null);
     this.isSaving.set(true);
+    this.saveError.set(null);
     try {
       await firstValueFrom(this.browserSession.ensureCsrf());
-      const apiResult = await firstValueFrom(
-        this.userManagementApi.updateProfile(profile)
-      );
-      this.profileSaved.emit({ profile, apiResult });
-      this.isEditing.set(false);
+      const response = await firstValueFrom(this.profileApi.updatePreferences(update, ifMatch));
+      if (!response.success || !response.user?.profile) {
+        throw new Error(response.message || 'Profile update was rejected.');
+      }
+      const profile = normaliseProfile(response.user.profile);
+      this.browserSession.updateCurrentProfile(profile);
+      this.profileSaved.emit({profile, apiResult: response});
+      this.editingSection.set(null);
     } catch (apiError) {
       this.browserSession.handleAuthenticatedError(apiError);
-      this.profileSaved.emit({ profile, apiError });
-      this.saveError.set('Your profile could not be saved. Check your connection and try again.');
+      this.profileSaved.emit({profile: normaliseProfile(this.profile()), apiError});
+      const status = typeof apiError === 'object' && apiError !== null && 'status' in apiError
+        ? Number((apiError as {status?: unknown}).status)
+        : undefined;
+      this.saveError.set(status === 409
+        ? 'Your profile changed in another session. Reload and try again.'
+        : 'This section could not be saved. Check the highlighted information and try again.');
       setTimeout(() => this.host.nativeElement.querySelector<HTMLElement>('#profile-save-error')?.focus());
     } finally {
       this.browserSession.invalidateCsrf();
@@ -190,59 +199,88 @@ export class ClaimantProfileComponent {
     }
   }
 
-  onLocationInputChange(query: string) {
+  onLocationInputChange(query: string): void {
     this.localPostcode.set(query);
-    this.clearDerivedLocation();
-    this.locationQueries.next((query || '').trim());
-  }
-
-  private clearDerivedLocation(): void {
     this.localRegion.set('');
     this.localAdminDistrict.set('');
     this.localLatitude.set(undefined);
     this.localLongitude.set(undefined);
+    this.locationQueries.next(query.trim());
   }
 
-  private safeSplitName(name: unknown): string {
-    const nameStr = typeof name === 'string' ? name : '';
-    return nameStr.split(',')[0].trim();
-  }
-
-  selectLocation(loc: UKLocation) {
-    const postcode = loc.postcode ?? '';
-    this.localPostcode.set(postcode);
-    this.localRegion.set(loc.region ?? '');
-    this.localAdminDistrict.set(this.safeSplitName(loc.name));
-    this.localLatitude.set(loc.latitude);
-    this.localLongitude.set(loc.longitude);
-
+  selectLocation(location: UKLocation): void {
+    this.localPostcode.set(location.postcode ?? '');
+    this.localRegion.set(location.region ?? '');
+    this.localAdminDistrict.set((location.name ?? '').split(',')[0].trim());
+    this.localLatitude.set(location.latitude);
+    this.localLongitude.set(location.longitude);
     this.locationSuggestions.set([]);
     this.showLocationDropdown.set(false);
     this.locationLookup.set(idleLocationLookup);
     this.locationQueries.next('');
   }
 
-  hideLocationDropdownWithDelay() {
-    setTimeout(() => {
-      this.showLocationDropdown.set(false);
-    }, 250);
+  toggleSelection(values: WritableSignal<string[]>, value: string): void {
+    values.update(current =>
+      current.includes(value)
+        ? current.filter(candidate => candidate !== value)
+        : [...current, value]);
   }
 
-  targetWeeklyHoursLabel(): string {
-    const map: Record<string, string> = {
-      'FULL_TIME': 'Full-Time (35-40 hours)',
-      'PART_TIME_16_30': 'Part-Time (16-30 hours)',
-      'PART_TIME_UNDER_16': 'Part-Time (Under 16 hours)',
-      'FLEXIBLE': 'Flexible / Any Hours'
-    };
-    return map[this.localTargetWeeklyHours()] || this.localTargetWeeklyHours();
+  isSelected(values: string[], value: string): boolean {
+    return values.includes(value);
   }
 
-  triggerLogout() {
+  triggerLogout(): void {
     this.logoutRequested.emit();
   }
 
-  triggerFinderSearch() {
+  triggerFinderSearch(): void {
     this.findJobsRequested.emit();
+  }
+
+  private populate(profile: UserProfile): void {
+    this.localSkills.set(profile.skills ?? []);
+    this.localTargetRoles.set(profile.aspirations?.targetRoles ?? []);
+    this.localPostcode.set(profile.workPreferences?.location?.postcode ?? '');
+    this.localRegion.set(profile.workPreferences?.location?.region ?? '');
+    this.localAdminDistrict.set(profile.workPreferences?.location?.adminDistrict ?? '');
+    this.localLatitude.set(profile.workPreferences?.location?.latitude);
+    this.localLongitude.set(profile.workPreferences?.location?.longitude);
+    this.localCommuteRange.set(profile.workPreferences?.commuteRange);
+    this.localEmploymentTypes.set(Array.from(profile.workPreferences?.employmentTypes ?? []));
+    this.localWorkingPatterns.set(Array.from(profile.workPreferences?.workingPatterns ?? []));
+    this.localWorkplaceArrangements.set(Array.from(
+      profile.workPreferences?.workplaceArrangements ?? []));
+    this.localAvailableFrom.set(profile.workPreferences?.availableFrom ?? '');
+    this.localNoticePeriodDays.set(profile.workPreferences?.noticePeriodDays);
+  }
+
+  private workPreferencesPayload(): WorkPreferences {
+    const employmentTypes = this.localEmploymentTypes() as unknown as
+      Set<WorkPreferencesEmploymentTypesEnum>;
+    const workingPatterns = this.localWorkingPatterns() as unknown as
+      Set<WorkPreferencesWorkingPatternsEnum>;
+    const workplaceArrangements = this.localWorkplaceArrangements() as unknown as
+      Set<WorkPreferencesWorkplaceArrangementsEnum>;
+    return {
+      ...(this.localPostcode().trim() ? {
+        location: {
+          postcode: this.localPostcode().trim().toUpperCase(),
+          region: this.localRegion().trim(),
+          adminDistrict: this.localAdminDistrict().trim(),
+          latitude: this.localLatitude(),
+          longitude: this.localLongitude(),
+        },
+      } : {}),
+      ...(this.localCommuteRange() == null ? {} : {commuteRange: this.localCommuteRange()}),
+      employmentTypes,
+      workingPatterns,
+      workplaceArrangements,
+      ...(this.localAvailableFrom() ? {availableFrom: this.localAvailableFrom()} : {}),
+      ...(this.localNoticePeriodDays() == null
+        ? {}
+        : {noticePeriodDays: this.localNoticePeriodDays()}),
+    };
   }
 }

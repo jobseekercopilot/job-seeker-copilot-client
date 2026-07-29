@@ -15,6 +15,6 @@ describe('normaliseProfile', () => {
     } as unknown as UserProfile);
 
     expect(profile.aspirations?.targetRoles).toEqual([]);
-    expect(profile.workPreferences?.commuteRange).toBe(10);
+    expect(profile.workPreferences).toBeUndefined();
   });
 });
