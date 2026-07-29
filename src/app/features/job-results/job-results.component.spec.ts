@@ -3,7 +3,11 @@ import { By } from '@angular/platform-browser';
 import { Observable, of, Subject, throwError } from 'rxjs';
 import { JobResultsComponent } from './job-results.component';
 import { JobSearchOptions, JobService } from '../../services/job.service';
-import { DocumentGenerationService } from '../../services/document-generation.service';
+import {
+  DocumentGenerationError,
+  DocumentGenerationService,
+  PendingDocumentGeneration,
+} from '../../services/document-generation.service';
 import { Job, JobSearchResponse } from '../../models/job-search.model';
 import {
   ProviderResultStatus,
@@ -30,6 +34,7 @@ describe('JobResultsComponent', () => {
   let queuedSearchResponses: Observable<JobSearchResponse>[] = [];
   let queuedEvidenceResponses: Observable<any[]>[] = [];
   let evidenceEntries: any[] = [];
+  let pendingGenerations: PendingDocumentGeneration[] = [];
 
   const jobService = {
     callCount: 0,
@@ -56,6 +61,10 @@ describe('JobResultsComponent', () => {
 
   const documentGenerationService = {
     latestFiles: () => of({}),
+    pendingGenerations: vi.fn(() => pendingGenerations),
+    resume: vi.fn(() => new Subject<any>()),
+    cancel: vi.fn(() => of(undefined)),
+    uploadReplacement: vi.fn(),
     generate: vi.fn(() => of({
       applicationId: 'application-1',
       cvDocumentId: 'cv-1',
@@ -66,6 +75,9 @@ describe('JobResultsComponent', () => {
 
   const applicationTracker = {
     listApplications: vi.fn(() => of([])),
+    createApplication: vi.fn(),
+    updateStatus: vi.fn(),
+    withdrawGeneratedApplication: vi.fn(),
   };
   const evidenceLibrary = {
     listEvidence: vi.fn(() => queuedEvidenceResponses.shift() ?? of(evidenceEntries)),
@@ -79,7 +91,14 @@ describe('JobResultsComponent', () => {
     queuedSearchResponses = [];
     queuedEvidenceResponses = [];
     evidenceEntries = [];
+    pendingGenerations = [];
     applicationTracker.listApplications.mockClear();
+    documentGenerationService.pendingGenerations.mockClear();
+    documentGenerationService.resume.mockClear();
+    documentGenerationService.resume.mockImplementation(() => new Subject<any>());
+    documentGenerationService.cancel.mockClear();
+    documentGenerationService.cancel.mockImplementation(() => of(undefined));
+    documentGenerationService.uploadReplacement.mockReset();
     documentGenerationService.generate.mockClear();
     documentGenerationService.generate.mockImplementation(() => of({
       applicationId: 'application-1',
@@ -87,6 +106,9 @@ describe('JobResultsComponent', () => {
       coverLetterDocumentId: 'cover-1',
       downloads: {},
     }));
+    applicationTracker.createApplication.mockReset();
+    applicationTracker.updateStatus.mockReset();
+    applicationTracker.withdrawGeneratedApplication.mockReset();
     evidenceLibrary.listEvidence.mockClear();
     await TestBed.configureTestingModule({
       imports: [JobResultsComponent],
@@ -1055,6 +1077,240 @@ describe('JobResultsComponent', () => {
     generation.complete();
   });
 
+  it('restores one matching pending generation exactly once and applies its authoritative result', () => {
+    const generation = new Subject<any>();
+    const evidenceId = '50000000-0000-4000-8000-000000000001';
+    pendingGenerations = [pendingGeneration('cleaning-1', evidenceId)];
+    documentGenerationService.resume.mockReturnValueOnce(generation);
+    const fixture = createFixture();
+
+    expect(documentGenerationService.resume).toHaveBeenCalledTimes(1);
+    expect(documentGenerationService.resume).toHaveBeenCalledWith('cleaning-1');
+    expect(fixture.componentInstance.generatingJobIds().has('cleaning-1')).toBe(true);
+    expect(jobCards(fixture)[0].nativeElement.textContent).toContain('Processing');
+    expect(jobCards(fixture)[0].query(
+      By.css('[data-testid="cancel-generation-button"]'),
+    )).not.toBeNull();
+
+    fixture.componentInstance.refresh();
+    fixture.detectChanges();
+
+    expect(documentGenerationService.resume).toHaveBeenCalledTimes(1);
+
+    generation.next({
+      applicationId: 'application-restored',
+      cvDocumentId: 'cv-restored',
+      coverLetterDocumentId: 'cover-restored',
+      downloads: {cv: {docx: {fileId: 'cv-docx'}}, coverLetter: {}},
+    });
+    generation.complete();
+    fixture.detectChanges();
+
+    const restoredJob = fixture.componentInstance.jobs()
+      .find(candidate => fixture.componentInstance.jobStateKey(candidate) === 'cleaning-1');
+    expect(restoredJob).toEqual(expect.objectContaining({
+      applicationId: 'application-restored',
+      applicationStatus: 'DOCUMENTS_GENERATED',
+      cvDocumentId: 'cv-restored',
+      coverLetterDocumentId: 'cover-restored',
+    }));
+    expect(fixture.componentInstance.generationDownloads()['cleaning-1']?.cv?.docx?.fileId)
+      .toBe('cv-docx');
+    expect(fixture.componentInstance.generatingJobIds().has('cleaning-1')).toBe(false);
+  });
+
+  it('restores owner-scoped pending generation without legacy token inputs', () => {
+    const generation = new Subject<any>();
+    const evidenceId = '50000000-0000-4000-8000-000000000001';
+    pendingGenerations = [pendingGeneration('cleaning-1', evidenceId)];
+    documentGenerationService.resume.mockReturnValueOnce(generation);
+
+    const fixture = createFixture('FIXTURE', false);
+
+    expect(documentGenerationService.resume).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.generatingJobIds().has('cleaning-1')).toBe(true);
+    fixture.destroy();
+  });
+
+  it('keeps restored evidence available for retry after an actionable generation error', () => {
+    const generation = new Subject<any>();
+    const evidenceId = '50000000-0000-4000-8000-000000000001';
+    evidenceEntries = [
+      evidenceEntry(evidenceId, 'PROJECT', 'Portfolio project', 1),
+    ];
+    pendingGenerations = [pendingGeneration('cleaning-1', evidenceId)];
+    documentGenerationService.resume.mockReturnValueOnce(generation);
+    const fixture = createFixture();
+
+    generation.error(new DocumentGenerationError(
+      'EVIDENCE_CHANGED',
+      'One of the selected entries changed. Review and confirm your evidence before retrying.',
+    ));
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.generatingJobIds().has('cleaning-1')).toBe(false);
+    expect(fixture.componentInstance.generationErrors()['cleaning-1'])
+      .toContain('selected entries changed');
+
+    const selectedJob = fixture.componentInstance.jobs()
+      .find(candidate => fixture.componentInstance.jobStateKey(candidate) === 'cleaning-1')!;
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.cvEvidenceIds()).toEqual([evidenceId]);
+    expect(fixture.componentInstance.coverLetterEvidenceIds()).toEqual([evidenceId]);
+    expect(fixture.componentInstance.canGenerateFromSelection()).toBe(true);
+  });
+
+  it('cancels a restored generation, keeps its evidence draft and restores job-card actions', () => {
+    const generation = new Subject<any>();
+    const evidenceId = '50000000-0000-4000-8000-000000000001';
+    pendingGenerations = [pendingGeneration('cleaning-1', evidenceId)];
+    documentGenerationService.resume.mockReturnValueOnce(generation);
+    documentGenerationService.cancel.mockImplementationOnce(() => new Observable(observer => {
+      generation.complete();
+      observer.next(undefined);
+      observer.complete();
+    }));
+    const fixture = createFixture();
+    const card = jobCards(fixture)[0];
+    const cancelButton: HTMLButtonElement = card
+      .query(By.css('[data-testid="cancel-generation-button"]'))
+      .nativeElement;
+
+    cancelButton.click();
+    fixture.detectChanges();
+
+    expect(documentGenerationService.cancel).toHaveBeenCalledTimes(1);
+    expect(documentGenerationService.cancel).toHaveBeenCalledWith('cleaning-1');
+    expect(generation.observed).toBe(false);
+    expect(fixture.componentInstance.generatingJobIds().has('cleaning-1')).toBe(false);
+    expect(fixture.componentInstance.evidenceSelectionDrafts()['cleaning-1'])
+      .toEqual(expect.objectContaining({
+        cvEvidenceIds: [evidenceId],
+        coverLetterEvidenceIds: [evidenceId],
+      }));
+    expect(fixture.componentInstance.generationMessages()['cleaning-1'])
+      .toContain('Generation cancelled');
+    expect(fixture.componentInstance.generationErrors()['cleaning-1']).toBeUndefined();
+
+    card.componentInstance.expanded.set(true);
+    fixture.detectChanges();
+
+    expect(card.query(By.css('[data-testid="generate-documents-button"]'))).not.toBeNull();
+    expect(card.query(By.css('[data-testid="cancel-generation-button"]'))).toBeNull();
+  });
+
+  it('unsubscribes restored generation observers when the results component is destroyed', () => {
+    const generation = new Subject<any>();
+    const evidenceId = '50000000-0000-4000-8000-000000000001';
+    pendingGenerations = [pendingGeneration('cleaning-1', evidenceId)];
+    documentGenerationService.resume.mockReturnValueOnce(generation);
+    const fixture = createFixture();
+
+    expect(generation.observed).toBe(true);
+
+    fixture.destroy();
+
+    expect(generation.observed).toBe(false);
+  });
+
+  it('retains the current application and documents when withdrawal requires recovery', () => {
+    currentResponse = singleRoleResponse([
+      job('generated role', {
+        id: 'generated-role',
+        canonicalJobId: 'canonical-generated-role',
+        applicationId: 'application-generated-role',
+        applicationStatus: 'DOCUMENTS_GENERATED',
+        cvDocumentId: 'cv-current',
+        coverLetterDocumentId: 'cover-current',
+      }),
+    ], 'cleaning');
+    applicationTracker.withdrawGeneratedApplication.mockReturnValueOnce(of({
+      processing: true,
+      withdrawn: false,
+      retryable: true,
+      recoveryCode: 'RECOVERY_REQUIRED',
+    }));
+    const fixture = createFixture();
+    const notifications: {message: string; type: string}[] = [];
+    let applicationChanges = 0;
+    fixture.componentInstance.notify.subscribe(event => notifications.push(event));
+    fixture.componentInstance.applicationChanged.subscribe(() => applicationChanges++);
+    const generatedJob = fixture.componentInstance.jobs()[0];
+
+    fixture.componentInstance.withdrawGeneratedApplication(generatedJob);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.jobs()[0]).toEqual(expect.objectContaining({
+      applicationId: 'application-generated-role',
+      applicationStatus: 'DOCUMENTS_GENERATED',
+      cvDocumentId: 'cv-current',
+      coverLetterDocumentId: 'cover-current',
+    }));
+    expect(fixture.componentInstance.updatingApplicationStatuses()['canonical-generated-role'])
+      .toBeUndefined();
+    expect(fixture.componentInstance.generationMessages()['canonical-generated-role'])
+      .toContain('retained');
+    expect(notifications.at(-1)).toEqual(expect.objectContaining({
+      type: 'info',
+      message: expect.stringContaining('try again'),
+    }));
+    expect(applicationChanges).toBe(1);
+  });
+
+  it('retains current downloads when document replacement requires recovery', async () => {
+    currentResponse = singleRoleResponse([
+      job('generated role', {
+        id: 'generated-role',
+        canonicalJobId: 'canonical-generated-role',
+        applicationId: 'application-generated-role',
+        applicationStatus: 'DOCUMENTS_GENERATED',
+        cvDocumentId: 'cv-current',
+        coverLetterDocumentId: 'cover-current',
+      }),
+    ], 'cleaning');
+    documentGenerationService.uploadReplacement.mockResolvedValueOnce({
+      processing: true,
+      retryable: true,
+      recoveryCode: 'RECOVERY_REQUIRED',
+    });
+    const fixture = createFixture();
+    const currentDownloads = {
+      cv: {docx: {fileId: 'cv-current-docx'}},
+      coverLetter: {docx: {fileId: 'cover-current-docx'}},
+    };
+    fixture.componentInstance.generationDownloads.set({
+      'canonical-generated-role': currentDownloads,
+    });
+    const generatedJob = fixture.componentInstance.jobs()[0];
+    const notifications: {message: string; type: string}[] = [];
+    fixture.componentInstance.notify.subscribe(event => notifications.push(event));
+
+    fixture.componentInstance.uploadReplacement(generatedJob, {
+      applicationId: 'application-generated-role',
+      documentKind: 'CV',
+      file: new File(
+        ['replacement'],
+        'replacement.docx',
+        {type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'},
+      ),
+    });
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.generationDownloads()['canonical-generated-role'])
+      .toBe(currentDownloads);
+    expect(fixture.componentInstance.jobs()[0]).toEqual(expect.objectContaining({
+      cvDocumentId: 'cv-current',
+      coverLetterDocumentId: 'cover-current',
+    }));
+    expect(notifications.at(-1)).toEqual(expect.objectContaining({
+      type: 'info',
+      message: expect.stringContaining('retained'),
+    }));
+  });
+
   it('keeps description expansion independent for each canonical job card', () => {
     const firstTail = 'FIRST DESCRIPTION TAIL';
     const secondTail = 'SECOND DESCRIPTION TAIL';
@@ -1114,10 +1370,15 @@ describe('JobResultsComponent', () => {
       .toBe('Insufficient AI Credit for this job. No OpenAI request was made.');
   });
 
-  function createFixture(providerMode: 'FIXTURE' | 'REAL_PROVIDERS' | 'REQUIRED_VALIDATION' = 'FIXTURE') {
+  function createFixture(
+    providerMode: 'FIXTURE' | 'REAL_PROVIDERS' | 'REQUIRED_VALIDATION' = 'FIXTURE',
+    bindLegacyAuthInputs = true,
+  ) {
     const fixture = TestBed.createComponent(JobResultsComponent);
-    fixture.componentRef.setInput('authToken', 'token');
-    fixture.componentRef.setInput('userId', 'user-1');
+    if (bindLegacyAuthInputs) {
+      fixture.componentRef.setInput('authToken', 'token');
+      fixture.componentRef.setInput('userId', 'user-1');
+    }
     fixture.componentRef.setInput('aspirations', 'cleaning, programming');
     fixture.componentRef.setInput('workPrefs', JSON.stringify({ postcode: 'SW1A 1AA', hours: 'full time' }));
     fixture.componentRef.setInput('providerMode', providerMode);
@@ -1350,6 +1611,28 @@ describe('JobResultsComponent', () => {
         createdAt: '2026-07-29T00:00:00Z',
         createdBy: 'USER',
       }],
+    };
+  }
+
+  function pendingGeneration(
+    canonicalJobId: string,
+    evidenceId: string,
+  ): PendingDocumentGeneration {
+    return {
+      canonicalJobId,
+      operationId: '70000000-0000-4000-8000-000000000001',
+      state: 'PROCESSING',
+      startedAt: Date.now(),
+      evidence: {
+        cv: {
+          entryIds: [evidenceId],
+          sectionOrder: [DocumentEvidenceSelectionSectionOrderEnum.Project],
+        },
+        coverLetter: {
+          entryIds: [evidenceId],
+          sectionOrder: [DocumentEvidenceSelectionSectionOrderEnum.Project],
+        },
+      },
     };
   }
 });

@@ -18,7 +18,7 @@
         } @empty {
           <span class="source-badge hidden sm:inline-flex">{{ sourceLabel() }}</span>
         }
-        @if (statusActions().length > 0) {
+        @if (statusActions().length > 0 && !generating()) {
           <div class="status-menu"
                [attr.data-demo-focus-group]="demoFocusGroup()">
             <button type="button"
@@ -50,7 +50,22 @@
             }
           </div>
         } @else {
-          <span class="status-badge" [ngClass]="statusClass()">{{ statusDisplayLabel() }}</span>
+          <span class="status-badge"
+                [ngClass]="statusClass()"
+                [attr.role]="generating() ? 'status' : null"
+                [attr.aria-live]="generating() ? 'polite' : null">
+            {{ statusDisplayLabel() }}
+          </span>
+        }
+        @if (generating()) {
+          <button type="button"
+                  (click)="requestCancelGeneration()"
+                  [disabled]="cancellingGeneration()"
+                  data-testid="cancel-generation-button"
+                  class="generation-cancel-button inline-flex items-center gap-1 rounded-md disabled:cursor-wait disabled:opacity-60">
+            <mat-icon class="text-base">{{ cancellingGeneration() ? 'hourglass_top' : 'close' }}</mat-icon>
+            {{ cancellingGeneration() ? 'Cancelling...' : 'Cancel generation' }}
+          </button>
         }
         <button type="button"
                 (click)="toggle()"

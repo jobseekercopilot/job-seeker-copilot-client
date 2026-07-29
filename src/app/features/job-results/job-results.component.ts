@@ -1,11 +1,25 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal, inject, OnInit } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  OnDestroy,
+  OnInit,
+  output,
+  signal,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
+import { finalize, Observable, Subscription } from 'rxjs';
 import { DocumentUploadRequest, JobCardComponent } from '../job-card/job-card.component';
 import { JobService } from '../../services/job.service';
 import {
+  DocumentGenerationError,
+  DocumentGenerationResponse,
   DocumentGenerationService,
   GenerationDownloadsResponse,
+  PendingDocumentGeneration,
 } from '../../services/document-generation.service';
 import { Job, JobSearchResponse } from '../../models/job-search.model';
 import { ApplicationRecordResponse } from '../../api/job-finder';
@@ -86,7 +100,7 @@ interface EvidenceSelectionDraft {
   templateUrl: './job-results.component.html',
   styleUrl: './job-results.component.css'
 })
-export class JobResultsComponent implements OnInit {
+export class JobResultsComponent implements OnInit, OnDestroy {
   private jobService = inject(JobService);
   private documentGenerationService = inject(DocumentGenerationService);
   private applicationTracker = inject(ApplicationTrackerService);
@@ -94,6 +108,11 @@ export class JobResultsComponent implements OnInit {
   private searchRequestSequence = 0;
   private evidenceRequestSequence = 0;
   private searchContextFingerprint = '';
+  private readonly activeGenerationIds = new Set<string>();
+  private readonly resumedGenerationIds = new Set<string>();
+  private readonly generationSubscriptions = new Map<string, Subscription>();
+  private readonly cancellationSubscriptions = new Map<string, Subscription>();
+  private destroyed = false;
 
   // Inputs from the parent App component (profile signals)
   skills = input<string>('');
@@ -194,6 +213,7 @@ export class JobResultsComponent implements OnInit {
   readonly activeRoleSearched = computed(() =>
     this.activeRoleState()?.searched ?? false);
   generatingJobIds = signal<Set<string>>(new Set());
+  cancellingGenerationIds = signal<Set<string>>(new Set());
   generationMessages = signal<Record<string, string | undefined>>({});
   generationErrors = signal<Record<string, string | undefined>>({});
   generationDownloads = signal<Record<string, GenerationDownloadsResponse | undefined>>({});
@@ -300,6 +320,19 @@ export class JobResultsComponent implements OnInit {
   ngOnInit(): void {
     // Auto-trigger search when the component initialises (profile is already loaded)
     this.search();
+  }
+
+  ngOnDestroy(): void {
+    this.destroyed = true;
+    for (const subscription of this.generationSubscriptions.values()) {
+      subscription.unsubscribe();
+    }
+    for (const subscription of this.cancellationSubscriptions.values()) {
+      subscription.unsubscribe();
+    }
+    this.generationSubscriptions.clear();
+    this.cancellationSubscriptions.clear();
+    this.activeGenerationIds.clear();
   }
 
   trackByJobId(index: number, job: Job): string {
@@ -584,6 +617,7 @@ export class JobResultsComponent implements OnInit {
 
     this.reconcileGeneratedState(this.jobs());
     this.rehydrateGeneratedDownloads(deduplicatedJobs);
+    this.restorePendingGenerations(this.jobs());
     if (this.roleKey(this.selectedTargetRole()) === roleKey) {
       this.notify.emit({
         message: `Found ${totalResults} matching job${totalResults === 1 ? '' : 's'} for ${current.targetRole}.`,
@@ -984,46 +1018,32 @@ export class JobResultsComponent implements OnInit {
     evidence: Parameters<DocumentGenerationService['generate']>[1],
   ): void {
     const jobId = this.jobStateKey(job);
-    if (!jobId || this.generatingJobIds().has(jobId)) return;
-    this.generatingJobIds.update(ids => new Set(ids).add(jobId));
-    this.generationMessages.update(messages => ({ ...messages, [jobId]: 'Generating CV & Cover Letter...' }));
-    this.generationErrors.update(errors => ({ ...errors, [jobId]: undefined }));
-
-    let generation: ReturnType<DocumentGenerationService['generate']>;
-    try {
-      generation = this.documentGenerationService.generate(job, evidence);
-    } catch (error) {
-      this.handleGenerationFailure(jobId, error);
-      return;
-    }
-
-    generation.subscribe({
-      next: (response) => {
-        this.generationDownloads.update(downloads => ({ ...downloads, [jobId]: response.downloads }));
-        this.generatedDocumentIds.update(documentIds => ({
-          ...documentIds,
-          [jobId]: {
-            cvDocumentId: response.cvDocumentId,
-            coverLetterDocumentId: response.coverLetterDocumentId,
-          }
-        }));
-        this.updateJobLocally(jobId, {
-          applicationId: response.applicationId ?? job.applicationId,
-          applicationStatus: 'DOCUMENTS_GENERATED',
-          cvDocumentId: response.cvDocumentId ?? job.cvDocumentId,
-          coverLetterDocumentId: response.coverLetterDocumentId ?? job.coverLetterDocumentId,
-        });
-        this.clearEvidenceDraft(jobId);
-        this.finishGeneration(jobId, 'CV and cover letter generated successfully.');
-        this.notify.emit({ message: 'CV and cover letter generated successfully.', type: 'success' });
-        this.applicationChanged.emit();
-      },
-      error: error => this.handleGenerationFailure(jobId, error),
-    });
+    if (!jobId || this.activeGenerationIds.has(jobId)) return;
+    this.markGenerationProcessing(jobId, 'Generating CV & Cover Letter...');
+    this.subscribeToGeneration(
+      jobId,
+      job,
+      () => this.documentGenerationService.generate(job, evidence),
+    );
   }
 
   private handleGenerationFailure(jobId: string, error: unknown): void {
     this.finishGeneration(jobId, undefined);
+    if (error instanceof DocumentGenerationError) {
+      if (error.code === 'CANCELLED') {
+        this.generationMessages.update(messages => ({
+          ...messages,
+          [jobId]: error.message,
+        }));
+        this.generationErrors.update(errors => ({ ...errors, [jobId]: undefined }));
+        this.notify.emit({message: error.message, type: 'info'});
+        return;
+      }
+      this.generationErrors.update(errors => ({ ...errors, [jobId]: error.message }));
+      this.notify.emit({message: error.message, type: 'error'});
+      console.error(`[JobResults] Document generation failed (${error.code})`);
+      return;
+    }
     const status = typeof error === 'object' && error !== null && 'status' in error
       ? Number((error as {status?: unknown}).status)
       : undefined;
@@ -1048,6 +1068,234 @@ export class JobResultsComponent implements OnInit {
     this.generationErrors.update(errors => ({ ...errors, [jobId]: message }));
     this.notify.emit({ message, type: 'error' });
     console.error('[JobResults] Document generation failed');
+  }
+
+  cancelGeneration(job: Job): void {
+    const jobId = this.jobStateKey(job);
+    if (
+      !jobId
+      || !this.generatingJobIds().has(jobId)
+      || this.cancellingGenerationIds().has(jobId)
+      || this.cancellationSubscriptions.has(jobId)
+    ) {
+      return;
+    }
+
+    this.cancellingGenerationIds.update(ids => new Set(ids).add(jobId));
+    this.generationErrors.update(errors => ({...errors, [jobId]: undefined}));
+    let settled = false;
+    let cancellation: Observable<void>;
+    try {
+      cancellation = this.documentGenerationService.cancel(jobId);
+    } catch (error) {
+      this.handleCancellationFailure(jobId, error);
+      return;
+    }
+
+    const subscription = cancellation.subscribe({
+      next: () => {
+        if (settled || this.destroyed) return;
+        settled = true;
+        this.acceptCancellation(jobId);
+      },
+      error: error => {
+        if (settled || this.destroyed) return;
+        settled = true;
+        this.handleCancellationFailure(jobId, error);
+      },
+      complete: () => {
+        if (settled || this.destroyed) return;
+        settled = true;
+        this.acceptCancellation(jobId);
+      },
+    });
+    if (!subscription.closed && !settled) {
+      this.cancellationSubscriptions.set(jobId, subscription);
+    }
+  }
+
+  private restorePendingGenerations(jobs: Job[]): void {
+    if (
+      this.destroyed
+      || jobs.length === 0
+    ) {
+      return;
+    }
+
+    const jobsByCanonicalId = new Map(
+      jobs
+        .map(job => [this.jobStateKey(job), job] as const)
+        .filter(([jobId]) => Boolean(jobId)),
+    );
+    let pendingGenerations: PendingDocumentGeneration[];
+    try {
+      pendingGenerations = this.documentGenerationService.pendingGenerations();
+    } catch {
+      console.error('[JobResults] Pending document generation discovery failed');
+      return;
+    }
+
+    for (const pending of pendingGenerations) {
+      const job = jobsByCanonicalId.get(pending.canonicalJobId);
+      if (
+        !job
+        || this.activeGenerationIds.has(pending.canonicalJobId)
+        || this.resumedGenerationIds.has(pending.canonicalJobId)
+      ) {
+        continue;
+      }
+      this.rememberPendingEvidence(pending);
+      this.resumedGenerationIds.add(pending.canonicalJobId);
+      this.markGenerationProcessing(
+        pending.canonicalJobId,
+        'Restoring document generation...',
+      );
+      this.subscribeToGeneration(
+        pending.canonicalJobId,
+        job,
+        () => this.documentGenerationService.resume(pending.canonicalJobId),
+      );
+    }
+  }
+
+  private rememberPendingEvidence(pending: PendingDocumentGeneration): void {
+    if (this.evidenceSelectionDrafts()[pending.canonicalJobId]) return;
+    const draft: EvidenceSelectionDraft = {
+      cvEvidenceIds: [...pending.evidence.cv.entryIds],
+      coverLetterEvidenceIds: [...pending.evidence.coverLetter.entryIds],
+      cvSectionOrder: [...pending.evidence.cv.sectionOrder],
+      coverLetterSectionOrder: [...pending.evidence.coverLetter.sectionOrder],
+    };
+    this.evidenceSelectionDrafts.update(drafts => ({
+      ...drafts,
+      [pending.canonicalJobId]: draft,
+    }));
+  }
+
+  private markGenerationProcessing(jobId: string, message: string): void {
+    this.generatingJobIds.update(ids => new Set(ids).add(jobId));
+    this.generationMessages.update(messages => ({...messages, [jobId]: message}));
+    this.generationErrors.update(errors => ({...errors, [jobId]: undefined}));
+  }
+
+  private subscribeToGeneration(
+    jobId: string,
+    sourceJob: Job,
+    createRequest: () => Observable<DocumentGenerationResponse>,
+  ): void {
+    if (this.destroyed || this.activeGenerationIds.has(jobId)) return;
+    this.activeGenerationIds.add(jobId);
+
+    let generation: Observable<DocumentGenerationResponse>;
+    try {
+      generation = createRequest();
+    } catch (error) {
+      this.clearGenerationSubscription(jobId);
+      this.handleGenerationFailure(jobId, error);
+      return;
+    }
+
+    let settled = false;
+    const subscription = generation.subscribe({
+      next: response => {
+        if (settled || this.destroyed) return;
+        settled = true;
+        this.clearGenerationSubscription(jobId);
+        this.acceptGeneration(jobId, sourceJob, response);
+      },
+      error: error => {
+        if (settled || this.destroyed) return;
+        settled = true;
+        this.clearGenerationSubscription(jobId);
+        this.handleGenerationFailure(jobId, error);
+      },
+      complete: () => {
+        if (settled || this.destroyed) return;
+        settled = true;
+        this.clearGenerationSubscription(jobId);
+        if (this.cancellingGenerationIds().has(jobId)) {
+          return;
+        }
+        this.handleGenerationFailure(
+          jobId,
+          new Error('Document generation completed without an authoritative result.'),
+        );
+      },
+    });
+    if (!subscription.closed && !settled) {
+      this.generationSubscriptions.set(jobId, subscription);
+    }
+  }
+
+  private acceptGeneration(
+    jobId: string,
+    sourceJob: Job,
+    response: DocumentGenerationResponse,
+  ): void {
+    const current = this.currentJob(jobId) ?? sourceJob;
+    this.generationDownloads.update(downloads => ({
+      ...downloads,
+      [jobId]: response.downloads,
+    }));
+    this.generatedDocumentIds.update(documentIds => ({
+      ...documentIds,
+      [jobId]: {
+        cvDocumentId: response.cvDocumentId,
+        coverLetterDocumentId: response.coverLetterDocumentId,
+      },
+    }));
+    this.updateJobLocally(jobId, {
+      applicationId: response.applicationId,
+      applicationStatus: 'DOCUMENTS_GENERATED',
+      cvDocumentId: response.cvDocumentId ?? current.cvDocumentId,
+      coverLetterDocumentId: response.coverLetterDocumentId ?? current.coverLetterDocumentId,
+    });
+    this.clearEvidenceDraft(jobId);
+    this.finishGeneration(jobId, 'CV and cover letter generated successfully.');
+    this.notify.emit({
+      message: 'CV and cover letter generated successfully.',
+      type: 'success',
+    });
+    this.applicationChanged.emit();
+  }
+
+  private acceptCancellation(jobId: string): void {
+    this.generationSubscriptions.get(jobId)?.unsubscribe();
+    this.clearGenerationSubscription(jobId);
+    this.finishGeneration(
+      jobId,
+      'Generation cancelled. Your evidence selection is ready to edit.',
+    );
+    this.generationErrors.update(errors => ({...errors, [jobId]: undefined}));
+    this.notify.emit({
+      message: 'Document generation cancelled. Your evidence selection has been kept.',
+      type: 'info',
+    });
+  }
+
+  private handleCancellationFailure(jobId: string, error: unknown): void {
+    this.clearCancellationSubscription(jobId);
+    const message = error instanceof DocumentGenerationError
+      ? error.message
+      : 'Cancellation could not be confirmed. Generation is still being reconciled.';
+    this.generationErrors.update(errors => ({...errors, [jobId]: message}));
+    this.notify.emit({message, type: 'error'});
+    console.error('[JobResults] Document generation cancellation failed');
+  }
+
+  private clearGenerationSubscription(jobId: string): void {
+    this.activeGenerationIds.delete(jobId);
+    this.generationSubscriptions.delete(jobId);
+  }
+
+  private clearCancellationSubscription(jobId: string): void {
+    this.cancellationSubscriptions.delete(jobId);
+    this.cancellingGenerationIds.update(ids => {
+      if (!ids.has(jobId)) return ids;
+      const next = new Set(ids);
+      next.delete(jobId);
+      return next;
+    });
   }
 
   private isCurrentEvidenceRequest(jobKey: string, requestSequence: number): boolean {
@@ -1219,7 +1467,14 @@ export class JobResultsComponent implements OnInit {
     }
 
     this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: status }));
-    this.applicationTracker.updateStatus(job.applicationId, status).subscribe({
+    this.applicationTracker.updateStatus(job.applicationId, status).pipe(
+      finalize(() => {
+        this.updatingApplicationStatuses.update(updating => ({
+          ...updating,
+          [jobId]: undefined,
+        }));
+      }),
+    ).subscribe({
       next: (record) => {
         this.applyApplicationRecord(jobId, record);
         const updatedStatus = record.status ?? status;
@@ -1232,15 +1487,11 @@ export class JobResultsComponent implements OnInit {
         this.applicationChanged.emit();
       },
       error: () => {
-        this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: undefined }));
         this.notify.emit({
           message: 'Could not update application status. Please try again.',
           type: 'error',
         });
         console.error('[JobResults] Application status update failed');
-      },
-      complete: () => {
-        this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: undefined }));
       },
     });
   }
@@ -1258,8 +1509,30 @@ export class JobResultsComponent implements OnInit {
     }
 
     this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: 'WITHDRAWN' }));
-    this.applicationTracker.withdrawGeneratedApplication(job.applicationId).subscribe({
-      next: () => {
+    this.applicationTracker.withdrawGeneratedApplication(job.applicationId).pipe(
+      finalize(() => {
+        this.updatingApplicationStatuses.update(updating => ({
+          ...updating,
+          [jobId]: undefined,
+        }));
+      }),
+    ).subscribe({
+      next: outcome => {
+        if (outcome.processing || outcome.withdrawn !== true) {
+          const message = outcome.retryable
+            ? 'Withdrawal was not completed. Your application and documents have been retained; try again.'
+            : (
+                outcome.message
+                || 'Withdrawal needs recovery. Your application and documents have been retained.'
+              );
+          this.generationMessages.update(messages => ({
+            ...messages,
+            [jobId]: message,
+          }));
+          this.notify.emit({message, type: 'info'});
+          this.applicationChanged.emit();
+          return;
+        }
         this.updateJobLocally(jobId, {
           applicationId: undefined,
           applicationStatus: 'NEW',
@@ -1279,15 +1552,11 @@ export class JobResultsComponent implements OnInit {
         this.applicationChanged.emit();
       },
       error: () => {
-        this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: undefined }));
         this.notify.emit({
           message: 'Could not withdraw generated application. Please try again.',
           type: 'error',
         });
         console.error('[JobResults] Generated application withdrawal failed');
-      },
-      complete: () => {
-        this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: undefined }));
       },
     });
   }
@@ -1302,6 +1571,17 @@ export class JobResultsComponent implements OnInit {
       request.file,
       request.documentKind
     ).then((response) => {
+      if (response.processing) {
+        const message = response.retryable
+          ? `${request.documentKind === 'CV' ? 'CV' : 'Cover letter'} replacement was not completed. Your current documents have been retained; try again.`
+          : (
+              response.message
+              || `${request.documentKind === 'CV' ? 'CV' : 'Cover letter'} replacement needs recovery. Your current documents have been retained.`
+            );
+        this.notify.emit({message, type: 'info'});
+        this.applicationChanged.emit();
+        return;
+      }
       this.generationDownloads.update(downloads => {
         const existing = downloads[jobId] ?? {};
         const next: GenerationDownloadsResponse = {
@@ -1350,6 +1630,8 @@ export class JobResultsComponent implements OnInit {
   }
 
   private finishGeneration(jobId: string, message: string | undefined): void {
+    this.cancellationSubscriptions.get(jobId)?.unsubscribe();
+    this.clearCancellationSubscription(jobId);
     this.generatingJobIds.update(ids => {
       const next = new Set(ids);
       next.delete(jobId);

@@ -79,8 +79,34 @@ describe('JobCardComponent', () => {
       .nativeElement;
 
     expect(fixture.nativeElement.textContent).toContain('Generating CV & Cover Letter...');
-    expect(fixture.nativeElement.textContent).toContain('Generation in progress');
+    expect(fixture.nativeElement.textContent).toContain('Processing');
     expect(button.disabled).toBe(true);
+  });
+
+  it('keeps cancellation visible while processing and emits it only when available', () => {
+    const fixture = createFixture({generating: true});
+    const emitted: Job[] = [];
+    fixture.componentInstance.cancelGeneration.subscribe(selected => emitted.push(selected));
+    const cancelButton: HTMLButtonElement = fixture.debugElement
+      .query(By.css('[data-testid="cancel-generation-button"]'))
+      .nativeElement;
+
+    expect(cancelButton.textContent).toContain('Cancel generation');
+    expect(cancelButton.disabled).toBe(false);
+    cancelButton.click();
+
+    expect(emitted).toEqual([job]);
+
+    fixture.componentRef.setInput('cancellingGeneration', true);
+    fixture.detectChanges();
+    const cancellingButton: HTMLButtonElement = fixture.debugElement
+      .query(By.css('[data-testid="cancel-generation-button"]'))
+      .nativeElement;
+    cancellingButton.click();
+
+    expect(cancellingButton.disabled).toBe(true);
+    expect(cancellingButton.textContent).toContain('Cancelling...');
+    expect(emitted).toEqual([job]);
   });
 
   it('shows the success panel and four download buttons after generation', () => {
@@ -401,6 +427,7 @@ describe('JobCardComponent', () => {
   function createFixture(options: {
     job?: Job;
     generating?: boolean;
+    cancellingGeneration?: boolean;
     generationError?: string;
     downloads?: GenerationDownloadsResponse;
     applicationToolsAvailable?: boolean;
@@ -410,6 +437,7 @@ describe('JobCardComponent', () => {
     const fixture = TestBed.createComponent(JobCardComponent);
     fixture.componentRef.setInput('job', options.job ?? job);
     fixture.componentRef.setInput('generating', options.generating ?? false);
+    fixture.componentRef.setInput('cancellingGeneration', options.cancellingGeneration ?? false);
     fixture.componentRef.setInput('generationError', options.generationError ?? null);
     fixture.componentRef.setInput('downloads', options.downloads ?? null);
     fixture.componentRef.setInput('cvDocumentId', 'cv-123');

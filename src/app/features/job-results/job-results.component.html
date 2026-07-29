@@ -179,6 +179,7 @@
         <app-job-card
           [job]="job"
           [generating]="generatingJobIds().has(jobStateKey(job))"
+          [cancellingGeneration]="cancellingGenerationIds().has(jobStateKey(job))"
           [generationMessage]="generationMessages()[jobStateKey(job)] ?? null"
           [generationError]="generationErrors()[jobStateKey(job)] ?? null"
           [downloads]="generationDownloads()[jobStateKey(job)] ?? null"
@@ -192,6 +193,7 @@
           [generationPanelActive]="isEvidenceSelectionJob(job)"
           (trackApplication)="trackApplication($event)"
           (generateDocuments)="openEvidenceSelection($event)"
+          (cancelGeneration)="cancelGeneration($event)"
           (updateApplicationStatus)="updateApplicationStatus(job, $event)"
           (withdrawGeneratedApplication)="withdrawGeneratedApplication(job)"
           (downloadFile)="downloadFile($event)"

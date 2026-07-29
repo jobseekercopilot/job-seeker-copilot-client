@@ -45,6 +45,7 @@ export class JobCardComponent {
 
   job = input.required<Job>();
   generating = input(false);
+  cancellingGeneration = input(false);
   generationMessage = input<string | null>(null);
   generationError = input<string | null>(null);
   downloads = input<GenerationDownloadsResponse | null>(null);
@@ -58,6 +59,7 @@ export class JobCardComponent {
   generationPanelActive = input(false);
   trackApplication = output<Job>();
   generateDocuments = output<Job>();
+  cancelGeneration = output<Job>();
   updateApplicationStatus = output<StatusUpdateTarget>();
   downloadFile = output<DownloadFileResponse>();
   uploadReplacement = output<DocumentUploadRequest>();
@@ -113,6 +115,11 @@ export class JobCardComponent {
     if (!this.applicationToolsAvailable()) return;
     this.expanded.set(true);
     this.generateDocuments.emit(this.job());
+  }
+
+  requestCancelGeneration(): void {
+    if (!this.generating() || this.cancellingGeneration()) return;
+    this.cancelGeneration.emit(this.job());
   }
 
   fullDescription(): string {
@@ -263,7 +270,7 @@ export class JobCardComponent {
   }
 
   statusDisplayLabel(): string {
-    if (this.generating()) return 'Generation in progress';
+    if (this.generating()) return 'Processing';
     switch (this.statusLabel()) {
       case 'NEW':
         return 'Not saved';
@@ -383,6 +390,7 @@ export class JobCardComponent {
   }
 
   statusClass(): string {
+    if (this.generating()) return 'status-processing';
     return `status-${this.statusLabel().toLowerCase().replaceAll('_', '-')}`;
   }
 

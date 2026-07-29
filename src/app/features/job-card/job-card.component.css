@@ -223,6 +223,31 @@
   color: #92400e;
 }
 
+.status-processing {
+  background: var(--color-soft-amber);
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.generation-cancel-button {
+  background: var(--color-surface);
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.34rem 0.48rem;
+}
+
+.generation-cancel-button:hover:not(:disabled) {
+  background: var(--color-soft-red);
+}
+
+.generation-cancel-button:focus-visible {
+  box-shadow: 0 0 0 3px #fecaca;
+  outline: none;
+}
+
 .status-applied {
   background: var(--color-soft-blue);
   border-color: #bfdbfe;
