@@ -45,7 +45,7 @@ app.use(securityHeaders);
 app.use(express.json({limit: bffConfig.jsonBodyLimitBytes}));
 app.use(jsonBodyErrorHandler);
 
-const locationGateway = new LocationGateway();
+const locationGateway = new LocationGateway(bffConfig.downstreamTimeoutMs);
 
 // User management gateway URL - configurable via environment variable
 const USER_MANAGEMENT_GATEWAY_URL = bffConfig.userManagementGatewayOrigin;

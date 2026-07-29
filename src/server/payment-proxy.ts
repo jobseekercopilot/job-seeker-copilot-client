@@ -1,4 +1,4 @@
-import {DownstreamTimeoutError, fetchWithTimeout} from './bff-boundary';
+import {DownstreamTimeoutError, fetchTextWithTimeout} from './bff-boundary';
 import {callUserManagement} from './user-management-proxy';
 
 type BrowserHeaders = Record<string, string | string[] | undefined>;
@@ -107,7 +107,7 @@ export async function callTrustedPaymentGateway(
   };
   if (hasBody) headers['Content-Type'] = 'application/json';
 
-  const response = await fetchWithTimeout(
+  const {body, response} = await fetchTextWithTimeout(
     `${options.paymentGatewayOrigin}${options.path}`,
     {
       method: options.method,
@@ -119,7 +119,7 @@ export async function callTrustedPaymentGateway(
   );
 
   return {
-    body: await response.text(),
+    body,
     contentType: response.headers.get('content-type') || 'application/json',
     status: response.status,
   };

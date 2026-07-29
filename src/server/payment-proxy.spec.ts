@@ -36,6 +36,10 @@ function options(fetchImplementation: typeof fetch, serviceToken: string | undef
 }
 
 describe('trusted payment BFF proxy', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('derives the owner only from the HttpOnly session profile', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(profileResponse())
@@ -68,6 +72,40 @@ describe('trusted payment BFF proxy', () => {
     expect(paymentInit.headers['Authorization']).toBeUndefined();
     expect(paymentInit.headers['X-User-Id']).toBeUndefined();
     expect(paymentInit.body).toBe('{"pricingPlanId":"starter"}');
+  });
+
+  it('maps a stalled Payment response body to the existing timeout contract', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const paymentResponse = new Response(null, {
+      status: 200,
+      headers: {'Content-Type': 'application/json'},
+    });
+    const paymentText = vi.spyOn(paymentResponse, 'text').mockImplementation(
+      () => new Promise<string>(() => undefined),
+    );
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(profileResponse())
+      .mockImplementationOnce(async (_input, init) => {
+        capturedSignal = init?.signal ?? undefined;
+        return paymentResponse;
+      });
+    const requestOptions = options(fetchMock as typeof fetch, SERVICE_TOKEN);
+    requestOptions.timeoutMs = 5;
+
+    const error = await callTrustedPaymentGateway(requestOptions).then(
+      () => undefined,
+      failure => failure,
+    );
+
+    expect(paymentProxyFailure(error)).toEqual({
+      status: 504,
+      body: {
+        error: 'SERVICE_TIMEOUT',
+        message: 'Payment dependency timed out',
+      },
+    });
+    expect(paymentText).toHaveBeenCalledOnce();
+    expect(capturedSignal?.aborted).toBe(true);
   });
 
   it.each([

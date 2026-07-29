@@ -2,7 +2,7 @@ import type {Express, Request, Response} from 'express';
 import {timingSafeEqual} from 'node:crypto';
 import {
   downstreamFailureCategory,
-  fetchWithTimeout,
+  fetchTextWithTimeout,
 } from './bff-boundary';
 import {sanitiseProviderLinksJson} from '../shared/provider-content-policy';
 
@@ -152,7 +152,7 @@ export async function callJobFinder(
   );
   if ('status' in credentials) return credentials;
 
-  const response = await fetchWithTimeout(
+  const {body: responseBody, response} = await fetchTextWithTimeout(
     `${config.origin}${path}`,
     {
       method,
@@ -162,7 +162,6 @@ export async function callJobFinder(
     config.timeoutMs,
     fetchImplementation,
   );
-  const responseBody = await response.text();
   const accessToken = credentials.headers['Authorization'].slice('Bearer '.length);
   if (responseBody.includes(accessToken)) {
     return {

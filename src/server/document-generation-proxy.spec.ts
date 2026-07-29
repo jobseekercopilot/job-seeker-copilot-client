@@ -55,10 +55,13 @@ describe('Document generation session boundary', () => {
     vi.restoreAllMocks();
   });
 
-  async function start(fetchImplementation: typeof fetch): Promise<string> {
+  async function start(
+    fetchImplementation: typeof fetch,
+    config: DocumentGenerationProxyConfig = CONFIG,
+  ): Promise<string> {
     const app = express();
     app.use(express.json());
-    registerDocumentGenerationRoutes(app, CONFIG, fetchImplementation);
+    registerDocumentGenerationRoutes(app, config, fetchImplementation);
     server = app.listen(0, '127.0.0.1');
     await new Promise<void>(resolve => server?.once('listening', resolve));
     const address = server.address();
@@ -280,6 +283,40 @@ describe('Document generation session boundary', () => {
     );
   });
 
+  it('maps a stalled operation response body to the existing generation timeout contract', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const downstreamResponse = new Response(null, {
+      status: 200,
+      headers: {'Content-Type': 'application/json'},
+    });
+    const downstreamText = vi.spyOn(downstreamResponse, 'text').mockImplementation(
+      () => new Promise<string>(() => undefined),
+    );
+    const upstream = vi.fn<FetchLike>(async (_input, init) => {
+      capturedSignal = init?.signal ?? undefined;
+      return downstreamResponse;
+    });
+    const origin = await start(
+      upstream as typeof fetch,
+      {...CONFIG, timeoutMs: 5},
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/operations/${OPERATION_ID}`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(504);
+    expect(await response.json()).toEqual({
+      error: 'GENERATION_TIMEOUT',
+      message: 'The document generation request timed out; its outcome may still be processing',
+    });
+    expect(response.headers.get('x-correlation-id')).toMatch(UUID_PATTERN);
+    expect(downstreamText).toHaveBeenCalledOnce();
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
   it('cancels an exact operation through CSRF and replaces an unsafe correlation id', async () => {
     const upstream = vi.fn<FetchLike>(async () =>
       Response.json({
@@ -441,6 +478,46 @@ describe('Document generation session boundary', () => {
     expect(Buffer.from(init?.body as ArrayBuffer).toString('utf8')).toContain('Updated CV.docx');
   });
 
+  it('maps a stalled replacement response body to the existing timeout contract', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const downstreamResponse = new Response(null, {
+      status: 200,
+      headers: {'Content-Type': 'application/json'},
+    });
+    const downstreamText = vi.spyOn(downstreamResponse, 'text').mockImplementation(
+      () => new Promise<string>(() => undefined),
+    );
+    const upstream = vi.fn<FetchLike>(async (_input, init) => {
+      capturedSignal = init?.signal ?? undefined;
+      return downstreamResponse;
+    });
+    const origin = await start(
+      upstream as typeof fetch,
+      {...CONFIG, timeoutMs: 5},
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/applications/${APPLICATION_ID}/replace?documentType=CV`,
+      {
+        method: 'POST',
+        headers: {
+          ...sessionHeaders(),
+          'Content-Type': MULTIPART_TYPE,
+        },
+        body: MULTIPART_BODY,
+      },
+    );
+
+    expect(response.status).toBe(504);
+    expect(await response.json()).toEqual({
+      error: 'DOWNSTREAM_TIMEOUT',
+      message: 'Document replacement timed out',
+    });
+    expect(downstreamText).toHaveBeenCalledOnce();
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
   it('requires CSRF before a replacement upload reaches the gateway', async () => {
     const upstream = vi.fn<FetchLike>();
     const origin = await start(upstream as typeof fetch);
@@ -555,5 +632,64 @@ describe('Document generation session boundary', () => {
       Accept: 'application/json',
       Authorization: `Bearer ${ACCESS_TOKEN}`,
     });
+  });
+
+  it('rejects invalid download headers before buffering the response body', async () => {
+    const downstreamResponse = new Response(null, {
+      status: 200,
+      headers: {'Content-Type': 'text/html'},
+    });
+    const downstreamBody = vi.spyOn(downstreamResponse, 'arrayBuffer');
+    const upstream = vi.fn<FetchLike>(async () => downstreamResponse);
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/files/${FILE_ID}/download`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: 'INVALID_DOWNSTREAM_RESPONSE',
+      message: 'The document service returned an invalid file',
+    });
+    expect(downstreamBody).not.toHaveBeenCalled();
+  });
+
+  it('maps a stalled document body to timeout before exposing download headers', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const downstreamResponse = new Response(null, {
+      status: 200,
+      headers: {
+        'Content-Disposition': 'attachment; filename="Private CV.pdf"',
+        'Content-Type': 'application/pdf',
+      },
+    });
+    const downstreamBody = vi.spyOn(downstreamResponse, 'arrayBuffer').mockImplementation(
+      () => new Promise<ArrayBuffer>(() => undefined),
+    );
+    const upstream = vi.fn<FetchLike>(async (_input, init) => {
+      capturedSignal = init?.signal ?? undefined;
+      return downstreamResponse;
+    });
+    const origin = await start(
+      upstream as typeof fetch,
+      {...CONFIG, timeoutMs: 5},
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/files/${FILE_ID}/download`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(504);
+    expect(response.headers.get('content-disposition')).toBeNull();
+    expect(await response.json()).toEqual({
+      error: 'DOWNSTREAM_TIMEOUT',
+      message: 'Document download timed out',
+    });
+    expect(downstreamBody).toHaveBeenCalledOnce();
+    expect(capturedSignal?.aborted).toBe(true);
   });
 });

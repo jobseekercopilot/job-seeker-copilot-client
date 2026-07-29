@@ -1,3 +1,5 @@
+import {fetchTextWithTimeout} from '../../server/bff-boundary';
+
 export interface UKLocation {
   id: string;
   name: string;
@@ -13,7 +15,12 @@ export interface LocationGatewayResponse {
 }
 
 export class LocationGateway {
-  private gatewayUrl = process.env['LOCATION_GATEWAY_URL'] || 'http://location-gateway:8081';
+  constructor(
+    private readonly timeoutMs = 5_000,
+    private readonly fetchImplementation: typeof fetch = fetch,
+    private readonly gatewayUrl =
+      process.env['LOCATION_GATEWAY_URL'] || 'http://location-gateway:8081',
+  ) {}
 
   /**
    * Gateway transaction logger simulating enterprise audit security logs
@@ -39,8 +46,13 @@ export class LocationGateway {
     }
 
     try {
-      const response = await fetch(`${this.gatewayUrl}/api/locations?q=${encodeURIComponent(cleanQuery)}`);
-      const data = await response.json() as LocationGatewayResponse;
+      const {body} = await fetchTextWithTimeout(
+        `${this.gatewayUrl}/api/locations?q=${encodeURIComponent(cleanQuery)}`,
+        {},
+        this.timeoutMs,
+        this.fetchImplementation,
+      );
+      const data = JSON.parse(body) as LocationGatewayResponse;
       
       this.logTransaction('SEARCH_LOCATIONS', data.locations?.length || 0);
       return data;
@@ -71,8 +83,13 @@ export class LocationGateway {
     }
 
     try {
-      const response = await fetch(`${this.gatewayUrl}/api/postcodes/${encodeURIComponent(cleanPostcode)}`);
-      const data = await response.json() as LocationGatewayResponse;
+      const {body} = await fetchTextWithTimeout(
+        `${this.gatewayUrl}/api/postcodes/${encodeURIComponent(cleanPostcode)}`,
+        {},
+        this.timeoutMs,
+        this.fetchImplementation,
+      );
+      const data = JSON.parse(body) as LocationGatewayResponse;
       
       this.logTransaction('GET_BY_POSTCODE', data.locations?.length || 0);
       return data;

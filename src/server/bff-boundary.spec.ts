@@ -4,7 +4,8 @@ import {
   DownstreamTimeoutError,
   downstreamFailureCategory,
   downstreamFailureResponse,
-  fetchWithTimeout,
+  fetchAndConsumeWithTimeout,
+  fetchTextWithTimeout,
   jsonBodyErrorHandler,
   loadBffConfig,
   securityHeaders,
@@ -161,7 +162,7 @@ describe('bounded downstream requests', () => {
       });
     }) as typeof fetch;
 
-    await expect(fetchWithTimeout('https://internal.example.test/private', {}, 5, hangingFetch))
+    await expect(fetchTextWithTimeout('https://internal.example.test/private', {}, 5, hangingFetch))
       .rejects.toBeInstanceOf(DownstreamTimeoutError);
     expect(capturedSignal?.aborted).toBe(true);
     expect(downstreamFailureCategory(new DownstreamTimeoutError())).toBe('timeout');
@@ -177,7 +178,7 @@ describe('bounded downstream requests', () => {
     ) as typeof fetch;
 
     await expect(
-      fetchWithTimeout(
+      fetchTextWithTimeout(
         'https://stale-downstream.example.test/private',
         {},
         5,
@@ -187,12 +188,149 @@ describe('bounded downstream requests', () => {
     expect(capturedSignal?.aborted).toBe(true);
   });
 
+  it('keeps the same deadline active while consuming response text', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const response = new Response(null, {
+      headers: {'Content-Type': 'application/json'},
+      status: 200,
+    });
+    const text = vi.spyOn(response, 'text').mockImplementation(
+      () => new Promise<string>(() => undefined),
+    );
+    const immediateHeadersFetch = vi.fn(
+      async (_input: string | URL | Request, init?: RequestInit) => {
+        capturedSignal = init?.signal ?? undefined;
+        return response;
+      },
+    ) as typeof fetch;
+
+    await expect(
+      fetchTextWithTimeout(
+        'https://stale-body.example.test/private',
+        {},
+        5,
+        immediateHeadersFetch,
+      ),
+    ).rejects.toBeInstanceOf(DownstreamTimeoutError);
+    expect(text).toHaveBeenCalledOnce();
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  it('uses one total deadline across both headers and body consumption', async () => {
+    vi.useFakeTimers();
+    try {
+      let capturedSignal: AbortSignal | undefined;
+      const response = new Response(null, {status: 200});
+      const text = vi.spyOn(response, 'text').mockImplementation(
+        () => new Promise<string>(resolve => {
+          setTimeout(() => resolve('finished too late'), 30);
+        }),
+      );
+      const stagedFetch = vi.fn(
+        (_input: string | URL | Request, init?: RequestInit) => {
+          capturedSignal = init?.signal ?? undefined;
+          return new Promise<Response>(resolve => {
+            setTimeout(() => resolve(response), 30);
+          });
+        },
+      ) as typeof fetch;
+
+      const pending = fetchTextWithTimeout(
+        'https://slow-total.example.test/private',
+        {},
+        50,
+        stagedFetch,
+      );
+      const timeoutAssertion = expect(pending).rejects
+        .toBeInstanceOf(DownstreamTimeoutError);
+
+      await vi.advanceTimersByTimeAsync(30);
+      expect(text).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(20);
+      await timeoutAssertion;
+      expect(capturedSignal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the same deadline active while consuming a binary response', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const response = new Response(null, {
+      headers: {'Content-Type': 'application/pdf'},
+      status: 200,
+    });
+    const arrayBuffer = vi.spyOn(response, 'arrayBuffer').mockImplementation(
+      () => new Promise<ArrayBuffer>(() => undefined),
+    );
+    const immediateHeadersFetch = vi.fn(
+      async (_input: string | URL | Request, init?: RequestInit) => {
+        capturedSignal = init?.signal ?? undefined;
+        return response;
+      },
+    ) as typeof fetch;
+
+    await expect(
+      fetchAndConsumeWithTimeout(
+        'https://stale-binary-body.example.test/private',
+        {},
+        5,
+        downstream => downstream.arrayBuffer(),
+        immediateHeadersFetch,
+      ),
+    ).rejects.toBeInstanceOf(DownstreamTimeoutError);
+    expect(arrayBuffer).toHaveBeenCalledOnce();
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  it('clears the deadline after successful body consumption', async () => {
+    vi.useFakeTimers();
+    try {
+      let capturedSignal: AbortSignal | undefined;
+      const immediateFetch = vi.fn(
+        async (_input: string | URL | Request, init?: RequestInit) => {
+          capturedSignal = init?.signal ?? undefined;
+          return new Response('complete', {status: 200});
+        },
+      ) as typeof fetch;
+
+      await expect(fetchTextWithTimeout(
+        'https://healthy-downstream.example.test',
+        {},
+        50,
+        immediateFetch,
+      )).resolves.toMatchObject({body: 'complete'});
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(capturedSignal?.aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('relays caller cancellation even when the transport ignores abort', async () => {
+    const caller = new AbortController();
+    const cancelledFetch = vi.fn(
+      () => new Promise<Response>(() => undefined),
+    ) as typeof fetch;
+
+    const pending = fetchTextWithTimeout(
+      'https://cancelled-downstream.example.test/private',
+      {signal: caller.signal},
+      50,
+      cancelledFetch,
+    );
+    caller.abort(new DOMException('Caller cancelled', 'AbortError'));
+
+    await expect(pending).rejects.toMatchObject({name: 'AbortError'});
+  });
+
   it('classifies non-timeout failures without exposing their message', async () => {
     const failedFetch = vi.fn(async () => {
       throw new Error('getaddrinfo ENOTFOUND secret.internal.test');
     }) as typeof fetch;
 
-    await expect(fetchWithTimeout('https://internal.example.test', {}, 50, failedFetch))
+    await expect(fetchTextWithTimeout('https://internal.example.test', {}, 50, failedFetch))
       .rejects.toThrow('secret.internal.test');
     expect(downstreamFailureCategory(new Error('secret.internal.test'))).toBe('unavailable');
   });

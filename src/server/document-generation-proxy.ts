@@ -2,7 +2,8 @@ import type {Express, Request, Response} from 'express';
 import {randomUUID} from 'node:crypto';
 import {
   downstreamFailureCategory,
-  fetchWithTimeout,
+  fetchAndConsumeWithTimeout,
+  fetchTextWithTimeout,
 } from './bff-boundary';
 import {
   jobFinderCredentials,
@@ -199,7 +200,7 @@ async function callJson(
     status: credentials.status,
   };
 
-  const response = await fetchWithTimeout(
+  const {body, response} = await fetchTextWithTimeout(
     `${origin}${path}`,
     {
       method,
@@ -209,7 +210,6 @@ async function callJson(
     config.timeoutMs,
     fetchImplementation,
   );
-  const body = await response.text();
   const accessToken = credentials.headers['Authorization'].slice('Bearer '.length);
   if (body.includes(accessToken)) return undefined;
 
@@ -723,7 +723,7 @@ export function registerDocumentGenerationRoutes(
 
     try {
       const body = await boundedRequestBody(request, MAX_MULTIPART_BYTES);
-      const upstream = await fetchWithTimeout(
+      const {body: payload, response: upstream} = await fetchTextWithTimeout(
         `${config.origin}/api/v1/document-generation/applications/${applicationId.toLowerCase()}/replace?documentType=${documentType}`,
         {
           method: 'POST',
@@ -737,7 +737,6 @@ export function registerDocumentGenerationRoutes(
         config.timeoutMs,
         fetchImplementation,
       );
-      const payload = await upstream.text();
       const accessToken = credentials.headers['Authorization'].slice('Bearer '.length);
       if (payload.includes(accessToken)) {
         sendPayload(response, undefined);
@@ -794,10 +793,24 @@ export function registerDocumentGenerationRoutes(
     }
 
     try {
-      const upstream = await fetchWithTimeout(
+      const {body, response: upstream} = await fetchAndConsumeWithTimeout(
         `${config.origin}/api/v1/document-generation/files/${fileId.toLowerCase()}/download`,
         {method: 'GET', headers: credentials.headers},
         config.timeoutMs,
+        async downstream => {
+          const contentType = downstream.headers
+            .get('content-type')
+            ?.split(';', 1)[0]
+            .trim()
+            .toLowerCase();
+          const validDownload = downstream.ok
+            && contentType !== undefined
+            && SAFE_DOWNLOAD_TYPES.has(contentType);
+          return {
+            body: validDownload ? await downstream.arrayBuffer() : undefined,
+            response: downstream,
+          };
+        },
         fetchImplementation,
       );
       response.setHeader('Cache-Control', 'private, no-store');
@@ -817,6 +830,15 @@ export function registerDocumentGenerationRoutes(
         );
         return;
       }
+      if (!body) {
+        sendFailure(
+          response,
+          502,
+          'INVALID_DOWNSTREAM_RESPONSE',
+          'The document service returned an invalid file',
+        );
+        return;
+      }
 
       const contentDisposition = upstream.headers.get('content-disposition');
       if (
@@ -827,7 +849,7 @@ export function registerDocumentGenerationRoutes(
         response.setHeader('Content-Disposition', contentDisposition);
       }
       response.status(200).type(contentType).send(
-        Buffer.from(await upstream.arrayBuffer()),
+        Buffer.from(body),
       );
     } catch (error: unknown) {
       const category = downstreamFailureCategory(error);

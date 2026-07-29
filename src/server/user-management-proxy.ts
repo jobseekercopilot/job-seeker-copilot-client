@@ -1,4 +1,4 @@
-import { fetchWithTimeout } from './bff-boundary';
+import {fetchTextWithTimeout} from './bff-boundary';
 
 const CSRF_HEADER = 'x-csrf-token';
 const PROFILE_REVISION = /^"?[0-9]+"?$/;
@@ -52,14 +52,14 @@ export async function callUserManagement(
   fetchImplementation: typeof fetch = fetch,
 ): Promise<UserManagementProxyResult> {
   const hasBody = method !== 'GET';
-  const response = await fetchWithTimeout(`${origin}${path}`, {
+  const {body: responseBody, response} = await fetchTextWithTimeout(`${origin}${path}`, {
     method,
     headers: userManagementHeaders(browserHeaders, hasBody),
     body: hasBody ? JSON.stringify(body ?? {}) : undefined,
   }, timeoutMs, fetchImplementation);
 
   return {
-    body: await response.text(),
+    body: responseBody,
     cacheControl: response.headers.get('cache-control') || 'no-store',
     contentType: response.headers.get('content-type') || 'application/json',
     setCookies: upstreamSetCookies(response.headers),

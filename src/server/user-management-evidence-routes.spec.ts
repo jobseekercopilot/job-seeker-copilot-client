@@ -16,14 +16,18 @@ describe('user-management Evidence Library routes', () => {
         server?.close(error => error ? reject(error) : resolve()));
     }
     server = undefined;
+    vi.restoreAllMocks();
   });
 
-  async function startApp(fetchImplementation: typeof fetch): Promise<string> {
+  async function startApp(
+    fetchImplementation: typeof fetch,
+    timeoutMs = 100,
+  ): Promise<string> {
     const app = express();
     app.use(express.json());
     registerUserManagementEvidenceRoutes(app, {
       origin: 'https://gateway.example.test',
-      timeoutMs: 100,
+      timeoutMs,
     }, fetchImplementation);
     server = app.listen(0, '127.0.0.1');
     await new Promise<void>(resolve => server?.once('listening', resolve));
@@ -57,6 +61,75 @@ describe('user-management Evidence Library routes', () => {
       Accept: 'application/json',
       Cookie: 'jsc-access-local=opaque',
     });
+  });
+
+  it('returns a stable timeout when response headers arrive but the body stalls', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const body = vi.fn(() => new Promise<string>(() => undefined));
+    const upstream = vi.fn<FetchLike>(async (_input, init) => {
+      capturedSignal = init?.signal ?? undefined;
+      const response = new Response(null, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Set-Cookie': 'must-not-reach-browser=private',
+        },
+      });
+      response.text = body;
+      return response;
+    });
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const origin = await startApp(upstream as typeof fetch, 5);
+
+    const response = await fetch(`${origin}/api/auth/evidence`, {
+      headers: {Cookie: 'jsc-access-local=opaque'},
+    });
+
+    expect(response.status).toBe(504);
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(await response.json()).toEqual({
+      statusCode: 504,
+      success: false,
+      message: 'User management service timed out',
+    });
+    expect(body).toHaveBeenCalledOnce();
+    expect(capturedSignal?.aborted).toBe(true);
+    expect(errorLog).toHaveBeenCalledWith('BFF downstream request failed', {
+      service: 'user-management-evidence',
+      category: 'timeout',
+    });
+    errorLog.mockRestore();
+  });
+
+  it('returns a stable unavailable response for an ordinary body-read failure', async () => {
+    const upstream = vi.fn<FetchLike>(async () => {
+      const response = new Response(null, {
+        status: 200,
+        headers: {'Content-Type': 'application/json'},
+      });
+      response.text = vi.fn(async () => {
+        throw new Error('internal body stream detail');
+      });
+      return response;
+    });
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const origin = await startApp(upstream as typeof fetch);
+
+    const response = await fetch(`${origin}/api/auth/evidence`, {
+      headers: {Cookie: 'jsc-access-local=opaque'},
+    });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      statusCode: 503,
+      success: false,
+      message: 'User management service is currently unavailable',
+    });
+    expect(errorLog).toHaveBeenCalledWith('BFF downstream request failed', {
+      service: 'user-management-evidence',
+      category: 'unavailable',
+    });
+    errorLog.mockRestore();
   });
 
   it('forwards revision-aware evidence actions without browser-selected identity', async () => {

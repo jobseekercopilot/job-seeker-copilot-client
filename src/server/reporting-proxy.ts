@@ -1,5 +1,5 @@
 import type {Express, Request, Response} from "express";
-import {fetchWithTimeout} from "./bff-boundary";
+import {fetchTextWithTimeout} from "./bff-boundary";
 import {jobFinderCredentials} from "./job-finder-proxy";
 
 export interface ReportingProxyConfig {
@@ -42,13 +42,12 @@ async function proxyReport(
   credentials.headers["Accept"] = expectedText ? "text/plain" : "application/json";
 
   try {
-    const downstream = await fetchWithTimeout(
+    const {body, response: downstream} = await fetchTextWithTimeout(
       `${config.origin}${path}`,
       {method: "GET", headers: credentials.headers},
       config.timeoutMs,
       fetchImplementation,
     );
-    const body = await downstream.text();
     const accessToken = credentials.headers["Authorization"].slice("Bearer ".length);
     if (Buffer.byteLength(body) > MAX_REPORT_BYTES || body.includes(accessToken)) {
       failure(response, 502, "INVALID_DOWNSTREAM_RESPONSE", "Reporting returned an invalid response");
