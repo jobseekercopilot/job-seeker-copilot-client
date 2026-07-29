@@ -27,9 +27,6 @@ export function registerUserManagementEvidenceRoutes(
           fetchImplementation,
         );
 
-        if (result.setCookies.length) {
-          response.setHeader('Set-Cookie', result.setCookies);
-        }
         response.setHeader('Cache-Control', result.cacheControl);
         response.status(result.status).type(result.contentType).send(result.body);
       } catch (error: unknown) {

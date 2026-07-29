@@ -73,18 +73,18 @@ app.get('/api/runtime/document-generation-mode', (_req, res) => {
 });
 
 app.get('/api/auth/csrf', async (req, res) => {
-  await proxyUserManagementRequest('/api/auth/csrf', 'GET', req, res);
+  await proxyUserManagementRequest('/api/auth/csrf', 'GET', req, res, true);
 });
 
 app.post('/api/auth/register', async (req, res) => {
-  await proxyUserManagementRequest('/api/auth/register', 'POST', req, res);
+  await proxyUserManagementRequest('/api/auth/register', 'POST', req, res, true);
 });
 
 /**
  * API Route: Login Claimant (User Management Gateway Verification)
  */
 app.post('/api/auth/login', async (req, res) => {
-  await proxyUserManagementRequest('/api/auth/login', 'POST', req, res);
+  await proxyUserManagementRequest('/api/auth/login', 'POST', req, res, true);
 });
 
 const resetRequestIpLimiter = passwordResetIpRateLimiter(
@@ -93,11 +93,23 @@ const resetRequestIpLimiter = passwordResetIpRateLimiter(
 );
 
 app.post('/api/auth/password-reset/request', resetRequestIpLimiter, async (req, res) => {
-  await proxyUserManagementRequest('/api/auth/password-reset/request', 'POST', req, res);
+  await proxyUserManagementRequest(
+    '/api/auth/password-reset/request',
+    'POST',
+    req,
+    res,
+    true,
+  );
 });
 
 app.post('/api/auth/password-reset/complete', async (req, res) => {
-  await proxyUserManagementRequest('/api/auth/password-reset/complete', 'POST', req, res);
+  await proxyUserManagementRequest(
+    '/api/auth/password-reset/complete',
+    'POST',
+    req,
+    res,
+    true,
+  );
 });
 
 /**
@@ -120,11 +132,11 @@ app.patch('/api/auth/profile', async (req, res) => {
 });
 
 app.post('/api/auth/refresh', async (req, res) => {
-  await proxyUserManagementRequest('/api/auth/refresh', 'POST', req, res);
+  await proxyUserManagementRequest('/api/auth/refresh', 'POST', req, res, true);
 });
 
 app.post('/api/auth/logout', async (req, res) => {
-  await proxyUserManagementRequest('/api/auth/logout', 'POST', req, res);
+  await proxyUserManagementRequest('/api/auth/logout', 'POST', req, res, true);
 });
 
 registerUserManagementEvidenceRoutes(app, {
@@ -136,7 +148,8 @@ async function proxyUserManagementRequest(
   path: string,
   method: 'GET' | 'POST' | 'PUT' | 'PATCH',
   req: express.Request,
-  res: express.Response
+  res: express.Response,
+  forwardSessionCookies = false,
 ): Promise<void> {
   try {
     const result = await callUserManagement(
@@ -148,7 +161,9 @@ async function proxyUserManagementRequest(
       bffConfig.downstreamTimeoutMs,
     );
 
-    if (result.setCookies.length) res.setHeader('Set-Cookie', result.setCookies);
+    if (forwardSessionCookies && result.setCookies.length) {
+      res.setHeader('Set-Cookie', result.setCookies);
+    }
     res.setHeader('Cache-Control', result.cacheControl);
     res.status(result.status).type(result.contentType).send(result.body);
   } catch (error: unknown) {

@@ -41,7 +41,10 @@ describe('user-management Evidence Library routes', () => {
   it('forwards the evidence list query through the session boundary', async () => {
     const upstream = vi.fn<FetchLike>(async () => new Response('[]', {
       status: 200,
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Set-Cookie': 'jsc-csrf-local=; Max-Age=0; Path=/',
+      },
     }));
     const origin = await startApp(upstream as typeof fetch);
 
@@ -50,6 +53,7 @@ describe('user-management Evidence Library routes', () => {
     });
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('set-cookie')).toBeNull();
     expect(await response.json()).toEqual([]);
     expect(upstream).toHaveBeenCalledOnce();
     const [url, init] = upstream.mock.calls[0];
