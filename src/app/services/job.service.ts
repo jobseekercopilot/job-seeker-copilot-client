@@ -17,6 +17,13 @@ const SEARCH_EMPLOYMENT_TYPES = new Set([
   'TEMPORARY',
 ]);
 
+export interface JobSearchOptions {
+  targetRole?: string;
+  page?: number;
+  pageSize?: number;
+  sort?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -38,13 +45,16 @@ export class JobService {
     skills: string,
     experience: string,
     aspirations: string,
-    workPrefs: string
+    workPrefs: string,
+    options: JobSearchOptions = {},
   ): Observable<ReedJobSearchResponse> {
     // Parse aspirations into desired roles
-    const desiredRoles = aspirations
+    const profileRoles = aspirations
       .split(',')
       .map(s => s.trim())
       .filter(s => s.length > 0);
+    const targetRole = options.targetRole?.trim();
+    const desiredRoles = targetRole ? [targetRole] : profileRoles;
 
     // Parse workPrefs JSON string into work preferences
     let employmentType: string[] = [];
@@ -126,7 +136,12 @@ export class JobService {
         postcode: homePostcode,
         latitude: homeLatitude,
         longitude: homeLongitude
-      }
+      },
+      ...(options.page != null ? {page: options.page} : {}),
+      ...(options.pageSize != null ? {pageSize: options.pageSize} : {}),
+      ...(options.sort
+        ? {sort: options.sort as JobSearchRequest['sort']}
+        : {}),
     };
 
     return this.browserSession.ensureCsrf().pipe(

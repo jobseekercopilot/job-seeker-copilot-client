@@ -46,6 +46,45 @@ describe('JobService', () => {
     expect(response).toEqual({jobs: [], totalResults: 0});
   });
 
+  it('scopes a paged search to one target role and forwards server sorting', () => {
+    const searchJobs = vi.fn((request: JobSearchRequest) => {
+      void request;
+      return of({jobs: [], totalResults: 0});
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        JobService,
+        {provide: GeneratedJobSearchService, useValue: {searchJobs}},
+        {provide: BrowserSessionService, useValue: {ensureCsrf: vi.fn(() => of(undefined))}},
+        {provide: LocationService, useValue: {getByPostcode: vi.fn()}},
+      ],
+    });
+
+    TestBed.inject(JobService)
+      .searchJobs(
+        'TypeScript',
+        '',
+        'Programmer, Software Developer',
+        '{}',
+        {
+          targetRole: 'Software Developer',
+          page: 3,
+          pageSize: 10,
+          sort: 'NEWEST_POSTED',
+        },
+      )
+      .subscribe();
+
+    expect(searchJobs.mock.calls[0][0]).toEqual(expect.objectContaining({
+      aspirations: expect.objectContaining({
+        desiredRoles: ['Software Developer'],
+      }),
+      page: 3,
+      pageSize: 10,
+      sort: 'NEWEST_POSTED',
+    }));
+  });
+
   it('uses the searchable town before the postcode while retaining secure home coordinates', () => {
     const searchJobs = vi.fn((request: JobSearchRequest) => {
       void request;

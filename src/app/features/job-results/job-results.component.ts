@@ -7,7 +7,7 @@ import {
   DocumentGenerationService,
   GenerationDownloadsResponse,
 } from '../../services/document-generation.service';
-import { Job } from '../../models/job-search.model';
+import { Job, JobSearchResponse } from '../../models/job-search.model';
 import { ApplicationRecordResponse } from '../../api/job-finder';
 import {
   DownloadFileResponse,
@@ -40,6 +40,30 @@ type SortOption = 'MOST_RELEVANT' | 'CLOSEST' | 'HIGHEST_SALARY' | 'NEWEST_POSTE
 type EvidencePurpose = 'CV' | 'COVER_LETTER';
 type EvidenceSection = DocumentEvidenceSelectionSectionOrderEnum;
 
+interface RolePageCache {
+  jobs: Job[];
+  providerStatuses: string[];
+  providerWarnings: string[];
+}
+
+interface RoleSearchState {
+  key: string;
+  targetRole: string;
+  pages: Record<number, RolePageCache>;
+  currentPage: number;
+  pageSize: number;
+  totalResults: number;
+  totalPages: number;
+  hasMore: boolean;
+  providerStatuses: string[];
+  providerWarnings: string[];
+  loading: boolean;
+  error: string | null;
+  searched: boolean;
+  requestSequence: number;
+  sort: SortOption;
+}
+
 @Component({
   selector: 'app-job-results',
   imports: [CommonModule, MatIconModule, JobCardComponent],
@@ -57,6 +81,7 @@ export class JobResultsComponent implements OnInit {
   private applicationTracker = inject(ApplicationTrackerService);
   private evidenceLibrary = inject(EvidenceLibraryService);
   private searchRequestSequence = 0;
+  private searchContextFingerprint = '';
 
   // Inputs from the parent App component (profile signals)
   skills = input<string>('');
@@ -74,14 +99,33 @@ export class JobResultsComponent implements OnInit {
   applicationChanged = output<void>();
 
   // Reactive state
-  jobs = signal<Job[]>([]);
-  roleResults = signal<{ targetRole: string; jobs: Job[] }[]>([]);
+  readonly roleStates = signal<Record<string, RoleSearchState>>({});
+  private readonly roleOrder = signal<string[]>([]);
   selectedTargetRole = signal<string>('');
+  readonly activeRoleState = computed(() => {
+    const selectedKey = this.roleKey(this.selectedTargetRole());
+    return this.roleStates()[selectedKey];
+  });
+  readonly jobs = computed(() => this.allCachedJobs());
+  readonly roleResults = computed(() => this.roleOrder()
+    .map(key => this.roleStates()[key])
+    .filter((state): state is RoleSearchState => Boolean(state))
+    .map(state => ({
+      targetRole: state.targetRole,
+      jobs: state.pages[state.currentPage]?.jobs ?? [],
+      totalResults: state.totalResults,
+      loading: state.loading,
+      error: state.error,
+      searched: state.searched,
+    })));
   selectedPublisher = signal<string>('All Job Sites');
-  selectedSort = signal<SortOption>('MOST_RELEVANT');
+  readonly selectedSort = computed<SortOption>(() =>
+    this.activeRoleState()?.sort ?? 'MOST_RELEVANT');
   filtersOpen = signal(false);
-  providerWarnings = signal<string[]>([]);
-  providerStatuses = signal<string[]>([]);
+  readonly providerWarnings = computed(() =>
+    this.activeRoleState()?.providerWarnings ?? []);
+  readonly providerStatuses = computed(() =>
+    this.activeRoleState()?.providerStatuses ?? []);
   providerDegraded = computed(() => {
     const statuses = this.providerStatuses();
     return statuses.some(status => status !== 'SUCCESS' && status !== 'DISABLED');
@@ -121,10 +165,16 @@ export class JobResultsComponent implements OnInit {
     }
     return 'No job matches found based on your current profile.';
   });
-  currentPage = signal(1);
-  totalResults = signal(0);
-  loading = signal(false);
-  error = signal<string | null>(null);
+  readonly currentPage = computed(() =>
+    this.activeRoleState()?.currentPage ?? 1);
+  readonly totalResults = computed(() =>
+    this.activeRoleState()?.totalResults ?? 0);
+  readonly loading = computed(() =>
+    this.activeRoleState()?.loading ?? false);
+  readonly error = computed(() =>
+    this.activeRoleState()?.error ?? null);
+  readonly activeRoleSearched = computed(() =>
+    this.activeRoleState()?.searched ?? false);
   generatingJobIds = signal<Set<string>>(new Set());
   generationMessages = signal<Record<string, string | undefined>>({});
   generationErrors = signal<Record<string, string | undefined>>({});
@@ -171,11 +221,10 @@ export class JobResultsComponent implements OnInit {
     && this.cvSectionOrder().length > 0
     && this.coverLetterSectionOrder().length > 0);
 
-  activeRoleResults = computed(() =>
-    this.roleResults().find(group => group.targetRole === this.selectedTargetRole()) ?? this.roleResults()[0]
-  );
-
-  activeJobs = computed(() => this.activeRoleResults()?.jobs ?? []);
+  activeJobs = computed(() => {
+    const state = this.activeRoleState();
+    return state?.pages[state.currentPage]?.jobs ?? [];
+  });
 
   publisherOptions = computed(() => {
     const counts = new Map<string, number>();
@@ -215,12 +264,19 @@ export class JobResultsComponent implements OnInit {
     });
   });
 
-  totalPages = computed(() => Math.max(1, Math.ceil(this.sortedJobs().length / this.jobsPerPage)));
-
-  paginatedJobs = computed(() => {
-    const start = (this.currentPage() - 1) * this.jobsPerPage;
-    return this.sortedJobs().slice(start, start + this.jobsPerPage);
+  totalPages = computed(() => this.activeRoleState()?.totalPages ?? 1);
+  hasMore = computed(() => this.activeRoleState()?.hasMore ?? false);
+  paginatedJobs = computed(() => this.sortedJobs());
+  resultRangeStart = computed(() => {
+    const state = this.activeRoleState();
+    return state && this.activeJobs().length > 0
+      ? ((state.currentPage - 1) * state.pageSize) + 1
+      : 0;
   });
+  resultRangeEnd = computed(() => Math.min(
+    this.totalResults(),
+    this.resultRangeStart() + Math.max(0, this.activeJobs().length - 1),
+  ));
 
   ngOnInit(): void {
     // Auto-trigger search when the component initialises (profile is already loaded)
@@ -254,119 +310,320 @@ export class JobResultsComponent implements OnInit {
   }
 
   search(): void {
+    const contextChanged = this.synchroniseSearchContext();
+    const active = this.activeRoleState();
+    if (!active) return;
+    if (contextChanged || !active.searched) {
+      this.loadRolePage(active.key, active.currentPage, true);
+    }
+  }
+
+  refresh(): void {
+    const contextChanged = this.synchroniseSearchContext();
+    const active = this.activeRoleState();
+    if (!active) return;
+    this.loadRolePage(active.key, active.currentPage, true);
+    if (contextChanged) {
+      this.selectedPublisher.set('All Job Sites');
+      this.filtersOpen.set(false);
+    }
+  }
+
+  private synchroniseSearchContext(): boolean {
+    const roles = this.targetRoles();
+    const fingerprint = JSON.stringify({
+      roles,
+      skills: this.skills(),
+      experience: this.experience(),
+      workPrefs: this.workPrefs(),
+    });
+    if (fingerprint === this.searchContextFingerprint) {
+      return false;
+    }
+
+    this.searchContextFingerprint = fingerprint;
+    const states = Object.fromEntries(roles.map(targetRole => {
+      const key = this.roleKey(targetRole);
+      return [key, this.emptyRoleState(key, targetRole)];
+    }));
+    this.roleStates.set(states);
+    this.roleOrder.set(roles.map(role => this.roleKey(role)));
+    this.selectedTargetRole.set(roles[0] ?? '');
+    this.selectedPublisher.set('All Job Sites');
+    this.filtersOpen.set(false);
+    this.reconcileGeneratedState([]);
+    return true;
+  }
+
+  private targetRoles(): string[] {
+    const roles = this.aspirations()
+      .split(',')
+      .map(role => role.trim())
+      .filter(Boolean);
+    const seen = new Set<string>();
+    return roles.filter(role => {
+      const key = this.roleKey(role);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private roleKey(targetRole: string): string {
+    return targetRole.trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  private emptyRoleState(key: string, targetRole: string): RoleSearchState {
+    return {
+      key,
+      targetRole,
+      pages: {},
+      currentPage: 1,
+      pageSize: this.jobsPerPage,
+      totalResults: 0,
+      totalPages: 1,
+      hasMore: false,
+      providerStatuses: [],
+      providerWarnings: [],
+      loading: false,
+      error: null,
+      searched: false,
+      requestSequence: 0,
+      sort: 'MOST_RELEVANT',
+    };
+  }
+
+  private loadRolePage(roleKey: string, page: number, force: boolean): void {
+    const state = this.roleStates()[roleKey];
+    if (!state) return;
+    const requestedPage = Math.max(1, page);
+    const cachedPage = state.pages[requestedPage];
+    if (cachedPage && !force) {
+      this.updateRoleState(roleKey, current => ({
+        ...current,
+        currentPage: requestedPage,
+        hasMore: requestedPage < current.totalPages,
+        providerStatuses: cachedPage.providerStatuses,
+        providerWarnings: cachedPage.providerWarnings,
+        error: null,
+      }));
+      return;
+    }
+
     const requestSequence = ++this.searchRequestSequence;
-    this.loading.set(true);
-    this.error.set(null);
+    this.updateRoleState(roleKey, current => ({
+      ...current,
+      loading: true,
+      error: null,
+      requestSequence,
+    }));
 
     this.jobService.searchJobs(
       this.skills(),
       this.experience(),
       this.aspirations(),
-      this.workPrefs()
-    ).subscribe({
-      next: (response) => {
-        if (requestSequence !== this.searchRequestSequence) return;
-        const roleGroups = response.resultsByTargetRole?.length
-          ? response.resultsByTargetRole
-          : [{ targetRole: 'All matches', jobs: response.jobs ?? [] }];
-        const validGroups: { targetRole: string; jobs: Job[] }[] = [];
-        const validJobs: Job[] = [];
-        const skippedCount = { value: 0 };
-
-        for (const group of roleGroups) {
-          const groupJobs: Job[] = [];
-          for (const job of group.jobs ?? []) {
-            const validated = this.validateJob(job);
-            if (validated) {
-              groupJobs.push(validated);
-              validJobs.push(validated);
-            } else {
-              skippedCount.value++;
-            }
-          }
-          validGroups.push({
-            targetRole: group.targetRole || 'Untitled role',
-            jobs: groupJobs
-          });
-        }
-
-        if (skippedCount.value > 0) {
-          console.warn(`[JobResults] Filtered out ${skippedCount.value} malformed job(s)`);
-        }
-
-        this.jobs.set(validJobs);
-        this.roleResults.set(validGroups);
-        this.selectedTargetRole.set(validGroups[0]?.targetRole ?? '');
-        this.selectedPublisher.set('All Job Sites');
-        this.selectedSort.set('MOST_RELEVANT');
-        this.filtersOpen.set(false);
-        this.currentPage.set(1);
-        this.totalResults.set(validJobs.length);
-        const degradedResults = (response.providerResults ?? [])
-          .filter(result => result.status !== 'SUCCESS' && result.status !== 'DISABLED');
-        this.providerStatuses.set(
-          (response.providerResults ?? []).map(result => result.status ?? 'UNAVAILABLE')
-        );
-        this.providerWarnings.set(Array.from(new Set(
-          degradedResults.map(result => this.providerWarning(
-            result.provider ?? 'A job provider',
-            result.status ?? 'UNAVAILABLE',
-          )),
-        )));
-        this.reconcileGeneratedState(validJobs);
-        this.rehydrateGeneratedDownloads(validJobs);
-        this.loading.set(false);
-        this.notify.emit({
-          message: `Found ${validJobs.length} matching job${validJobs.length === 1 ? '' : 's'}.`,
-          type: 'success'
-        });
+      this.workPrefs(),
+      {
+        targetRole: state.targetRole,
+        page: requestedPage,
+        pageSize: state.pageSize,
+        sort: state.sort,
       },
-      error: (err) => {
-        if (requestSequence !== this.searchRequestSequence) return;
-        this.loading.set(false);
-        this.jobs.set([]);
-        this.roleResults.set([]);
-        this.selectedTargetRole.set('');
-        this.selectedPublisher.set('All Job Sites');
-        this.currentPage.set(1);
-        this.totalResults.set(0);
-        this.providerWarnings.set([]);
-        this.providerStatuses.set(['UNAVAILABLE']);
-        const status = err.status;
-
-        if (status === 503) {
-          this.error.set('Job search service is temporarily unavailable. Please try again later.');
-          this.notify.emit({
-            message: 'Job search service is temporarily unavailable. Please try again later.',
-            type: 'error'
-          });
-        } else if (status === 400) {
-          this.error.set('Invalid search parameters. Please update your profile and try again.');
-          this.notify.emit({
-            message: 'Invalid search parameters. Please update your profile and try again.',
-            type: 'error'
-          });
-        } else if (status === 401 || status === 403) {
-          this.error.set('Session expired. Please log in again.');
-          this.notify.emit({
-            message: 'Session expired. Please log in again.',
-            type: 'error'
-          });
-        } else {
-          this.error.set('An unexpected error occurred while searching for jobs.');
-          this.notify.emit({
-            message: 'An unexpected error occurred while searching for jobs.',
-            type: 'error'
-          });
-        }
-
-        console.error('[JobResults] Job search failed');
-      }
+    ).subscribe({
+      next: response => this.acceptRolePage(roleKey, requestSequence, requestedPage, response),
+      error: err => this.rejectRolePage(roleKey, requestSequence, err),
     });
   }
 
-  refresh(): void {
-    this.search();
+  private acceptRolePage(
+    roleKey: string,
+    requestSequence: number,
+    requestedPage: number,
+    response: JobSearchResponse,
+  ): void {
+    const current = this.roleStates()[roleKey];
+    if (!current || current.requestSequence !== requestSequence) return;
+
+    const roleGroups = response.resultsByTargetRole ?? [];
+    const matchingGroup = roleGroups.find(group =>
+      this.roleKey(group.targetRole ?? '') === roleKey);
+    if (roleGroups.length > 0 && !matchingGroup) {
+      const message = 'Search results for this target role could not be verified. Please try again.';
+      this.updateRoleState(roleKey, state => state.requestSequence !== requestSequence
+        ? state
+        : {
+            ...state,
+            loading: false,
+            error: message,
+            searched: true,
+            providerStatuses: ['UNAVAILABLE'],
+            providerWarnings: [],
+          });
+      if (this.roleKey(this.selectedTargetRole()) === roleKey) {
+        this.notify.emit({message, type: 'error'});
+      }
+      console.error('[JobResults] Job search returned a mismatched target role');
+      return;
+    }
+    const responseJobs = matchingGroup?.jobs
+      ?? response.jobs
+      ?? [];
+    let skippedCount = 0;
+    const validJobs = responseJobs.flatMap(job => {
+      const validated = this.validateJob(job);
+      if (validated) return [validated];
+      skippedCount++;
+      return [];
+    });
+    if (skippedCount > 0) {
+      console.warn(`[JobResults] Filtered out ${skippedCount} malformed job(s)`);
+    }
+
+    const responsePage = Math.max(1, response.page ?? requestedPage);
+    const responsePageSize = Math.max(1, response.pageSize ?? current.pageSize);
+    const deduplicatedJobs = this.removeCrossPageDuplicates(
+      current,
+      responsePage,
+      validJobs,
+    );
+    const minimumTotal = ((responsePage - 1) * responsePageSize) + deduplicatedJobs.length;
+    const totalResults = Math.max(0, response.totalResults ?? minimumTotal);
+    const totalPages = Math.max(
+      1,
+      response.totalPages ?? Math.ceil(totalResults / responsePageSize),
+    );
+    const providerStatuses = (response.providerResults ?? [])
+      .map(result => result.status ?? 'UNAVAILABLE');
+    const providerWarnings = Array.from(new Set(
+      (response.providerResults ?? [])
+        .filter(result => result.status !== 'SUCCESS' && result.status !== 'DISABLED')
+        .map(result => this.providerWarning(
+          result.provider ?? 'A job provider',
+          result.status ?? 'UNAVAILABLE',
+        )),
+    ));
+    const pageCache: RolePageCache = {
+      jobs: deduplicatedJobs,
+      providerStatuses,
+      providerWarnings,
+    };
+
+    this.updateRoleState(roleKey, state => {
+      if (state.requestSequence !== requestSequence) return state;
+      const pages = {
+        ...state.pages,
+        [responsePage]: pageCache,
+      };
+      for (const cachedPage of Object.keys(pages).map(Number)) {
+        if (cachedPage > totalPages) delete pages[cachedPage];
+      }
+      return {
+        ...state,
+        pages,
+        currentPage: responsePage,
+        pageSize: responsePageSize,
+        totalResults,
+        totalPages,
+        hasMore: responsePage < totalPages,
+        providerStatuses,
+        providerWarnings,
+        loading: false,
+        error: null,
+        searched: true,
+      };
+    });
+
+    this.reconcileGeneratedState(this.jobs());
+    this.rehydrateGeneratedDownloads(deduplicatedJobs);
+    if (this.roleKey(this.selectedTargetRole()) === roleKey) {
+      this.notify.emit({
+        message: `Found ${totalResults} matching job${totalResults === 1 ? '' : 's'} for ${current.targetRole}.`,
+        type: 'success',
+      });
+    }
+  }
+
+  private rejectRolePage(roleKey: string, requestSequence: number, err: {status?: number}): void {
+    const current = this.roleStates()[roleKey];
+    if (!current || current.requestSequence !== requestSequence) return;
+    const message = this.searchErrorMessage(err.status);
+    this.updateRoleState(roleKey, state => state.requestSequence !== requestSequence
+      ? state
+      : {
+          ...state,
+          loading: false,
+          error: message,
+          searched: true,
+          providerStatuses: ['UNAVAILABLE'],
+          providerWarnings: [],
+        });
+    if (this.roleKey(this.selectedTargetRole()) === roleKey) {
+      this.notify.emit({message, type: 'error'});
+    }
+    console.error('[JobResults] Job search failed');
+  }
+
+  private searchErrorMessage(status: number | undefined): string {
+    if (status === 503) {
+      return 'Job search service is temporarily unavailable. Please try again later.';
+    }
+    if (status === 400) {
+      return 'Invalid search parameters. Please update your profile and try again.';
+    }
+    if (status === 401 || status === 403) {
+      return 'Session expired. Please log in again.';
+    }
+    return 'An unexpected error occurred while searching for jobs.';
+  }
+
+  private removeCrossPageDuplicates(
+    state: RoleSearchState,
+    page: number,
+    jobs: Job[],
+  ): Job[] {
+    const otherPageIds = new Set(
+      Object.entries(state.pages)
+        .filter(([cachedPage]) => Number(cachedPage) !== page)
+        .flatMap(([, cached]) => cached.jobs)
+        .map(job => this.jobStateKey(job))
+        .filter(Boolean),
+    );
+    const pageIds = new Set<string>();
+    return jobs.filter(job => {
+      const key = this.jobStateKey(job);
+      if (!key || otherPageIds.has(key) || pageIds.has(key)) return false;
+      pageIds.add(key);
+      return true;
+    });
+  }
+
+  private updateRoleState(
+    roleKey: string,
+    update: (state: RoleSearchState) => RoleSearchState,
+  ): void {
+    this.roleStates.update(states => {
+      const state = states[roleKey];
+      if (!state) return states;
+      return {
+        ...states,
+        [roleKey]: update(state),
+      };
+    });
+  }
+
+  private allCachedJobs(): Job[] {
+    const uniqueJobs = new Map<string, Job>();
+    for (const key of this.roleOrder()) {
+      const state = this.roleStates()[key];
+      if (!state) continue;
+      for (const page of Object.values(state.pages)) {
+        for (const job of page.jobs) {
+          const jobKey = this.jobStateKey(job);
+          if (jobKey) uniqueJobs.set(jobKey, job);
+        }
+      }
+    }
+    return Array.from(uniqueJobs.values());
   }
 
   private providerWarning(provider: string, status: string): string {
@@ -391,18 +648,36 @@ export class JobResultsComponent implements OnInit {
     if (targetRole === this.selectedTargetRole()) return;
     this.selectedTargetRole.set(targetRole);
     this.selectedPublisher.set('All Job Sites');
-    this.currentPage.set(1);
+    const state = this.roleStates()[this.roleKey(targetRole)];
+    if (state && !state.searched && !state.loading) {
+      this.loadRolePage(state.key, state.currentPage, false);
+    }
   }
 
   selectPublisher(publisher: string): void {
     if (publisher === this.selectedPublisher()) return;
     this.selectedPublisher.set(publisher);
-    this.currentPage.set(1);
   }
 
   selectSort(value: string): void {
-    this.selectedSort.set(value as SortOption);
-    this.currentPage.set(1);
+    const sort = value as SortOption;
+    const state = this.activeRoleState();
+    if (!state || state.sort === sort) return;
+    this.updateRoleState(state.key, current => ({
+      ...current,
+      pages: {},
+      currentPage: 1,
+      totalResults: 0,
+      totalPages: 1,
+      hasMore: false,
+      providerStatuses: [],
+      providerWarnings: [],
+      loading: false,
+      error: null,
+      searched: false,
+      sort,
+    }));
+    this.loadRolePage(state.key, 1, true);
   }
 
   toggleFilters(): void {
@@ -410,11 +685,15 @@ export class JobResultsComponent implements OnInit {
   }
 
   previousPage(): void {
-    this.currentPage.update(page => Math.max(1, page - 1));
+    const state = this.activeRoleState();
+    if (!state || state.loading || state.currentPage <= 1) return;
+    this.loadRolePage(state.key, state.currentPage - 1, false);
   }
 
   nextPage(): void {
-    this.currentPage.update(page => Math.min(this.totalPages(), page + 1));
+    const state = this.activeRoleState();
+    if (!state || state.loading || !state.hasMore) return;
+    this.loadRolePage(state.key, Math.min(state.totalPages, state.currentPage + 1), false);
   }
 
   private compareJobs(left: Job, right: Job): number {
@@ -860,11 +1139,23 @@ export class JobResultsComponent implements OnInit {
   private updateJobLocally(jobId: string, patch: Partial<Job>): void {
     const applyPatch = (job: Job): Job =>
       this.jobStateKey(job) === jobId ? { ...job, ...patch } : job;
-    this.jobs.update(jobs => jobs.map(applyPatch));
-    this.roleResults.update(groups => groups.map(group => ({
-      ...group,
-      jobs: group.jobs.map(applyPatch),
-    })));
+    this.roleStates.update(states => Object.fromEntries(
+      Object.entries(states).map(([key, state]) => [
+        key,
+        {
+          ...state,
+          pages: Object.fromEntries(
+            Object.entries(state.pages).map(([page, cached]) => [
+              page,
+              {
+                ...cached,
+                jobs: cached.jobs.map(applyPatch),
+              },
+            ]),
+          ),
+        },
+      ]),
+    ));
   }
 
   private friendlyStatus(status: string): string {

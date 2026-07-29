@@ -14,7 +14,7 @@
       </div>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      @if (!loading() && !error() && roleResults().length > 0) {
+      @if (!loading() && roleResults().length > 0) {
         <label class="sort-control inline-flex items-center gap-2">
           <span class="text-xs font-semibold">Sort</span>
           <select class="sort-select"
@@ -88,22 +88,33 @@
 
   <!-- Content area -->
   <div class="px-6 py-5 space-y-4">
-    @if (!loading() && !error() && roleResults().length > 0) {
+    @if (roleResults().length > 0) {
       <div class="flex flex-wrap gap-2" aria-label="Target role filters">
         @for (group of roleResults(); track group.targetRole) {
           <button type="button"
                   (click)="selectTargetRole(group.targetRole)"
                   class="role-tab inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors"
-                  [class.role-tab-active]="selectedTargetRole() === group.targetRole">
+                  [class.role-tab-active]="selectedTargetRole() === group.targetRole"
+                  [attr.aria-current]="selectedTargetRole() === group.targetRole ? 'true' : null">
             <span>{{ group.targetRole }}</span>
-            <span class="text-xs opacity-80">({{ group.jobs.length }})</span>
+            <span class="text-xs opacity-80">
+              @if (group.loading && !group.searched) {
+                (Searching…)
+              } @else if (group.error && group.jobs.length === 0) {
+                (Unavailable)
+              } @else if (!group.searched) {
+                (Not searched)
+              } @else {
+                ({{ group.totalResults }})
+              }
+            </span>
           </button>
         }
       </div>
     }
 
     <!-- Loading skeleton -->
-    @if (loading()) {
+    @if (loading() && activeJobs().length === 0) {
       <div class="space-y-4">
         @for (skeleton of [1, 2, 3]; track skeleton) {
           <div class="skeleton-card animate-pulse rounded-xl p-5">
@@ -116,6 +127,10 @@
           </div>
         }
       </div>
+    }
+
+    @if (loading() && activeJobs().length > 0) {
+      <p class="text-sm m-0" role="status">Refreshing {{ selectedTargetRole() }} results…</p>
     }
 
     <!-- Error state -->
@@ -276,7 +291,7 @@
     }
 
     <!-- Empty state (no error, not loading, zero jobs) -->
-    @if (!loading() && !error() && filteredJobs().length === 0) {
+    @if (!loading() && !error() && activeRoleSearched() && filteredJobs().length === 0) {
       <div class="flex flex-col items-center justify-center py-12 text-center">
         <mat-icon class="empty-icon text-5xl mb-4">search_off</mat-icon>
         <p class="text-sm m-0">{{ emptyStateMessage() }}</p>
@@ -285,12 +300,17 @@
     }
 
     <!-- Results count -->
-    @if (filteredJobs().length > 0 && !loading()) {
+    @if (filteredJobs().length > 0) {
       <div class="results-summary">
         <p class="results-count text-xs font-medium uppercase tracking-wider m-0">
-          Showing {{ ((currentPage() - 1) * jobsPerPage) + 1 }}-{{ Math.min(currentPage() * jobsPerPage, filteredJobs().length) }}
-          of {{ filteredJobs().length }} match{{ filteredJobs().length === 1 ? '' : 'es' }}
-          for {{ selectedTargetRole() }}
+          @if (sourceFilterActive()) {
+            Showing {{ filteredJobs().length }} {{ selectedPublisher() }} match{{ filteredJobs().length === 1 ? '' : 'es' }}
+            on page {{ currentPage() }} · {{ totalResults() }} total across all job sites
+          } @else {
+            Showing {{ resultRangeStart() }}-{{ resultRangeEnd() }}
+            of {{ totalResults() }} match{{ totalResults() === 1 ? '' : 'es' }}
+          }
+          for {{ selectedTargetRole() }} · {{ hasMore() ? 'More available' : 'No more results' }}
         </p>
       </div>
     }
@@ -322,20 +342,20 @@
       }
     </div>
 
-    @if (filteredJobs().length > jobsPerPage && !loading()) {
+    @if (totalPages() > 1) {
       <div class="pagination-row flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
         <p class="m-0 text-sm">Page {{ currentPage() }} of {{ totalPages() }}</p>
         <div class="flex gap-2">
           <button type="button"
                   (click)="previousPage()"
-                  [disabled]="currentPage() === 1"
+                  [disabled]="loading() || currentPage() === 1"
                   class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">
             <mat-icon class="text-base">chevron_left</mat-icon>
             Previous
           </button>
           <button type="button"
                   (click)="nextPage()"
-                  [disabled]="currentPage() === totalPages()"
+                  [disabled]="loading() || !hasMore()"
                   class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">
             Next
             <mat-icon class="text-base">chevron_right</mat-icon>

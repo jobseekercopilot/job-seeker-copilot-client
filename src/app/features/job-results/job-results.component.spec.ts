@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { Observable, of, Subject, throwError } from 'rxjs';
 import { JobResultsComponent } from './job-results.component';
-import { JobService } from '../../services/job.service';
+import { JobSearchOptions, JobService } from '../../services/job.service';
 import { DocumentGenerationService } from '../../services/document-generation.service';
 import { Job, JobSearchResponse } from '../../models/job-search.model';
 import { ProviderResultStatusStatusEnum } from '../../api/job-finder';
@@ -25,8 +25,16 @@ describe('JobResultsComponent', () => {
 
   const jobService = {
     callCount: 0,
-    searchJobs: () => {
+    calls: [] as JobSearchOptions[],
+    searchJobs: (
+      _skills: string,
+      _experience: string,
+      _aspirations: string,
+      _workPrefs: string,
+      options: JobSearchOptions = {},
+    ) => {
       jobService.callCount++;
+      jobService.calls.push(options);
       const queuedResponse = queuedSearchResponses.shift();
       if (queuedResponse) {
         return queuedResponse;
@@ -34,7 +42,7 @@ describe('JobResultsComponent', () => {
       if (searchErrorStatus != null) {
         return throwError(() => ({status: searchErrorStatus}));
       }
-      return of(currentResponse);
+      return of(responseForRequest(currentResponse, options));
     },
   };
 
@@ -57,6 +65,7 @@ describe('JobResultsComponent', () => {
 
   beforeEach(async () => {
     jobService.callCount = 0;
+    jobService.calls = [];
     currentResponse = response;
     searchErrorStatus = undefined;
     queuedSearchResponses = [];
@@ -74,13 +83,16 @@ describe('JobResultsComponent', () => {
     }).compileComponents();
   });
 
-  it('shows target role tabs with counts', () => {
+  it('searches only the first role initially and labels untouched roles honestly', () => {
     const fixture = createFixture();
 
     expect(fixture.nativeElement.textContent).toContain('cleaning');
     expect(fixture.nativeElement.textContent).toContain('(12)');
     expect(fixture.nativeElement.textContent).toContain('programming');
-    expect(fixture.nativeElement.textContent).toContain('(16)');
+    expect(fixture.nativeElement.textContent).toContain('(Not searched)');
+    expect(jobService.calls).toEqual([
+      expect.objectContaining({targetRole: 'cleaning', page: 1, pageSize: 10}),
+    ]);
   });
 
   it('shows jobs for the selected target role', () => {
@@ -93,9 +105,13 @@ describe('JobResultsComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain('programming job 1');
     expect(fixture.nativeElement.textContent).not.toContain('cleaning job 1');
+    expect(fixture.nativeElement.textContent).toContain('(16)');
+    expect(jobService.calls[1]).toEqual(
+      expect.objectContaining({targetRole: 'programming', page: 1, pageSize: 10}),
+    );
   });
 
-  it('clears stale matches when a refreshed search is rejected', () => {
+  it('retains the last successful page when a refresh is rejected', () => {
     const fixture = createFixture();
     expect(jobCards(fixture)).toHaveLength(10);
 
@@ -103,12 +119,12 @@ describe('JobResultsComponent', () => {
     fixture.componentInstance.refresh();
     fixture.detectChanges();
 
-    expect(fixture.componentInstance.jobs()).toEqual([]);
-    expect(fixture.componentInstance.roleResults()).toEqual([]);
-    expect(fixture.componentInstance.totalResults()).toBe(0);
+    expect(fixture.componentInstance.jobs()).toHaveLength(10);
+    expect(fixture.componentInstance.roleResults()).toHaveLength(2);
+    expect(fixture.componentInstance.totalResults()).toBe(12);
     expect(fixture.componentInstance.error())
       .toBe('Invalid search parameters. Please update your profile and try again.');
-    expect(jobCards(fixture)).toHaveLength(0);
+    expect(jobCards(fixture)).toHaveLength(10);
   });
 
   it('shows 10 jobs per page and paginates the selected role only', () => {
@@ -124,7 +140,7 @@ describe('JobResultsComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Page 2 of 2');
   });
 
-  it('resets to page 1 when changing target role', () => {
+  it('keeps each role page independent when switching tabs', () => {
     const fixture = createFixture();
     clickButtonContaining(fixture, 'Next');
 
@@ -134,6 +150,65 @@ describe('JobResultsComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain('programming job 1');
     expect(fixture.nativeElement.textContent).toContain('Page 1 of 2');
+
+    clickButtonContaining(fixture, 'cleaning');
+
+    expect(fixture.nativeElement.textContent).toContain('cleaning job 11');
+    expect(fixture.nativeElement.textContent).toContain('Page 2 of 2');
+    expect(jobService.calls.filter(call => call.targetRole === 'cleaning')).toHaveLength(2);
+  });
+
+  it('keeps the last successful page visible when loading the next page fails', () => {
+    queuedSearchResponses = [
+      of(rolePageResponse('cleaning', jobsFor('cleaning', 10), 12, 1, 2)),
+      throwError(() => ({status: 503})),
+    ];
+    const fixture = createFixture();
+
+    clickButtonContaining(fixture, 'Next');
+
+    expect(fixture.componentInstance.currentPage()).toBe(1);
+    expect(jobCards(fixture)).toHaveLength(10);
+    expect(fixture.nativeElement.textContent).toContain('cleaning job 1');
+    expect(fixture.nativeElement.textContent)
+      .toContain('Job search service is temporarily unavailable');
+  });
+
+  it('refreshes only the active role and current page without clearing another role cache', () => {
+    const fixture = createFixture();
+    clickButtonContaining(fixture, 'programming');
+    clickButtonContaining(fixture, 'Next');
+    clickButtonContaining(fixture, 'cleaning');
+
+    fixture.componentInstance.refresh();
+    fixture.detectChanges();
+
+    expect(jobService.calls.at(-1)).toEqual(expect.objectContaining({
+      targetRole: 'cleaning',
+      page: 1,
+    }));
+    expect(fixture.componentInstance.roleStates()['programming'].currentPage).toBe(2);
+    expect(fixture.componentInstance.roleStates()['programming'].pages[2].jobs)
+      .toHaveLength(6);
+  });
+
+  it('sends sort to the server and resets only the active role to page one', () => {
+    const fixture = createFixture();
+    clickButtonContaining(fixture, 'programming');
+    clickButtonContaining(fixture, 'Next');
+    clickButtonContaining(fixture, 'cleaning');
+
+    fixture.componentInstance.selectSort('NEWEST_POSTED');
+    fixture.detectChanges();
+
+    expect(jobService.calls.at(-1)).toEqual(expect.objectContaining({
+      targetRole: 'cleaning',
+      page: 1,
+      sort: 'NEWEST_POSTED',
+    }));
+    expect(fixture.componentInstance.roleStates()['cleaning'].sort).toBe('NEWEST_POSTED');
+    expect(fixture.componentInstance.roleStates()['programming'].sort).toBe('MOST_RELEVANT');
+    expect(fixture.componentInstance.roleStates()['programming'].currentPage).toBe(2);
   });
 
   it('applies source filter before sorting and paginating', () => {
@@ -162,16 +237,17 @@ describe('JobResultsComponent', () => {
     fixture.componentInstance.selectSort('HIGHEST_SALARY');
     fixture.detectChanges();
 
-    expect(jobCards(fixture)).toHaveLength(10);
-    expect(fixture.nativeElement.textContent).toContain('Showing 1-10 of 12 matches');
+    expect(jobCards(fixture)).toHaveLength(6);
+    expect(fixture.nativeElement.textContent)
+      .toContain('Showing 6 Adzuna matches on page 1 · 16 total across all job sites');
     expect(fixture.nativeElement.textContent).toContain('adzuna job 12');
     expect(fixture.nativeElement.textContent).not.toContain('reed job 1');
     expect(fixture.nativeElement.textContent).toContain('Page 1 of 2');
 
     clickButtonContaining(fixture, 'Next');
 
-    expect(jobCards(fixture)).toHaveLength(2);
-    expect(fixture.nativeElement.textContent).toContain('adzuna job 2');
+    expect(jobCards(fixture)).toHaveLength(6);
+    expect(fixture.nativeElement.textContent).toContain('adzuna job 6');
   });
 
   it('sorts highest salary with missing salaries last', () => {
@@ -230,6 +306,56 @@ describe('JobResultsComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Real providers — partial availability');
     expect(fixture.nativeElement.textContent).toContain('real developer role');
     expect(fixture.nativeElement.textContent).toContain('JSEARCH has reached its current request limit');
+  });
+
+  it('keeps provider partial failures scoped to the role that returned them', () => {
+    queuedSearchResponses = [
+      of({
+        ...rolePageResponse('cleaning', [job('cleaning result', {})], 1, 1, 1),
+        providerResults: [
+          {provider: 'REED', status: ProviderResultStatusStatusEnum.Success, rawResultCount: 1},
+        ],
+      }),
+      of({
+        ...rolePageResponse('programming', [job('programming result', {})], 1, 1, 1),
+        providerResults: [
+          {provider: 'REED', status: ProviderResultStatusStatusEnum.Success, rawResultCount: 1},
+          {provider: 'JSEARCH', status: ProviderResultStatusStatusEnum.RateLimited, rawResultCount: 0},
+        ],
+      }),
+    ];
+    const fixture = createFixture('REAL_PROVIDERS');
+
+    clickButtonContaining(fixture, 'programming');
+
+    expect(fixture.nativeElement.textContent)
+      .toContain('JSEARCH has reached its current request limit');
+    expect(fixture.nativeElement.textContent).toContain('programming result');
+
+    clickButtonContaining(fixture, 'cleaning');
+
+    expect(fixture.nativeElement.textContent)
+      .not.toContain('JSEARCH has reached its current request limit');
+    expect(fixture.nativeElement.textContent).toContain('cleaning result');
+  });
+
+  it('shows one role failure without discarding another role cached results', () => {
+    queuedSearchResponses = [
+      of(rolePageResponse('cleaning', [job('cached cleaning result', {})], 1, 1, 1)),
+      throwError(() => ({status: 503})),
+    ];
+    const fixture = createFixture();
+
+    clickButtonContaining(fixture, 'programming');
+
+    expect(fixture.nativeElement.textContent).toContain('programming (Unavailable)');
+    expect(fixture.nativeElement.textContent)
+      .toContain('Job search service is temporarily unavailable');
+
+    clickButtonContaining(fixture, 'cleaning');
+
+    expect(fixture.nativeElement.textContent).toContain('cached cleaning result');
+    expect(fixture.componentInstance.error()).toBeNull();
   });
 
   it('distinguishes a real-provider configuration error from zero results', () => {
@@ -324,19 +450,89 @@ describe('JobResultsComponent', () => {
     const fixture = createFixture();
 
     fixture.componentInstance.refresh();
-    newerResponse.next(singleRoleResponse([job('newer result', {})]));
+    newerResponse.next(singleRoleResponse([job('newer result', {})], 'cleaning'));
     newerResponse.complete();
     fixture.detectChanges();
 
     expect(fixture.componentInstance.jobs().map(result => result.title)).toEqual(['newer result']);
     expect(fixture.nativeElement.textContent).toContain('newer result');
 
-    staleResponse.next(singleRoleResponse([job('stale result', {})]));
+    staleResponse.next(singleRoleResponse([job('stale result', {})], 'cleaning'));
     staleResponse.complete();
     fixture.detectChanges();
 
     expect(fixture.componentInstance.jobs().map(result => result.title)).toEqual(['newer result']);
     expect(fixture.nativeElement.textContent).not.toContain('stale result');
+  });
+
+  it('rejects a response whose target-role group does not match the requested role', () => {
+    queuedSearchResponses = [
+      of(rolePageResponse('programming', [job('wrong-role result', {})], 1, 1, 1)),
+    ];
+    const fixture = createFixture();
+
+    expect(fixture.componentInstance.jobs()).toEqual([]);
+    expect(fixture.componentInstance.error())
+      .toBe('Search results for this target role could not be verified. Please try again.');
+    expect(fixture.nativeElement.textContent).not.toContain('wrong-role result');
+  });
+
+  it('keeps application and document enrichment on a subsequently loaded page', () => {
+    currentResponse = {
+      resultsByTargetRole: [{
+        targetRole: 'cleaning',
+        jobs: [
+          ...jobsFor('cleaning', 10),
+          job('enriched page two result', {
+            id: 'canonical-enriched-page-two',
+            canonicalJobId: 'canonical-enriched-page-two',
+            applicationId: 'application-page-two',
+            applicationStatus: 'DOCUMENTS_GENERATED',
+            cvDocumentId: 'cv-page-two',
+            coverLetterDocumentId: 'cover-page-two',
+          }),
+        ],
+      }],
+      totalResults: 11,
+    };
+    const fixture = createFixture();
+
+    clickButtonContaining(fixture, 'Next');
+    fixture.debugElement.query(By.css('.job-main-toggle')).nativeElement.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('enriched page two result');
+    expect(fixture.nativeElement.textContent).toContain('Documents prepared');
+    expect(fixture.componentInstance.jobs().find(candidate =>
+      candidate.canonicalJobId === 'canonical-enriched-page-two')).toMatchObject({
+        applicationId: 'application-page-two',
+        cvDocumentId: 'cv-page-two',
+        coverLetterDocumentId: 'cover-page-two',
+      });
+  });
+
+  it('removes canonical duplicates returned across page boundaries', () => {
+    const firstPage = jobsFor('cleaning', 10);
+    queuedSearchResponses = [
+      of(rolePageResponse('cleaning', firstPage, 11, 1, 2)),
+      of(rolePageResponse(
+        'cleaning',
+        [firstPage[9], job('cleaning unique page two', {id: 'cleaning-11'})],
+        11,
+        2,
+        2,
+      )),
+    ];
+    const fixture = createFixture();
+
+    clickButtonContaining(fixture, 'Next');
+
+    expect(jobCards(fixture)).toHaveLength(1);
+    expect(fixture.nativeElement.textContent).toContain('cleaning unique page two');
+    expect(fixture.nativeElement.textContent).not.toContain('cleaning job 10');
+    expect(fixture.componentInstance.jobs().filter(candidate =>
+      fixture.componentInstance.jobStateKey(candidate) === 'cleaning-10')).toHaveLength(1);
+    expect(fixture.componentInstance.jobs()).toHaveLength(11);
   });
 
   it('requires separate explicit evidence selections and preserves claimant order', () => {
@@ -456,11 +652,70 @@ describe('JobResultsComponent', () => {
     return fixture.debugElement.queryAll(By.css('app-job-card'));
   }
 
-  function singleRoleResponse(jobs: Job[]): JobSearchResponse {
+  function singleRoleResponse(jobs: Job[], targetRole = 'developer'): JobSearchResponse {
     return {
-      resultsByTargetRole: [{ targetRole: 'developer', jobs }],
+      resultsByTargetRole: [{ targetRole, jobs }],
       totalResults: jobs.length,
     };
+  }
+
+  function rolePageResponse(
+    targetRole: string,
+    jobs: Job[],
+    totalResults: number,
+    page: number,
+    totalPages: number,
+  ): JobSearchResponse {
+    return {
+      jobs,
+      resultsByTargetRole: [{targetRole, jobs}],
+      totalResults,
+      page,
+      pageSize: 10,
+      totalPages,
+    };
+  }
+
+  function responseForRequest(
+    source: JobSearchResponse,
+    options: JobSearchOptions,
+  ): JobSearchResponse {
+    const targetRole = options.targetRole ?? 'All matches';
+    const group = source.resultsByTargetRole?.find(candidate =>
+      candidate.targetRole?.toLocaleLowerCase() === targetRole.toLocaleLowerCase())
+      ?? (source.resultsByTargetRole?.length === 1
+        ? source.resultsByTargetRole[0]
+        : undefined);
+    const allJobs = sortJobs(group?.jobs ?? source.jobs ?? [], options.sort);
+    const page = options.page ?? 1;
+    const pageSize = options.pageSize ?? 10;
+    const start = (page - 1) * pageSize;
+    const pageJobs = allJobs.slice(start, start + pageSize);
+    return {
+      ...source,
+      jobs: pageJobs,
+      resultsByTargetRole: [{targetRole, jobs: pageJobs}],
+      totalResults: allJobs.length,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(allJobs.length / pageSize)),
+      sort: options.sort as JobSearchResponse['sort'],
+    };
+  }
+
+  function sortJobs(jobs: Job[], sort: string | undefined): Job[] {
+    const sorted = [...jobs];
+    if (sort === 'HIGHEST_SALARY') {
+      return sorted.sort((left, right) =>
+        (right.salary?.normalisedAnnualMidpoint ?? Number.NEGATIVE_INFINITY)
+        - (left.salary?.normalisedAnnualMidpoint ?? Number.NEGATIVE_INFINITY));
+    }
+    if (sort === 'CLOSEST') {
+      return sorted.sort((left, right) =>
+        (left.distanceMiles ?? Number.POSITIVE_INFINITY)
+        - (right.distanceMiles ?? Number.POSITIVE_INFINITY));
+    }
+    return sorted;
   }
 
   function job(title: string, patch: Partial<Job>): Job {
