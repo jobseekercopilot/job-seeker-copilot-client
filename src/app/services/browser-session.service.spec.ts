@@ -78,6 +78,28 @@ describe('browser session security', () => {
     request.flush({jobs: [], totalResults: 0});
   });
 
+  it('re-bootstraps a stale in-memory CSRF value before a write workflow', () => {
+    const state = TestBed.inject(BrowserSessionState);
+    state.acceptBootstrap({headerName: 'X-CSRF-Token', token: '0123456789-stale-csrf-value'});
+    const service = TestBed.inject(BrowserSessionService);
+    const http = TestBed.inject(HttpTestingController);
+
+    service.refreshCsrf().subscribe();
+
+    const bootstrap = http.expectOne('/api/auth/csrf');
+    expect(bootstrap.request.method).toBe('GET');
+    bootstrap.flush({
+      headerName: 'X-CSRF-Token',
+      token: '0123456789-refreshed-csrf-value',
+    });
+
+    TestBed.inject(HttpClient).post('/api/jobs/saved', {id: 'job-1'}).subscribe();
+    const savedJob = http.expectOne('/api/jobs/saved');
+    expect(savedJob.request.headers.get('X-CSRF-Token'))
+      .toBe('0123456789-refreshed-csrf-value');
+    savedJob.flush({savedJobId: 'saved-job-1'});
+  });
+
   it('restores a valid cookie session from the subject-bound profile', () => {
     const service = TestBed.inject(BrowserSessionService);
     let result: string | undefined;

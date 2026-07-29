@@ -89,7 +89,10 @@ export class DocumentGenerationService {
     }
 
     const idempotencyKey = `browser-${crypto.randomUUID()}`;
-    return this.browserSession.ensureCsrf().pipe(
+    // Re-bootstrap immediately before this multi-step write workflow. A browser
+    // can retain the in-memory token after its matching cookie has been cleared,
+    // and blindly reusing that token causes the initial saved-job write to fail.
+    return this.browserSession.refreshCsrf().pipe(
       switchMap(() => this.savedJobs.save(
         job as SavedJob,
         'body',
