@@ -58,6 +58,29 @@ function validateJobFinderContract(document) {
     );
   }
 
+  const applicationProperties =
+    document.components?.schemas?.ApplicationRecordResponse?.properties ?? {};
+  const documentReferenceProperties =
+    document.components?.schemas?.DocumentVersionReference?.properties ?? {};
+  const evidenceProperties =
+    document.components?.schemas?.DocumentEvidenceProvenance?.properties ?? {};
+  if (!applicationProperties.cvDocumentReference ||
+      !applicationProperties.applicationUsedCvDocumentReference ||
+      !applicationProperties.applicationUsedAt ||
+      !documentReferenceProperties.contentSha256 ||
+      !documentReferenceProperties.evidenceProvenance ||
+      !documentReferenceProperties.groundingState ||
+      !evidenceProperties.profileRevisionId ||
+      !evidenceProperties.profileContentDigest ||
+      !evidenceProperties.evidenceSnapshotId ||
+      !evidenceProperties.evidenceSnapshotDigest ||
+      !evidenceProperties.evidenceRevisions ||
+      !evidenceProperties.claimLedger) {
+    throw new Error(
+      'job-finder-gateway must expose exact non-sensitive application evidence provenance',
+    );
+  }
+
   const bearer = document.components?.securitySchemes?.bearerAuth;
   if (bearer?.type !== 'http' || bearer?.scheme !== 'bearer') {
     throw new Error(

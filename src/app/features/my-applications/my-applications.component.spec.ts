@@ -60,4 +60,45 @@ describe('MyApplicationsComponent document replacement', () => {
       },
     ])).toBeUndefined();
   });
+
+  it('shows frozen application-used provenance instead of a later current draft', () => {
+    const tracked = {
+      cvDocumentReference: {
+        documentId: 'current-cv',
+        evidenceProvenance: {
+          profileRevisionId: 'current-profile',
+          evidenceSnapshotId: 'current-snapshot',
+        },
+      },
+      applicationUsedCvDocumentReference: {
+        documentId: 'used-cv',
+        evidenceProvenance: {
+          profileRevisionId: 'used-profile',
+          evidenceSnapshotId: 'used-snapshot',
+          evidenceRevisions: [{ revisionNumber: 2 }],
+          sectionOrder: ['PROJECTS'],
+        },
+      },
+      applicationUsedAt: '2026-07-29T03:00:00Z',
+    } as TrackedApplication;
+
+    const references = component.evidenceReferences(tracked);
+
+    expect(references).toHaveLength(1);
+    expect(references[0].reference.documentId).toBe('used-cv');
+    expect(references[0].reference.evidenceProvenance?.profileRevisionId)
+      .toBe('used-profile');
+    expect(component.evidenceCount(references[0].reference)).toBe(1);
+    expect(component.evidenceSections(references[0].reference)).toBe('Projects');
+    expect(component.evidenceScopeText(tracked)).toContain('Frozen when applied');
+  });
+
+  it('marks user-edited documents as requiring review', () => {
+    const reference = {
+      groundingState: 'USER_EDITED_REVIEW_REQUIRED',
+    } as NonNullable<TrackedApplication['cvDocumentReference']>;
+
+    expect(component.groundingNeedsReview(reference)).toBe(true);
+    expect(component.groundingLabel(reference)).toBe('Review required');
+  });
 });

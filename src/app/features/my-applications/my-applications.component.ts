@@ -17,6 +17,7 @@ import {
   DocumentDownloadsResponse,
   DownloadFileResponse,
 } from '../../api/document-generation-gateway';
+import { DocumentVersionReference } from '../../api/job-finder';
 
 type StatusUpdateTarget =
   | 'DOCUMENTS_GENERATED'
@@ -37,6 +38,11 @@ interface TimelineStep {
   key: string;
   label: string;
   completedAt?: string;
+}
+
+interface EvidenceUsedReference {
+  label: string;
+  reference: DocumentVersionReference;
 }
 
 export function latestUserUploadTimestamp(metadata: DocumentFileMetadata[]): string | undefined {
@@ -175,6 +181,62 @@ export class MyApplicationsComponent implements OnInit {
     if (hasCv) return 'CV saved';
     if (hasLetter) return 'Cover letter saved';
     return 'No documents saved';
+  }
+
+  evidenceReferences(application: TrackedApplication): EvidenceUsedReference[] {
+    const cv = application.applicationUsedCvDocumentReference
+      ?? application.cvDocumentReference;
+    const coverLetter = application.applicationUsedCoverLetterDocumentReference
+      ?? application.coverLetterDocumentReference;
+    return [
+      cv ? { label: 'CV', reference: cv } : undefined,
+      coverLetter ? { label: 'Cover letter', reference: coverLetter } : undefined,
+    ].filter((item): item is EvidenceUsedReference => Boolean(item));
+  }
+
+  evidenceScopeText(application: TrackedApplication): string {
+    if (application.applicationUsedCvDocumentReference
+      || application.applicationUsedCoverLetterDocumentReference) {
+      return application.applicationUsedAt
+        ? `Frozen when applied ${this.formatDate(application.applicationUsedAt, true)}`
+        : 'Frozen when this application was submitted';
+    }
+    return 'Selected for the current document drafts';
+  }
+
+  compactReference(value: string | undefined): string {
+    if (!value) return 'Not recorded';
+    return value.length > 12
+      ? `${value.slice(0, 8)}…${value.slice(-4)}`
+      : value;
+  }
+
+  evidenceCount(reference: DocumentVersionReference): number {
+    return reference.evidenceProvenance?.evidenceRevisions?.length ?? 0;
+  }
+
+  evidenceSections(reference: DocumentVersionReference): string {
+    const sections = reference.evidenceProvenance?.sectionOrder ?? [];
+    return sections.length
+      ? sections.map(section => this.statusLabel(section)).join(', ')
+      : 'Not recorded';
+  }
+
+  groundingLabel(reference: DocumentVersionReference): string {
+    switch (reference.groundingState) {
+      case 'AI_GENERATED_EVIDENCE_VALIDATED':
+        return 'Evidence validated';
+      case 'USER_EDITED_REVALIDATED':
+        return 'Edit revalidated';
+      case 'USER_EDITED_REVIEW_REQUIRED':
+        return 'Review required';
+      default:
+        return 'Legacy provenance';
+    }
+  }
+
+  groundingNeedsReview(reference: DocumentVersionReference): boolean {
+    return reference.groundingState === 'USER_EDITED_REVIEW_REQUIRED';
   }
 
   timeline(application: TrackedApplication): TimelineStep[] {

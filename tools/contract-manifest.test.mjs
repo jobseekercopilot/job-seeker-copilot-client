@@ -155,7 +155,7 @@ test('pins the progressive-profile and Evidence Library UMG browser contract', a
   ]);
 });
 
-test('pins the session-derived Job Finder search, saved-job and application contract', async () => {
+test('pins the session-derived Job Finder search, saved-job and provenance contract', async () => {
   const lock = await verifyContractManifest(rootDir);
   const gateway = lock.contracts.find(({id}) => id === 'job-finder-gateway');
   const contract = JSON.parse(
@@ -163,11 +163,11 @@ test('pins the session-derived Job Finder search, saved-job and application cont
   );
   const savedJob = contract.components.schemas.SavedJobResponse.properties;
 
-  assert.equal(gateway.version, '1.5.0');
+  assert.equal(gateway.version, '1.6.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
   assert.equal(
     gateway.sourceCommit,
-    '9ec7b4694fddf2ce3a96a429e359408079eb4522',
+    'c3b601aa4594c9c884eb89a5b141a0b8801e2cb3',
   );
   assert.equal(gateway.output, 'src/app/api/job-finder');
   assert.deepEqual(gateway.requiredPaths, [
@@ -177,7 +177,7 @@ test('pins the session-derived Job Finder search, saved-job and application cont
     '/api/jobs/applications',
     '/api/jobs/applications/{applicationId}/status',
   ]);
-  assert.equal(contract.info.version, '1.5.0');
+  assert.equal(contract.info.version, '1.6.0');
   assert.equal(savedJob.savedJobId.format, 'uuid');
   assert.equal(savedJob.snapshotVersion.format, 'int64');
   assert.equal(savedJob.contentSha256.type, 'string');
@@ -204,6 +204,18 @@ test('pins the session-derived Job Finder search, saved-job and application cont
   assert.equal(
     contract.paths['/api/jobs/applications'].get.parameters,
     undefined,
+  );
+  assert.ok(
+    contract.components.schemas.ApplicationRecordResponse.properties
+      .applicationUsedCvDocumentReference,
+  );
+  assert.ok(
+    contract.components.schemas.DocumentVersionReference.properties
+      .evidenceProvenance,
+  );
+  assert.ok(
+    contract.components.schemas.DocumentEvidenceProvenance.properties
+      .evidenceSnapshotDigest,
   );
 });
 
@@ -264,6 +276,14 @@ test('rejects unsafe or incomplete Job Finder saved-job drift', async (context) 
           .headers['X-Saved-Job-Outcome'];
       },
       /must preserve saved-job outcome semantics/,
+    ],
+    [
+      'missing application evidence provenance',
+      (contract) => {
+        delete contract.components.schemas.DocumentEvidenceProvenance
+          .properties.evidenceSnapshotDigest;
+      },
+      /must expose exact non-sensitive application evidence provenance/,
     ],
   ];
 
