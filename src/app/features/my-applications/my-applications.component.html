@@ -84,6 +84,73 @@
             }
           </div>
 
+          @if (evidenceReferences(application); as references) {
+            @if (references.length) {
+              <details class="evidence-used" data-testid="evidence-used">
+                <summary>
+                  <span>
+                    <mat-icon>verified_user</mat-icon>
+                    Evidence used
+                  </span>
+                  <small>{{ evidenceScopeText(application) }}</small>
+                  <mat-icon class="evidence-expand">expand_more</mat-icon>
+                </summary>
+                <div class="evidence-used-content">
+                  @for (item of references; track item.reference.documentId) {
+                    <section class="evidence-document"
+                             [attr.aria-label]="item.label + ' evidence provenance'">
+                      <div class="evidence-document-heading">
+                        <div>
+                          <strong>{{ item.label }}</strong>
+                          <span>Version {{ item.reference.version ?? '—' }}</span>
+                        </div>
+                        <span class="grounding-badge"
+                              [class.grounding-review]="groundingNeedsReview(item.reference)">
+                          {{ groundingLabel(item.reference) }}
+                        </span>
+                      </div>
+                      <dl>
+                        <div>
+                          <dt>Profile revision</dt>
+                          <dd [title]="item.reference.evidenceProvenance?.profileRevisionId ?? ''">
+                            {{ compactReference(item.reference.evidenceProvenance?.profileRevisionId) }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Evidence snapshot</dt>
+                          <dd [title]="item.reference.evidenceProvenance?.evidenceSnapshotId ?? ''">
+                            {{ compactReference(item.reference.evidenceProvenance?.evidenceSnapshotId) }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Evidence revisions</dt>
+                          <dd>{{ evidenceCount(item.reference) }}</dd>
+                        </div>
+                        <div>
+                          <dt>Sections</dt>
+                          <dd>{{ evidenceSections(item.reference) }}</dd>
+                        </div>
+                        <div>
+                          <dt>Claim ledger</dt>
+                          <dd [title]="item.reference.evidenceProvenance?.claimLedger?.ledgerId ?? ''">
+                            {{ compactReference(item.reference.evidenceProvenance?.claimLedger?.ledgerId) }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Generated</dt>
+                          <dd>{{ formatDate(item.reference.evidenceProvenance?.generatedAt, true) }}</dd>
+                        </div>
+                      </dl>
+                      <p class="evidence-integrity">
+                        Exact content, profile and snapshot digests are retained with this document version.
+                      </p>
+                    </section>
+                  }
+                </div>
+              </details>
+            }
+          }
+
           <div class="application-footer">
             <span class="application-source">{{ sourceText(application) }}</span>
             <details class="actions-menu"
