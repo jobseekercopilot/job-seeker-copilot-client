@@ -70,6 +70,7 @@ export class DocumentsWorkspaceComponent {
   replacingDocumentId = signal<string | null>(null);
   deletingDocumentId = signal<string | null>(null);
   private lastLoadKey = '';
+  private refreshSequence = 0;
 
   readonly filterOptions: { key: DocumentFilter; label: string }[] = [
     { key: 'ALL', label: 'All Documents' },
@@ -127,16 +128,23 @@ export class DocumentsWorkspaceComponent {
   }
 
   refresh(): void {
+    const requestSequence = ++this.refreshSequence;
     if (!this.enabled()) {
       this.documents.set([]);
+      this.loading.set(false);
       return;
     }
 
     this.loading.set(true);
     this.error.set(null);
     this.applicationTracker.listApplications().subscribe({
-      next: applications => this.loadDocuments(applications),
+      next: applications => {
+        if (requestSequence === this.refreshSequence) {
+          this.loadDocuments(applications, requestSequence);
+        }
+      },
       error: err => {
+        if (requestSequence !== this.refreshSequence) return;
         this.loading.set(false);
         this.error.set('Could not load documents. Please try again.');
         console.error('Documents workspace load failed:', err);
@@ -260,10 +268,28 @@ export class DocumentsWorkspaceComponent {
       document.applicationId,
       file,
       document.documentType,
-    ).then(() => {
-      this.notify.emit({ message: `${this.documentTypeLabel(document.documentType)} replaced successfully. PDF version has been updated.`, type: 'success' });
+    ).then(response => {
+      if (!response.processing) {
+        this.documents.update(documents => documents.map(candidate =>
+          candidate.documentId === document.documentId
+            ? {
+                ...candidate,
+                downloads: response.latestFiles ?? candidate.downloads,
+                version: response.version ?? candidate.version,
+                updatedAt: new Date().toISOString(),
+              }
+            : candidate
+        ));
+      }
+      this.notify.emit({
+        message: response.processing
+          ? response.retryable
+            ? `${this.documentTypeLabel(document.documentType)} replacement was not completed. The current document has been kept; try again.`
+            : (response.message || `${this.documentTypeLabel(document.documentType)} replacement needs recovery. The current document has been kept.`)
+          : `${this.documentTypeLabel(document.documentType)} replaced successfully. PDF version has been updated.`,
+        type: response.processing ? 'info' : 'success',
+      });
       this.applicationChanged.emit();
-      this.refresh();
     }).catch(err => {
       const message = err instanceof Error ? err.message : 'Replacement upload failed.';
       this.notify.emit({ message, type: 'error' });
@@ -276,7 +302,17 @@ export class DocumentsWorkspaceComponent {
     if (!window.confirm(`Delete generated documents for ${document.jobTitle || 'this application'}? This is only allowed before the application is applied.`)) return;
 
     this.deletingDocumentId.set(document.documentId);
-    this.documentGenerationService.withdrawGeneratedApplication(document.applicationId).then(() => {
+    this.documentGenerationService.withdrawGeneratedApplication(document.applicationId).then(outcome => {
+      if (outcome.processing) {
+        this.notify.emit({
+          message: outcome.retryable
+            ? 'Document withdrawal was not completed. Current documents remain available; try again.'
+            : (outcome.message || 'Document withdrawal needs recovery. Current documents remain available.'),
+          type: 'info',
+        });
+        this.applicationChanged.emit();
+        return;
+      }
       this.notify.emit({ message: 'Generated documents deleted.', type: 'success' });
       this.documents.update(documents => documents.filter(item => item.applicationId !== document.applicationId));
       if (this.selectedDocumentId() && !this.documents().some(item => item.documentId === this.selectedDocumentId())) {
@@ -294,7 +330,11 @@ export class DocumentsWorkspaceComponent {
     this.openApplication.emit(document.applicationId);
   }
 
-  private loadDocuments(applications: TrackedApplication[]): void {
+  private loadDocuments(
+    applications: TrackedApplication[],
+    requestSequence: number,
+  ): void {
+    if (requestSequence !== this.refreshSequence) return;
     const baseDocuments = applications.flatMap(application => this.documentsForApplication(application));
     if (baseDocuments.length === 0) {
       this.documents.set([]);
@@ -305,6 +345,7 @@ export class DocumentsWorkspaceComponent {
 
     forkJoin(baseDocuments.map(document => this.hydrateDocument(document))).subscribe({
       next: documents => {
+        if (requestSequence !== this.refreshSequence) return;
         this.documents.set(documents);
         if (this.selectedDocumentId() && !documents.some(document => document.documentId === this.selectedDocumentId())) {
           this.selectedDocumentId.set(null);
@@ -312,6 +353,7 @@ export class DocumentsWorkspaceComponent {
         this.loading.set(false);
       },
       error: err => {
+        if (requestSequence !== this.refreshSequence) return;
         this.documents.set(baseDocuments);
         this.loading.set(false);
         console.warn('Some document metadata could not be loaded:', err);

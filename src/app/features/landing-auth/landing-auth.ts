@@ -46,7 +46,12 @@ export class LandingAuthComponent implements OnInit {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   readonly initialMode = input<'create' | 'signin'>('create');
-  readonly onboarded = output<{profile: UserProfile; name: string; email: string}>();
+  readonly onboarded = output<{
+    profile: UserProfile;
+    id?: string;
+    name: string;
+    email: string;
+  }>();
 
   readonly mode = signal<'create' | 'signin'>('create');
   readonly errorMessage = signal<string | null>(null);
@@ -65,6 +70,7 @@ export class LandingAuthComponent implements OnInit {
   readonly setupSkills = signal('');
   readonly setupAccount = signal<{
     profile: UserProfile;
+    id?: string;
     name: string;
     email: string;
   } | null>(null);
@@ -296,6 +302,7 @@ export class LandingAuthComponent implements OnInit {
     const profile = normaliseProfile(response.user.profile);
     this.onboarded.emit({
       profile,
+      id: response.user.id,
       name: response.user.name || '',
       email: response.user.email || '',
     });
@@ -306,6 +313,7 @@ export class LandingAuthComponent implements OnInit {
     const profile = normaliseProfile(response.user.profile);
     this.setupAccount.set({
       profile,
+      id: response.user.id,
       name: response.user.name || '',
       email: response.user.email || '',
     });

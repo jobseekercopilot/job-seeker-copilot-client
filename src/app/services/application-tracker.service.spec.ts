@@ -20,6 +20,10 @@ describe('ApplicationTrackerService', () => {
     id: '00000000-0000-0000-0000-000000000001',
     status: 'INTERVIEW',
   }));
+  const withdrawGeneratedApplication = vi.fn(() => of({
+    status: 200,
+    body: {withdrawn: true},
+  }));
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -32,6 +36,7 @@ describe('ApplicationTrackerService', () => {
             getApplications,
             createApplication,
             updateApplicationStatus,
+            withdrawGeneratedApplication,
           },
         },
         {provide: BrowserSessionService, useValue: {ensureCsrf}},
@@ -135,6 +140,28 @@ describe('ApplicationTrackerService', () => {
       '00000000-0000-0000-0000-000000000001',
       {status: 'INTERVIEW'},
       'body',
+      false,
+      {transferCache: false},
+    );
+  });
+
+  it('reports an accepted withdrawal as processing rather than completed', () => {
+    withdrawGeneratedApplication.mockReturnValueOnce(of({
+      status: 202,
+      body: {
+        withdrawn: false,
+        operationId: '00000000-0000-0000-0000-000000000002',
+        operationStatus: 'PROCESSING',
+      },
+    }));
+
+    TestBed.inject(ApplicationTrackerService)
+      .withdrawGeneratedApplication('00000000-0000-0000-0000-000000000001')
+      .subscribe(outcome => expect(outcome.processing).toBe(true));
+
+    expect(withdrawGeneratedApplication).toHaveBeenCalledWith(
+      '00000000-0000-0000-0000-000000000001',
+      'response',
       false,
       {transferCache: false},
     );

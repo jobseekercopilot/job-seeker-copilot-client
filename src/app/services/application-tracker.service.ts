@@ -40,6 +40,11 @@ export interface TrackedApplication extends ApplicationRecordResponse {
   documentsUploadedAt?: string;
 }
 
+export interface TrackedApplicationWithdrawal
+    extends WithdrawGeneratedApplicationResponse {
+  processing: boolean;
+}
+
 export interface ApplicationEvent {
   id: string;
   applicationId?: string;
@@ -114,14 +119,18 @@ export class ApplicationTrackerService {
 
   withdrawGeneratedApplication(
     applicationId: string,
-  ): Observable<WithdrawGeneratedApplicationResponse> {
+  ): Observable<TrackedApplicationWithdrawal> {
     return this.browserSession.ensureCsrf().pipe(
       switchMap(() => this.api.withdrawGeneratedApplication(
         applicationId,
-        'body',
+        'response',
         false,
         {transferCache: false},
       )),
+      map(response => ({
+        ...(response.body ?? {}),
+        processing: response.status === 202,
+      })),
     );
   }
 

@@ -8,11 +8,13 @@ import {
 const ACCESS_TOKEN = 'a.a.a';
 const CSRF_TOKEN = 'csrf-token-123';
 const DOCUMENT_ID = '3b0f6a57-389d-4e20-a007-199afca04b20';
+const COVER_DOCUMENT_ID = '3b0f6a57-389d-4e20-a007-199afca04b21';
 const FILE_ID = '9f40a536-4167-4b5c-9295-c41b6e127f84';
 const OPERATION_ID = '69e794d1-f0aa-4ed5-9779-a5f3e98610cb';
 const APPLICATION_ID = 'c17442dd-c24f-48a2-86e5-b0ec7f38f8cb';
 const MULTIPART_TYPE = 'multipart/form-data; boundary=test-boundary';
 const MULTIPART_BODY = '--test-boundary\r\nContent-Disposition: form-data; name="file"; filename="Updated CV.docx"\r\nContent-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document\r\n\r\nsafe-docx-test\r\n--test-boundary--\r\n';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EVIDENCE_SELECTION = {
   documents: [
     {
@@ -105,12 +107,13 @@ describe('Document generation session boundary', () => {
     expect(url).toBe(
       `https://documents.example.test/api/v1/document-generation/saved-jobs/${DOCUMENT_ID}/operations`,
     );
-    expect(init?.headers).toEqual({
+    expect(init?.headers).toEqual(expect.objectContaining({
       Accept: 'application/json',
       Authorization: `Bearer ${ACCESS_TOKEN}`,
       'Content-Type': 'application/json',
       'Idempotency-Key': 'browser-safe-key',
-    });
+      'X-Correlation-ID': expect.stringMatching(UUID_PATTERN),
+    }));
     expect(JSON.stringify(init)).not.toContain('another-user');
     expect(JSON.stringify(init)).not.toContain('browser-controlled');
     expect(JSON.parse(String(init?.body))).toEqual(EVIDENCE_SELECTION);
@@ -140,7 +143,10 @@ describe('Document generation session boundary', () => {
 
   it('approves only an exact operation through the session boundary', async () => {
     const upstream = vi.fn<FetchLike>(async () =>
-      Response.json({operationId: OPERATION_ID, state: 'COMPLETED'}));
+      Response.json(
+        {operationId: OPERATION_ID, state: 'APPROVED'},
+        {status: 202},
+      ));
     const origin = await start(upstream as typeof fetch);
 
     const response = await fetch(
@@ -155,25 +161,188 @@ describe('Document generation session boundary', () => {
         },
         body: JSON.stringify({
           cvDocumentId: DOCUMENT_ID,
-          coverLetterDocumentId: DOCUMENT_ID,
+          coverLetterDocumentId: COVER_DOCUMENT_ID,
         }),
       },
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
     expect(upstream).toHaveBeenCalledWith(
       `https://documents.example.test/api/v1/document-generation/operations/${OPERATION_ID}/approve`,
       expect.objectContaining({
-        headers: {
+        headers: expect.objectContaining({
           Accept: 'application/json',
           Authorization: `Bearer ${ACCESS_TOKEN}`,
           'Content-Type': 'application/json',
-        },
+          'X-Correlation-ID': expect.stringMatching(UUID_PATTERN),
+        }),
         method: 'POST',
       }),
     );
     expect(JSON.stringify(upstream.mock.calls[0][1])).not.toContain('another-user');
     expect(JSON.stringify(upstream.mock.calls[0][1])).not.toContain('browser-controlled');
+    expect(JSON.parse(String(upstream.mock.calls[0][1]?.body))).toEqual({
+      cvDocumentId: DOCUMENT_ID,
+      coverLetterDocumentId: COVER_DOCUMENT_ID,
+    });
+  });
+
+  it('rejects extra or invalid approval fields before the gateway is called', async () => {
+    const upstream = vi.fn<FetchLike>();
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/operations/${OPERATION_ID}/approve`,
+      {
+        method: 'POST',
+        headers: {
+          ...sessionHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cvDocumentId: DOCUMENT_ID,
+          coverLetterDocumentId: COVER_DOCUMENT_ID,
+          ownerId: 'browser-asserted-owner',
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'INVALID_APPROVAL_REQUEST',
+      message: 'Valid distinct CV and cover letter document identifiers are required',
+    });
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('loads an owner-scoped operation and propagates only a bounded correlation id', async () => {
+    const upstream = vi.fn<FetchLike>(async () =>
+      Response.json({
+        operationId: OPERATION_ID,
+        savedJobId: DOCUMENT_ID,
+        state: 'GENERATION_IN_PROGRESS',
+        replaySafe: true,
+        downloads: {
+          cv: {
+            documentId: DOCUMENT_ID,
+            exports: [{
+              fileId: FILE_ID,
+              format: 'DOCX',
+              fileName: 'Tailored CV.docx',
+              mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              downloadUrl: 'https://internal-store.example.test/private',
+            }],
+          },
+        },
+        failureMessage: 'provider body must not reach the browser',
+        unexpected: 'hidden',
+      }));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/operations/${OPERATION_ID}`,
+      {
+        headers: {
+          ...sessionHeaders(false),
+          'X-Correlation-ID': 'browser.operation-1',
+          'X-User-Id': 'another-user',
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-correlation-id')).toBe('browser.operation-1');
+    expect(await response.json()).toEqual({
+      operationId: OPERATION_ID,
+      savedJobId: DOCUMENT_ID,
+      state: 'GENERATION_IN_PROGRESS',
+      replaySafe: true,
+      downloads: {
+        cv: {
+          exports: [{
+            fileId: FILE_ID,
+            format: 'DOCX',
+            fileName: 'Tailored CV.docx',
+          }],
+        },
+      },
+    });
+    expect(upstream).toHaveBeenCalledWith(
+      `https://documents.example.test/api/v1/document-generation/operations/${OPERATION_ID}`,
+      expect.objectContaining({
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${ACCESS_TOKEN}`,
+          'X-Correlation-ID': 'browser.operation-1',
+        },
+      }),
+    );
+  });
+
+  it('cancels an exact operation through CSRF and replaces an unsafe correlation id', async () => {
+    const upstream = vi.fn<FetchLike>(async () =>
+      Response.json({
+        operationId: OPERATION_ID,
+        state: 'CANCELLED',
+      }));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/operations/${OPERATION_ID}`,
+      {
+        method: 'DELETE',
+        headers: {
+          ...sessionHeaders(),
+          'X-Correlation-ID': 'contains spaces and must be replaced',
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-correlation-id')).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(await response.json()).toEqual({
+      operationId: OPERATION_ID,
+      state: 'CANCELLED',
+    });
+    expect(upstream.mock.calls[0][1]).toEqual(expect.objectContaining({
+      method: 'DELETE',
+    }));
+  });
+
+  it('requires CSRF before operation cancellation reaches the gateway', async () => {
+    const upstream = vi.fn<FetchLike>();
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/operations/${OPERATION_ID}`,
+      {method: 'DELETE', headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(403);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('returns a stable error without reflecting a downstream provider body', async () => {
+    const upstream = vi.fn<FetchLike>(async () =>
+      Response.json({
+        error: 'PROVIDER_RATE_LIMITED',
+        message: 'provider response contained claimant data',
+      }, {status: 429}));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/operations/${OPERATION_ID}`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({
+      error: 'GENERATION_RATE_LIMITED',
+      message: 'Document generation is temporarily rate limited',
+    });
   });
 
   it('rejects an unsafe idempotency key before the gateway is called', async () => {

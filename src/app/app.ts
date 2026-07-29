@@ -309,8 +309,14 @@ export class App implements OnInit {
     return fallback;
   }
 
-  handleOnboarded(data: { profile: UserProfile; name: string; email: string }) {
+  handleOnboarded(data: {
+    profile: UserProfile;
+    id?: string;
+    name: string;
+    email: string;
+  }) {
     this.browserSession.acceptAuthenticatedUser({
+      id: data.id,
       name: data.name,
       email: data.email,
       profile: normaliseProfile(data.profile),

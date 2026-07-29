@@ -83,7 +83,12 @@ describe('LandingAuthComponent credential-only registration', () => {
       });
     });
     const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
-    let onboarded: {profile: UserProfile; name: string; email: string} | undefined;
+    let onboarded: {
+      profile: UserProfile;
+      id?: string;
+      name: string;
+      email: string;
+    } | undefined;
     component.onboarded.subscribe(value => onboarded = value);
     component.formName.set(' New User ');
     component.formEmail.set('NEW@EXAMPLE.TEST');
@@ -106,6 +111,7 @@ describe('LandingAuthComponent credential-only registration', () => {
     expect(acceptAuthenticatedUser).not.toHaveBeenCalled();
     expect(onboarded).toEqual({
       profile: {skills: [], qualifications: [], roles: []},
+      id: 'new-account',
       name: 'New User',
       email: 'new@example.test',
     });
@@ -123,7 +129,12 @@ describe('LandingAuthComponent credential-only registration', () => {
       },
     }));
     const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
-    let onboarded: {profile: UserProfile; name: string; email: string} | undefined;
+    let onboarded: {
+      profile: UserProfile;
+      id?: string;
+      name: string;
+      email: string;
+    } | undefined;
     component.onboarded.subscribe(value => onboarded = value);
     component.formName.set('New User');
     component.formEmail.set('new@example.test');
