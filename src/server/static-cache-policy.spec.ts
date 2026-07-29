@@ -1,5 +1,8 @@
 import {describe, expect, it, vi} from 'vitest';
-import {setStaticAssetCacheHeaders} from './static-cache-policy';
+import {
+  setAppShellCacheHeaders,
+  setStaticAssetCacheHeaders,
+} from './static-cache-policy';
 
 describe('static asset cache policy', () => {
   it('never caches prerendered route HTML', () => {
@@ -39,5 +42,22 @@ describe('static asset cache policy', () => {
       'Cache-Control',
       'public, max-age=3600',
     );
+  });
+
+  it('never caches an Angular-rendered application route', () => {
+    const setHeader = vi.fn();
+
+    setAppShellCacheHeaders({setHeader}, 'GET', '/dashboard');
+
+    expect(setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+  });
+
+  it('does not apply the application-shell policy to API or asset requests', () => {
+    const setHeader = vi.fn();
+
+    setAppShellCacheHeaders({setHeader}, 'GET', '/api/runtime/job-search-mode');
+    setAppShellCacheHeaders({setHeader}, 'GET', '/main-MUTWPYFR.js');
+
+    expect(setHeader).not.toHaveBeenCalled();
   });
 });

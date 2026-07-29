@@ -28,7 +28,10 @@ import {
   documentGenerationMode,
   jobSearchProviderMode,
 } from './server/runtime-configuration';
-import {setStaticAssetCacheHeaders} from './server/static-cache-policy';
+import {
+  setAppShellCacheHeaders,
+  setStaticAssetCacheHeaders,
+} from './server/static-cache-policy';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 const bffConfig = loadBffConfig();
@@ -217,6 +220,11 @@ registerReportingRoutes(app, {
 // Payments remain fail-closed until its BFF integration derives identity from
 // the HttpOnly session and enforces CSRF for mutations.
 app.use(UNAVAILABLE_API_PREFIXES, rejectUnavailableCapability);
+
+app.use((req, res, next) => {
+  setAppShellCacheHeaders(res, req.method, req.path);
+  next();
+});
 
 app.get(PUBLIC_ACCOUNT_ROUTES, (req, res, next) => {
   const routeDirectory = req.path.slice(1);

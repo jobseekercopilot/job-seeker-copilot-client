@@ -23,3 +23,19 @@ export function setStaticAssetCacheHeaders(
 
   response.setHeader('Cache-Control', 'public, max-age=3600');
 }
+
+export function setAppShellCacheHeaders(
+  response: HeaderResponse,
+  method: string,
+  requestPath: string,
+): void {
+  const lastPathSegment = requestPath.split('/').pop() ?? '';
+  const isDocumentRoute = !lastPathSegment.includes('.');
+  if (
+    (method === 'GET' || method === 'HEAD')
+    && !requestPath.startsWith('/api/')
+    && isDocumentRoute
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+  }
+}
