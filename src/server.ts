@@ -19,6 +19,7 @@ import {
   securityHeaders,
 } from './server/bff-boundary';
 import {callUserManagement} from './server/user-management-proxy';
+import {registerUserManagementEvidenceRoutes} from './server/user-management-evidence-routes';
 import {installGracefulShutdown} from './server/graceful-shutdown';
 import {registerJobFinderRoutes} from './server/job-finder-proxy';
 import {registerDocumentGenerationRoutes} from './server/document-generation-proxy';
@@ -110,6 +111,10 @@ app.put('/api/auth/profile', async (req, res) => {
   await proxyUserManagementRequest('/api/auth/profile', 'PUT', req, res);
 });
 
+app.patch('/api/auth/profile', async (req, res) => {
+  await proxyUserManagementRequest('/api/auth/profile', 'PATCH', req, res);
+});
+
 app.post('/api/auth/refresh', async (req, res) => {
   await proxyUserManagementRequest('/api/auth/refresh', 'POST', req, res);
 });
@@ -118,9 +123,14 @@ app.post('/api/auth/logout', async (req, res) => {
   await proxyUserManagementRequest('/api/auth/logout', 'POST', req, res);
 });
 
+registerUserManagementEvidenceRoutes(app, {
+  origin: USER_MANAGEMENT_GATEWAY_URL,
+  timeoutMs: bffConfig.downstreamTimeoutMs,
+});
+
 async function proxyUserManagementRequest(
   path: string,
-  method: 'GET' | 'POST' | 'PUT',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH',
   req: express.Request,
   res: express.Response
 ): Promise<void> {

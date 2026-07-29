@@ -2,7 +2,7 @@ import {TestBed} from '@angular/core/testing';
 import axe from 'axe-core';
 import {of, throwError} from 'rxjs';
 import type {UserProfile} from '../../api';
-import {AuthenticationService} from '../../api';
+import {AuthenticationService, ProfileService} from '../../api';
 import {BrowserSessionService} from '../../services/browser-session.service';
 import {registrationPasswordError, unicodeCodePointLength} from './credential-policy';
 import {LandingAuthComponent} from './landing-auth';
@@ -14,6 +14,8 @@ describe('LandingAuthComponent credential-only registration', () => {
   const ensureCsrf = vi.fn();
   const invalidateCsrf = vi.fn();
   const acceptAuthenticatedUser = vi.fn();
+  const handleAuthenticatedError = vi.fn();
+  const updatePreferences = vi.fn();
 
   beforeEach(async () => {
     events.length = 0;
@@ -22,6 +24,25 @@ describe('LandingAuthComponent credential-only registration', () => {
     ensureCsrf.mockReset();
     invalidateCsrf.mockReset();
     acceptAuthenticatedUser.mockReset();
+    handleAuthenticatedError.mockReset();
+    updatePreferences.mockReset();
+    updatePreferences.mockReturnValue(of({
+      statusCode: 200,
+      success: true,
+      user: {
+        id: 'new-account',
+        name: 'New User',
+        email: 'new@example.test',
+        profile: {
+          revision: 2,
+          skills: ['Customer service'],
+          qualifications: [],
+          roles: [],
+          aspirations: {targetRoles: ['Support analyst']},
+          workPreferences: {workplaceArrangements: ['REMOTE']},
+        },
+      },
+    }));
     ensureCsrf.mockImplementation(() => {
       events.push('csrf');
       return of(undefined);
@@ -39,16 +60,18 @@ describe('LandingAuthComponent credential-only registration', () => {
       imports: [LandingAuthComponent],
       providers: [
         {provide: AuthenticationService, useValue: {login, register}},
+        {provide: ProfileService, useValue: {updatePreferences}},
         {provide: BrowserSessionService, useValue: {
           ensureCsrf,
           invalidateCsrf,
           acceptAuthenticatedUser,
+          handleAuthenticatedError,
         }},
       ],
     }).compileComponents();
   });
 
-  it('registers with account credentials only and enters the full application', async () => {
+  it('registers with account credentials only and starts guided setup', async () => {
     register.mockImplementation(() => {
       events.push('register');
       return of({
@@ -75,15 +98,74 @@ describe('LandingAuthComponent credential-only registration', () => {
       password: 'safe-password-value',
     });
     expect(register.mock.calls[0][0]).not.toHaveProperty('profile');
-    expect(acceptAuthenticatedUser).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'new-account',
-      profile: {skills: [], qualifications: [], roles: []},
-    }));
+    expect(acceptAuthenticatedUser).not.toHaveBeenCalled();
+    expect(component.setupStep()).toBe(1);
+    expect(onboarded).toBeUndefined();
+
+    component.skipSetup();
+    expect(acceptAuthenticatedUser).not.toHaveBeenCalled();
     expect(onboarded).toEqual({
       profile: {skills: [], qualifications: [], roles: []},
       name: 'New User',
       email: 'new@example.test',
     });
+  });
+
+  it('saves completed setup before entering the application', async () => {
+    register.mockReturnValue(of({
+      statusCode: 201,
+      success: true,
+      user: {
+        id: 'new-account',
+        name: 'New User',
+        email: 'new@example.test',
+        profile: {revision: 1, skills: [], qualifications: [], roles: []},
+      },
+    }));
+    const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
+    let onboarded: {profile: UserProfile; name: string; email: string} | undefined;
+    component.onboarded.subscribe(value => onboarded = value);
+    component.formName.set('New User');
+    component.formEmail.set('new@example.test');
+    component.formPassword.set('safe-password-value');
+    await component.completeRegistration();
+
+    component.setupTargetRoles.set('Support analyst');
+    component.continueSetup();
+    component.setupPostcode.set('LS1 1AA');
+    component.continueSetup();
+    component.toggleWorkplace('REMOTE');
+    component.continueSetup();
+    component.setupSkills.set('Customer service');
+    await component.finishSetup();
+
+    expect(updatePreferences).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skills: ['Customer service'],
+        aspirations: {targetRoles: ['Support analyst']},
+        workPreferences: expect.objectContaining({
+          location: {postcode: 'LS1 1AA'},
+          workplaceArrangements: ['REMOTE'],
+        }),
+      }),
+      '"1"',
+      'body',
+      false,
+      {transferCache: false},
+    );
+    expect(onboarded?.profile).toEqual(expect.objectContaining({revision: 2}));
+  });
+
+  it('does not advance past search location without an explicit postcode', () => {
+    const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
+    component.setupStep.set(2);
+
+    component.continueSetup();
+
+    expect(component.setupStep()).toBe(2);
+    expect(component.errorMessage()).toBe(
+      'Add a postcode before continuing, or set this up later.',
+    );
   });
 
   it('bootstraps CSRF before login and preserves password whitespace', async () => {

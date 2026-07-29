@@ -37,7 +37,7 @@ import {
 } from '../../services/location.service';
 import {TagInputComponent} from '../../shared/tag-input/tag-input';
 
-type ProfileSection = 'jobs' | 'location' | 'patterns' | 'availability';
+type ProfileSection = 'jobs' | 'skills' | 'location' | 'patterns' | 'availability';
 
 @Component({
   selector: 'app-claimant-profile',
@@ -65,7 +65,6 @@ export class ClaimantProfileComponent {
   readonly workPrefs = input('');
 
   readonly profileSaved = output<{profile: UserProfile; apiResult?: GatewayResponse; apiError?: unknown}>();
-  readonly logoutRequested = output<void>();
   readonly findJobsRequested = output<void>();
 
   readonly editingSection = signal<ProfileSection | null>(null);
@@ -91,10 +90,16 @@ export class ClaimantProfileComponent {
   readonly locationLookup = signal<LocationLookupState>(idleLocationLookup);
   private readonly locationQueries = new Subject<string>();
 
-  readonly searchReady = computed(() =>
-    this.localTargetRoles().length > 0 || this.localSkills().length > 0);
+  readonly searchReady = computed(() => {
+    const arrangements = this.localWorkplaceArrangements();
+    const needsLocation = arrangements.some(value => value === 'ONSITE' || value === 'HYBRID');
+    return this.localTargetRoles().length > 0
+      && arrangements.length > 0
+      && (!needsLocation || Boolean(this.localPostcode().trim()));
+  });
   readonly profileProgress = computed(() => [
     this.localTargetRoles().length > 0,
+    this.localSkills().length > 0,
     Boolean(this.localPostcode()),
     this.localWorkingPatterns().length > 0
       || this.localEmploymentTypes().length > 0
@@ -229,10 +234,6 @@ export class ClaimantProfileComponent {
 
   isSelected(values: string[], value: string): boolean {
     return values.includes(value);
-  }
-
-  triggerLogout(): void {
-    this.logoutRequested.emit();
   }
 
   triggerFinderSearch(): void {

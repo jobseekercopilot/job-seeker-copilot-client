@@ -141,7 +141,7 @@
             <p class="evidence-kicker">Before documents are generated</p>
             <h3 id="evidence-selector-title">Choose evidence for {{ selectionJob.title }}</h3>
             <p>
-              Nothing is included automatically. Choose and order confirmed evidence separately
+              Nothing is included automatically. Choose and order user-confirmed entries separately
               for the CV and cover letter. The service will freeze the current confirmed revisions.
             </p>
           </div>
@@ -156,14 +156,14 @@
         }
 
         @if (evidenceLoading()) {
-          <p class="selector-loading" role="status">Loading confirmed evidence…</p>
+          <p class="selector-loading" role="status">Loading your confirmed experience and achievements…</p>
         } @else if (!eligibleEvidence().length) {
           <div class="selector-empty">
             <mat-icon>fact_check</mat-icon>
             <div>
               <strong>No evidence is ready for selection</strong>
               <p>
-                Add or review evidence in your Evidence Library, then confirm it before generating documents.
+                Add or review an entry in Experience &amp; achievements, then confirm it before generating documents.
               </p>
             </div>
           </div>
@@ -171,7 +171,7 @@
           @if (ineligibleEvidenceCount() > 0) {
             <p class="selector-note">
               {{ ineligibleEvidenceCount() }} draft, hidden, review-required, archived or superseded
-              item(s) are unavailable. Only active, visible, confirmed evidence can be selected.
+              item(s) are unavailable. Only active, visible entries confirmed by you can be selected.
             </p>
           }
 
@@ -212,7 +212,7 @@
 
                 @if (selectedEvidence(purpose).length) {
                   <div class="selection-order">
-                    <h5>Evidence order</h5>
+                    <h5>Experience and achievement order</h5>
                     <ol>
                       @for (entry of selectedEvidence(purpose); track entry.entryId; let index = $index) {
                         <li>

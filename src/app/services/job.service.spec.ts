@@ -39,6 +39,10 @@ describe('JobService', () => {
       false,
       {transferCache: false},
     );
+    const request = searchJobs.mock.calls[0][0];
+    expect(request.aspirations.locations).toEqual([]);
+    expect(request.workPreferences).not.toHaveProperty('employmentType');
+    expect(request.workPreferences).not.toHaveProperty('remotePreference');
     expect(response).toEqual({jobs: [], totalResults: 0});
   });
 

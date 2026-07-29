@@ -4,6 +4,7 @@ import {TestBed} from '@angular/core/testing';
 import {provideRouter, Router} from '@angular/router';
 import {of} from 'rxjs';
 import type {User} from './api';
+import {WorkPreferencesWorkplaceArrangementsEnum} from './api';
 import {App} from './app';
 import {routes} from './app.routes';
 import type {BrowserSessionStatus} from './services/browser-session.service';
@@ -21,7 +22,10 @@ describe('App', () => {
     profile: {
       skills: ['TypeScript'],
       aspirations: {targetRoles: ['Frontend developer']},
-      workPreferences: {location: {postcode: 'RG1 1AA'}},
+      workPreferences: {
+        location: {postcode: 'RG1 1AA'},
+        workplaceArrangements: new Set([WorkPreferencesWorkplaceArrangementsEnum.Hybrid]),
+      },
     },
   });
   const searchJobs = vi.fn(() => of({jobs: [], totalResults: 0}));
@@ -34,7 +38,10 @@ describe('App', () => {
       profile: {
         skills: ['TypeScript'],
         aspirations: {targetRoles: ['Frontend developer']},
-        workPreferences: {location: {postcode: 'RG1 1AA'}},
+        workPreferences: {
+          location: {postcode: 'RG1 1AA'},
+          workplaceArrangements: new Set([WorkPreferencesWorkplaceArrangementsEnum.Hybrid]),
+        },
       },
     });
     searchJobs.mockClear();
@@ -100,6 +107,14 @@ describe('App', () => {
     expect(text).toContain('Fixture-backed');
     expect(text).toContain('Not enabled for this beta');
     expect(searchJobs).toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-evidence"]')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('.workspace-tab')).toHaveLength(3);
+    expect(fixture.nativeElement.querySelector('.workspace-navigation')).toBeNull();
+
+    fixture.nativeElement.querySelector('#btn-profile-dropdown').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Experience & achievements');
+    expect((fixture.nativeElement.textContent.match(/Sign out/g) ?? [])).toHaveLength(1);
   });
 
   it('does not expose the dashboard while the secure session is being checked', () => {
@@ -110,6 +125,25 @@ describe('App', () => {
 
     expect(fixture.nativeElement.textContent).toContain('Checking your session');
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-search"]')).toBeNull();
+  });
+
+  it('does not mount job search until the required preferences exist', async () => {
+    user.set({
+      name: 'New User',
+      email: 'new@example.test',
+      profile: {skills: [], aspirations: {targetRoles: []}},
+    });
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(searchJobs).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('[data-testid="search-setup-prompt"]'))
+      .not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain(
+      'We have not sent a job-search request',
+    );
   });
 
   it('leaves a hosted account route after successful sign-in', () => {

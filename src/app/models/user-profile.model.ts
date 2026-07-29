@@ -187,6 +187,8 @@ export const profileToSearchText = (profile: UserProfile) => ({
     region: profile.workPreferences?.location?.region,
     adminDistrict: profile.workPreferences?.location?.adminDistrict,
     latitude: profile.workPreferences?.location?.latitude,
-    longitude: profile.workPreferences?.location?.longitude
+    longitude: profile.workPreferences?.location?.longitude,
+    employmentTypes: Array.from(profile.workPreferences?.employmentTypes ?? []),
+    workplaceArrangements: Array.from(profile.workPreferences?.workplaceArrangements ?? []),
   })
 });

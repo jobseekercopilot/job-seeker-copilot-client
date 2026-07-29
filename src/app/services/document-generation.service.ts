@@ -85,7 +85,7 @@ export class DocumentGenerationService {
       || !evidence.coverLetter.entryIds.length
       || !evidence.coverLetter.sectionOrder.length
     ) {
-      throw new Error('Choose confirmed evidence for both the CV and cover letter.');
+      throw new Error('Choose entries confirmed by you for both the CV and cover letter.');
     }
 
     const idempotencyKey = `browser-${crypto.randomUUID()}`;

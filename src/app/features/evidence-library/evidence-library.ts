@@ -81,12 +81,12 @@ export class EvidenceLibraryComponent implements OnInit {
   readonly categories = [
     ['EMPLOYMENT', 'Employment'],
     ['EDUCATION', 'Education'],
-    ['QUALIFICATION_TRAINING', 'Qualification or training'],
-    ['PROJECT', 'Project'],
+    ['QUALIFICATION_TRAINING', 'Qualifications / training'],
+    ['PROJECT', 'Projects'],
     ['VOLUNTEERING', 'Volunteering'],
     ['FREELANCE', 'Freelance'],
-    ['ACHIEVEMENT', 'Achievement'],
-    ['CAREER_BREAK', 'Career break'],
+    ['ACHIEVEMENT', 'Achievements'],
+    ['CAREER_BREAK', 'Career breaks'],
     ['OTHER', 'Other'],
   ] as const;
 
@@ -120,7 +120,7 @@ export class EvidenceLibraryComponent implements OnInit {
       ));
     } catch (error) {
       this.browserSession.handleAuthenticatedError(error);
-      this.error.set('Your Evidence Library could not be loaded. Try again.');
+      this.error.set('Your experience and achievements could not be loaded. Try again.');
     } finally {
       this.loading.set(false);
     }
@@ -422,16 +422,16 @@ export class EvidenceLibraryComponent implements OnInit {
       : undefined;
     this.error.set(status === 409
       ? 'This evidence changed in another session. Reload it before trying again.'
-      : 'The Evidence Library change could not be saved.');
+      : 'This change could not be saved.');
   }
 
   private actionMessage(action: EvidenceAction): string {
     return {
-      confirm: 'Evidence confirmed. It is now eligible for future selection.',
-      archive: 'Evidence archived and retained for history.',
-      restore: 'Evidence restored.',
-      hide: 'Evidence hidden.',
-      show: 'Evidence visible.',
+      confirm: 'Entry confirmed by you and available for future documents.',
+      archive: 'Entry archived and retained for history.',
+      restore: 'Entry restored.',
+      hide: 'Entry hidden.',
+      show: 'Entry visible.',
     }[action];
   }
 }

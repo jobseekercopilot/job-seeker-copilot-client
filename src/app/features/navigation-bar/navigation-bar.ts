@@ -19,6 +19,8 @@ export class NavigationBar {
 
   logout = output<void>();
   refreshTokens = output<void>();
+  openProfile = output<void>();
+  openExperience = output<void>();
 
   dropdownOpen = signal<boolean>(false);
   tokenDropdownOpen = signal<boolean>(false);
@@ -49,6 +51,16 @@ export class NavigationBar {
   triggerLogout() {
     this.logout.emit();
     this.dropdownOpen.set(false);
+  }
+
+  triggerProfile(): void {
+    this.openProfile.emit();
+    this.closeDropdown();
+  }
+
+  triggerExperience(): void {
+    this.openExperience.emit();
+    this.closeDropdown();
   }
 
   formatTokens(value: number | null): string {

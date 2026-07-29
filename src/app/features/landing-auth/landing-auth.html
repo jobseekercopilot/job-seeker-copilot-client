@@ -7,11 +7,101 @@
         Jobseeker Copilot
       </h1>
       <p class="text-xs sm:text-sm text-slate-600 mt-1.5 font-medium">
-        Create your account now. Add job preferences and evidence when you are ready.
+        Create your account, then shape a job search that works for you.
       </p>
     </div>
 
     <div id="auth-panel-card" class="bg-white rounded-3xl border border-slate-200 shadow-md p-6 sm:p-8 space-y-6">
+      @if (setupStep()) {
+        <div class="setup-header">
+          <div>
+            <p class="setup-eyebrow">Personalise your search</p>
+            <h2>Let’s find the right opportunities</h2>
+          </div>
+          <span aria-label="Setup progress">{{ setupProgress() }}</span>
+        </div>
+        <div class="setup-progress" aria-hidden="true">
+          @for (step of [1, 2, 3, 4]; track step) {
+            <span [class.complete]="step <= (setupStep() ?? 1)"></span>
+          }
+        </div>
+
+        @if (errorMessage()) {
+          <div id="auth-error-alert" role="alert" aria-live="assertive" tabindex="-1"
+               class="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-2xl text-xs font-semibold">
+            {{ errorMessage() }}
+          </div>
+        }
+
+        @if (setupStep() === 1) {
+          <section aria-labelledby="setup-target-title" class="setup-step">
+            <mat-icon>work_outline</mat-icon>
+            <h3 id="setup-target-title">What jobs are you looking for?</h3>
+            <p>Add one or more job titles. Separate several roles with commas.</p>
+            <label for="setup-target-roles">Target roles</label>
+            <input id="setup-target-roles" type="text" autocomplete="off"
+                   placeholder="For example: support analyst, project coordinator"
+                   [value]="setupTargetRoles()"
+                   (input)="setupTargetRoles.set($any($event.target).value)" />
+          </section>
+        } @else if (setupStep() === 2) {
+          <section aria-labelledby="setup-location-title" class="setup-step">
+            <mat-icon>location_on</mat-icon>
+            <h3 id="setup-location-title">Where do you want to work?</h3>
+            <p>Add a postcode to choose the area your search starts from, including for remote roles.</p>
+            <label for="setup-postcode">Search postcode</label>
+            <input id="setup-postcode" type="text" autocomplete="postal-code"
+                   placeholder="For example: LS1 1AA"
+                   [value]="setupPostcode()"
+                   (input)="setupPostcode.set($any($event.target).value)" />
+          </section>
+        } @else if (setupStep() === 3) {
+          <section aria-labelledby="setup-workplace-title" class="setup-step">
+            <mat-icon>home_work</mat-icon>
+            <h3 id="setup-workplace-title">How would you like to work?</h3>
+            <p>Choose every arrangement you would consider.</p>
+            <fieldset>
+              <legend>Workplace arrangements</legend>
+              <div class="setup-choices">
+                @for (option of workplaceOptions; track option[0]) {
+                  <label>
+                    <input type="checkbox"
+                           [checked]="isWorkplaceSelected(option[0])"
+                           (change)="toggleWorkplace(option[0])" />
+                    <span>{{ option[1] }}</span>
+                  </label>
+                }
+              </div>
+            </fieldset>
+          </section>
+        } @else {
+          <section aria-labelledby="setup-skills-title" class="setup-step">
+            <mat-icon>auto_awesome</mat-icon>
+            <h3 id="setup-skills-title">Which skills should stand out?</h3>
+            <p>This is optional. Add skills now or return to your profile later.</p>
+            <label for="setup-skills">Skills <span>(optional)</span></label>
+            <textarea id="setup-skills" rows="3"
+                      placeholder="For example: customer service, Excel, stakeholder management"
+                      [value]="setupSkills()"
+                      (input)="setupSkills.set($any($event.target).value)"></textarea>
+          </section>
+        }
+
+        <div class="setup-actions">
+          @if (setupStep() !== 1) {
+            <button type="button" class="setup-back"
+                    (click)="previousSetupStep()"
+                    [disabled]="isLoading()">Back</button>
+          }
+          <button id="btn-next-step" type="button" class="setup-next"
+                  (click)="continueSetup()" [disabled]="isLoading()">
+            {{ setupStep() === 4 ? (isLoading() ? 'Saving…' : 'Finish setup') : 'Continue' }}
+          </button>
+        </div>
+        <button type="button" class="setup-later" (click)="skipSetup()" [disabled]="isLoading()">
+          Set this up later
+        </button>
+      } @else {
       <div class="flex p-1 bg-slate-100 border border-slate-200 rounded-2xl" role="tablist" aria-label="Account access">
         <button id="tab-btn-create" type="button" role="tab"
                 [attr.aria-selected]="mode() === 'create'"
@@ -126,6 +216,7 @@
             </a>
           </form>
         </div>
+      }
       }
     </div>
   </div>

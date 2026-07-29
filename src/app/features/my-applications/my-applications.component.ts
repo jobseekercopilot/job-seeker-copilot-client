@@ -225,7 +225,7 @@ export class MyApplicationsComponent implements OnInit {
   groundingLabel(reference: DocumentVersionReference): string {
     switch (reference.groundingState) {
       case 'AI_GENERATED_EVIDENCE_VALIDATED':
-        return 'Evidence validated';
+        return 'Sources validated';
       case 'USER_EDITED_REVALIDATED':
         return 'Edit revalidated';
       case 'USER_EDITED_REVIEW_REQUIRED':

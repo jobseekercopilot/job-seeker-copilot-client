@@ -16,6 +16,7 @@ import { EvidenceLibraryComponent } from './features/evidence-library/evidence-l
 import { PaymentService } from './services/payment.service';
 import type { GatewayResponse, UserProfile } from './api';
 import { normaliseProfile, profileToSearchText } from './models/user-profile.model';
+import {searchReadiness} from './models/search-readiness';
 import { FALLBACK_PENCE_PER_TOKEN, pencePerTokenFromPlans } from './utils/ai-credit';
 import {removeLegacySessionData} from './services/browser-storage';
 import {BrowserSessionService} from './services/browser-session.service';
@@ -25,7 +26,8 @@ import {
   RuntimeConfigurationService,
 } from './services/runtime-configuration.service';
 
-type WorkspaceTab = 'search' | 'applications' | 'evidence' | 'documents';
+type WorkspaceTab = 'search' | 'applications' | 'documents';
+type PersonalWorkspace = 'experience' | null;
 
 @Component({
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -95,9 +97,12 @@ export class App implements OnInit {
       : 'Not enabled for this beta',
   );
   activeWorkspaceTab = signal<WorkspaceTab>('search');
+  activePersonalWorkspace = signal<PersonalWorkspace>(null);
+  readonly jobSearchReadiness = computed(() => searchReadiness(this.structuredProfile()));
   selectedApplicationId = signal<string | null>(null);
 
   @ViewChild('jobResults') jobResults!: JobResultsComponent;
+  @ViewChild('claimantProfile') claimantProfile?: ClaimantProfileComponent;
   @ViewChild('myApplications') myApplications?: MyApplicationsComponent;
   @ViewChild('documentsWorkspace') documentsWorkspace?: DocumentsWorkspaceComponent;
   @ViewChild('reportingPanel') reportingPanel!: ReportingPanelComponent;
@@ -337,11 +342,47 @@ export class App implements OnInit {
   }
 
   triggerJobSearch() {
-    this.activeWorkspaceTab.set('search');
+    this.selectWorkspace('search');
+    if (!this.jobSearchReadiness().ready) {
+      this.showToast('Complete the required job preferences before searching.', 'info');
+      return;
+    }
     if (this.jobResults) {
       this.jobResults.refresh();
     } else {
       this.showToast('Preparing job search...', 'info');
+    }
+  }
+
+  selectWorkspace(tab: WorkspaceTab): void {
+    this.activePersonalWorkspace.set(null);
+    this.activeWorkspaceTab.set(tab);
+  }
+
+  openMyProfile(): void {
+    this.activePersonalWorkspace.set(null);
+    setTimeout(() => {
+      const missing = this.jobSearchReadiness().missing;
+      this.claimantProfile?.startEditing(
+        missing.includes('targetRole')
+          ? 'jobs'
+          : missing.includes('location')
+            ? 'location'
+            : missing.includes('workplace')
+              ? 'patterns'
+              : 'jobs',
+      );
+      if (isPlatformBrowser(this.platformId)) {
+        document.querySelector('#left-sidebar')?.scrollIntoView({behavior: 'smooth', block: 'start'});
+      }
+    });
+  }
+
+  openExperienceAndAchievements(): void {
+    this.activePersonalWorkspace.set('experience');
+    if (isPlatformBrowser(this.platformId)) {
+      setTimeout(() => document.querySelector('#center-workspace')
+        ?.scrollIntoView({behavior: 'smooth', block: 'start'}));
     }
   }
 

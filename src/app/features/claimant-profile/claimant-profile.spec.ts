@@ -86,13 +86,15 @@ describe('ClaimantProfileComponent progressive profile', () => {
 
     expect(fixture.componentInstance.profileProgress()).toBe(0);
     expect(fixture.componentInstance.searchReady()).toBe(false);
-    expect(fixture.nativeElement.textContent).toContain('Add a target role or skill');
-    expect(fixture.nativeElement.textContent).toContain('Documents need confirmed evidence');
+    expect(fixture.nativeElement.textContent).not.toContain('Add a target role or skill');
+    expect(fixture.nativeElement.textContent).not.toContain('Documents need confirmed evidence');
+    expect(fixture.nativeElement.textContent).not.toContain('Sign out');
 
     fixture.componentInstance.localTargetRoles.set(['Support analyst']);
+    fixture.componentInstance.localWorkplaceArrangements.set(['REMOTE']);
     fixture.detectChanges();
     expect(fixture.componentInstance.searchReady()).toBe(true);
-    expect(fixture.nativeElement.textContent).toContain('Search can begin');
+    expect(fixture.nativeElement.textContent).toContain('Find jobs');
   });
 
   it('stores a selected location and clears stale derived metadata before lookup', () => {

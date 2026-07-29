@@ -40,21 +40,21 @@ export class JobService {
       .filter(s => s.length > 0);
 
     // Parse workPrefs JSON string into work preferences
-    let employmentType: string[] = ['FULL_TIME'];
-    let remotePreference: 'REMOTE' | 'HYBRID' | 'ONSITE' = 'HYBRID';
+    let employmentType: string[] = [];
+    let remotePreference: string | undefined;
     try {
       const prefs = JSON.parse(workPrefs);
-      const hours = (prefs.hours || '').toLowerCase();
-      if (hours.includes('full')) {
-        employmentType = ['FULL_TIME'];
-      } else if (hours.includes('part')) {
-        employmentType = ['PART_TIME'];
-      }
-      if (prefs.remotePreference) {
-        remotePreference = prefs.remotePreference;
-      }
+      employmentType = Array.isArray(prefs.employmentTypes)
+        ? prefs.employmentTypes.filter((value: unknown): value is string =>
+            typeof value === 'string' && value.trim().length > 0)
+        : [];
+      const workplaceArrangements = Array.isArray(prefs.workplaceArrangements)
+        ? prefs.workplaceArrangements
+        : [];
+      remotePreference = workplaceArrangements.find((value: unknown): value is string =>
+        typeof value === 'string' && ['REMOTE', 'HYBRID', 'ONSITE'].includes(value));
     } catch {
-      // Use defaults if parsing fails
+      // Omit preferences that the user has not supplied.
     }
 
     // Default location from work prefs postcode or use a broad search
@@ -90,10 +90,6 @@ export class JobService {
     } catch {
       // Fallback
     }
-    if (locations.length === 0) {
-      locations.push('United Kingdom');
-    }
-
     const body: JobSearchRequest = {
       aspirations: {
         desiredRoles,
@@ -104,8 +100,8 @@ export class JobService {
         locations
       },
       workPreferences: {
-        employmentType,
-        remotePreference,
+        ...(employmentType.length ? {employmentType} : {}),
+        ...(remotePreference ? {remotePreference} : {}),
         companySize: [],
         culture: [],
         homeLatitude,

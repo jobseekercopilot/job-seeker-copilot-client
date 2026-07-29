@@ -472,7 +472,7 @@ export class JobResultsComponent implements OnInit {
       error: () => {
         this.evidenceLoading.set(false);
         this.evidenceSelectionError.set(
-          'Your confirmed evidence could not be loaded. Please try again.',
+          'Your confirmed experience and achievements could not be loaded. Please try again.',
         );
       },
     });
@@ -555,7 +555,7 @@ export class JobResultsComponent implements OnInit {
     const job = this.evidenceSelectionJob();
     if (!job || !this.canGenerateFromSelection()) {
       this.evidenceSelectionError.set(
-        'Choose at least one confirmed evidence item for both documents.',
+        'Choose at least one entry confirmed by you for both documents.',
       );
       return;
     }
@@ -609,7 +609,7 @@ export class JobResultsComponent implements OnInit {
           ? Number((error as {status?: unknown}).status)
           : undefined;
         const message = status === 400 || status === 409
-          ? 'One of the selected evidence items changed or is no longer eligible. Review the Evidence Library and choose again.'
+          ? 'One of the selected entries changed or is no longer eligible. Review Experience & achievements and choose again.'
           : 'Generation failed. Please try again.';
         this.generationErrors.update(errors => ({ ...errors, [jobId]: message }));
         this.notify.emit({ message, type: 'error' });
