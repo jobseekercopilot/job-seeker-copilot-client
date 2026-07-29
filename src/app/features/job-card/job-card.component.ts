@@ -3,10 +3,8 @@ import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { Job } from '../../models/job-search.model';
 import { UpdateApplicationStatusRequest } from '../../api/job-finder';
-import {
-  DownloadFileResponse,
-  GenerationDownloadsResponse,
-} from '../../api/document-generation-gateway';
+import { DownloadFileResponse } from '../../api/document-generation-gateway';
+import { GenerationDownloadsResponse } from '../../services/document-generation.service';
 import {approvedExternalUrl} from '../../../shared/provider-content-policy';
 
 type UploadDocumentKind = 'CV' | 'COVER_LETTER';

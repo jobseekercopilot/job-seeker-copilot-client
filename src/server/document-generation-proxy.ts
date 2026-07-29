@@ -16,6 +16,17 @@ const SAFE_DOWNLOAD_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ]);
 const DOCUMENT_TYPES = new Set(['CV', 'COVER_LETTER']);
+const EVIDENCE_SECTIONS = new Set([
+  'EMPLOYMENT',
+  'EDUCATION',
+  'QUALIFICATION_TRAINING',
+  'PROJECT',
+  'VOLUNTEERING',
+  'FREELANCE',
+  'ACHIEVEMENT',
+  'CAREER_BREAK',
+  'OTHER',
+]);
 const MAX_MULTIPART_BYTES = (25 * 1024 * 1024) + (64 * 1024);
 const MULTIPART_CONTENT_TYPE =
   /^multipart\/form-data;\s*boundary=(?:"[^"\r\n;]{1,200}"|[^\s\r\n;]{1,200})$/i;
@@ -36,6 +47,67 @@ interface ProxyPayload {
 
 function validUuid(value: string): boolean {
   return UUID.test(value);
+}
+
+interface DocumentEvidenceSelectionBody {
+  purpose: 'CV' | 'COVER_LETTER';
+  entryIds: string[];
+  sectionOrder: string[];
+}
+
+interface StartGenerationBody {
+  documents: DocumentEvidenceSelectionBody[];
+}
+
+function exactObjectKeys(
+  value: unknown,
+  keys: string[],
+): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length
+    && actual.every((key, index) => key === expected[index]);
+}
+
+function startGenerationBody(value: unknown): StartGenerationBody | undefined {
+  if (!exactObjectKeys(value, ['documents']) || !Array.isArray(value['documents'])) {
+    return undefined;
+  }
+  if (value['documents'].length !== 2) return undefined;
+
+  const expectedPurposes = ['CV', 'COVER_LETTER'] as const;
+  const documents: DocumentEvidenceSelectionBody[] = [];
+  for (const [index, candidate] of value['documents'].entries()) {
+    if (!exactObjectKeys(candidate, ['purpose', 'entryIds', 'sectionOrder'])) {
+      return undefined;
+    }
+    const purpose = candidate['purpose'];
+    const entryIds = candidate['entryIds'];
+    const sectionOrder = candidate['sectionOrder'];
+    if (
+      purpose !== expectedPurposes[index]
+      || !Array.isArray(entryIds)
+      || entryIds.length < 1
+      || entryIds.length > 50
+      || !entryIds.every(entryId => typeof entryId === 'string' && validUuid(entryId))
+      || new Set(entryIds.map(entryId => entryId.toLowerCase())).size !== entryIds.length
+      || !Array.isArray(sectionOrder)
+      || sectionOrder.length < 1
+      || sectionOrder.length > EVIDENCE_SECTIONS.size
+      || !sectionOrder.every(section =>
+        typeof section === 'string' && EVIDENCE_SECTIONS.has(section))
+      || new Set(sectionOrder).size !== sectionOrder.length
+    ) {
+      return undefined;
+    }
+    documents.push({
+      purpose: purpose as 'CV' | 'COVER_LETTER',
+      entryIds: entryIds.map(entryId => entryId.toLowerCase()),
+      sectionOrder: [...sectionOrder] as string[],
+    });
+  }
+  return {documents};
 }
 
 function sendFailure(
@@ -233,6 +305,17 @@ export function registerDocumentGenerationRoutes(
       sendFailure(response, 400, 'INVALID_IDEMPOTENCY_KEY', 'A valid idempotency key is required');
       return;
     }
+    const body = startGenerationBody(request.body);
+    if (!body) {
+      sendFailure(
+        response,
+        400,
+        'INVALID_EVIDENCE_SELECTION',
+        'Choose valid confirmed evidence separately for the CV and cover letter',
+      );
+      return;
+    }
+    request.body = body;
     await proxyJson(
       request,
       response,

@@ -11,11 +11,11 @@ import {
   DocumentFileMetadata,
   DocumentGenerationService,
   DocumentKind,
+  GenerationDownloadsResponse,
 } from '../../services/document-generation.service';
 import {
   DocumentDownloadsResponse,
   DownloadFileResponse,
-  GenerationDownloadsResponse,
 } from '../../api/document-generation-gateway';
 
 type StatusUpdateTarget =

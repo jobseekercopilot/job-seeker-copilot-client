@@ -13,6 +13,20 @@ const OPERATION_ID = '69e794d1-f0aa-4ed5-9779-a5f3e98610cb';
 const APPLICATION_ID = 'c17442dd-c24f-48a2-86e5-b0ec7f38f8cb';
 const MULTIPART_TYPE = 'multipart/form-data; boundary=test-boundary';
 const MULTIPART_BODY = '--test-boundary\r\nContent-Disposition: form-data; name="file"; filename="Updated CV.docx"\r\nContent-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document\r\n\r\nsafe-docx-test\r\n--test-boundary--\r\n';
+const EVIDENCE_SELECTION = {
+  documents: [
+    {
+      purpose: 'CV',
+      entryIds: ['50000000-0000-4000-8000-000000000001'],
+      sectionOrder: ['PROJECT'],
+    },
+    {
+      purpose: 'COVER_LETTER',
+      entryIds: ['50000000-0000-4000-8000-000000000002'],
+      sectionOrder: ['VOLUNTEERING'],
+    },
+  ],
+};
 
 type FetchLike = (
   input: string | URL | Request,
@@ -81,6 +95,7 @@ describe('Document generation session boundary', () => {
         'Content-Type': 'application/json',
         'X-User-Id': 'another-user',
       },
+      body: JSON.stringify(EVIDENCE_SELECTION),
     });
 
     expect(response.status).toBe(202);
@@ -98,6 +113,7 @@ describe('Document generation session boundary', () => {
     });
     expect(JSON.stringify(init)).not.toContain('another-user');
     expect(JSON.stringify(init)).not.toContain('browser-controlled');
+    expect(JSON.parse(String(init?.body))).toEqual(EVIDENCE_SELECTION);
   });
 
   it('requires CSRF before a durable generation request reaches the gateway', async () => {
@@ -111,6 +127,7 @@ describe('Document generation session boundary', () => {
         'Idempotency-Key': 'browser-safe-key',
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify(EVIDENCE_SELECTION),
     });
 
     expect(response.status).toBe(403);
@@ -175,6 +192,36 @@ describe('Document generation session boundary', () => {
     );
 
     expect(response.status).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('rejects empty or browser-asserted evidence metadata before the gateway is called', async () => {
+    const upstream = vi.fn<FetchLike>();
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/saved-jobs/${DOCUMENT_ID}/operations`,
+      {
+        method: 'POST',
+        headers: {
+          ...sessionHeaders(),
+          'Idempotency-Key': 'browser-safe-key',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          documents: [
+            {...EVIDENCE_SELECTION.documents[0], confirmationState: 'USER_CONFIRMED'},
+            {...EVIDENCE_SELECTION.documents[1], factIds: [FILE_ID]},
+          ],
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'INVALID_EVIDENCE_SELECTION',
+      message: 'Choose valid confirmed evidence separately for the CV and cover letter',
+    });
     expect(upstream).not.toHaveBeenCalled();
   });
 

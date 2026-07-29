@@ -286,13 +286,29 @@ test('pins the durable document-generation contract without browser job input', 
     '/api/v1/document-generation/operations/{operationId}/approve'
   ].post;
 
-  assert.equal(gateway.version, '1.4.0');
+  assert.equal(gateway.version, '2.0.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/document-generation-gateway');
-  assert.equal(gateway.sourceCommit, '1d03324c2b80fbe44ebb5faccbc158334969464a');
+  assert.equal(gateway.sourceCommit, '1a965519dde9dbea54e43a41e7fb449fd785c932');
   assert.equal(gateway.output, 'src/app/api/document-generation-gateway');
-  assert.equal(contract.info.version, '1.4.0');
+  assert.equal(contract.info.version, '2.0.0');
   assert.equal(start.operationId, 'startOperation');
-  assert.equal(start.requestBody, undefined);
+  assert.equal(start.requestBody.required, true);
+  assert.equal(
+    start.requestBody.content['application/json'].schema.$ref,
+    '#/components/schemas/StartGenerationRequest',
+  );
+  assert.deepEqual(
+    contract.components.schemas.StartGenerationRequest.required,
+    ['documents'],
+  );
+  assert.deepEqual(
+    new Set(contract.components.schemas.DocumentEvidenceSelection.required),
+    new Set(['purpose', 'entryIds', 'sectionOrder']),
+  );
+  assert.deepEqual(
+    contract.components.schemas.DocumentEvidenceSelection.properties.purpose.enum,
+    ['CV', 'COVER_LETTER'],
+  );
   assert.deepEqual(
     start.parameters.map(({name, in: location, required}) => ({name, location, required})),
     [

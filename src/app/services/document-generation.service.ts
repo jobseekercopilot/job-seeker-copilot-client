@@ -4,7 +4,8 @@ import { firstValueFrom, from, map, Observable, switchMap } from 'rxjs';
 import { Job } from '../models/job-search.model';
 import {
   DocumentDownloadsResponse,
-  DocumentGenerationResponse,
+  DocumentEvidenceSelectionPurposeEnum,
+  DocumentEvidenceSelectionSectionOrderEnum,
   DocumentGenerationControllerService,
   DownloadFileResponse,
   GenerationOperationResponse,
@@ -17,6 +18,17 @@ import { BrowserSessionService } from './browser-session.service';
 
 export type DocumentKind = 'CV' | 'COVER_LETTER';
 export type UploadFormat = 'DOCX' | 'PDF';
+
+export interface GenerationEvidenceSelection {
+  cv: {
+    entryIds: string[];
+    sectionOrder: DocumentEvidenceSelectionSectionOrderEnum[];
+  };
+  coverLetter: {
+    entryIds: string[];
+    sectionOrder: DocumentEvidenceSelectionSectionOrderEnum[];
+  };
+}
 
 export interface DocumentUploadResponse {
   generatedDocumentId: string;
@@ -44,6 +56,18 @@ export interface DocumentFileMetadata {
   fileSize?: number;
 }
 
+export interface GenerationDownloadsResponse {
+  cv?: DocumentDownloadsResponse;
+  coverLetter?: DocumentDownloadsResponse;
+}
+
+export interface DocumentGenerationResponse {
+  applicationId: string;
+  cvDocumentId: string;
+  coverLetterDocumentId: string;
+  downloads: GenerationDownloadsResponse;
+}
+
 @Injectable({ providedIn: 'root' })
 export class DocumentGenerationService {
   private readonly api = inject(DocumentGenerationControllerService);
@@ -51,9 +75,17 @@ export class DocumentGenerationService {
   private readonly browserSession = inject(BrowserSessionService);
   private readonly http = inject(HttpClient);
 
-  generate(job: Job): Observable<DocumentGenerationResponse> {
+  generate(job: Job, evidence: GenerationEvidenceSelection): Observable<DocumentGenerationResponse> {
     if (!job.id || !job.title || !job.company || !job.description) {
       throw new Error('The selected job does not contain the data required for generation.');
+    }
+    if (
+      !evidence.cv.entryIds.length
+      || !evidence.cv.sectionOrder.length
+      || !evidence.coverLetter.entryIds.length
+      || !evidence.coverLetter.sectionOrder.length
+    ) {
+      throw new Error('Choose confirmed evidence for both the CV and cover letter.');
     }
 
     const idempotencyKey = `browser-${crypto.randomUUID()}`;
@@ -71,6 +103,20 @@ export class DocumentGenerationService {
         return this.api.startOperation(
           savedJob.savedJobId,
           idempotencyKey,
+          {
+            documents: [
+              {
+                purpose: DocumentEvidenceSelectionPurposeEnum.Cv,
+                entryIds: [...evidence.cv.entryIds],
+                sectionOrder: [...evidence.cv.sectionOrder],
+              },
+              {
+                purpose: DocumentEvidenceSelectionPurposeEnum.CoverLetter,
+                entryIds: [...evidence.coverLetter.entryIds],
+                sectionOrder: [...evidence.coverLetter.sectionOrder],
+              },
+            ],
+          },
           'body',
           false,
           {transferCache: false},
