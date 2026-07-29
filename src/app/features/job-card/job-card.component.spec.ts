@@ -46,12 +46,12 @@ describe('JobCardComponent', () => {
     expandCard(fixture);
     const button: HTMLButtonElement = fixture.debugElement
       .queryAll(By.css('button'))
-      .find(candidate => candidate.nativeElement.textContent.includes('CV & Cover Letter — Coming next'))!
+      .find(candidate => candidate.nativeElement.textContent.includes('CV & Cover Letter unavailable'))!
       .nativeElement;
 
     expect(button.disabled).toBe(true);
     expect(fixture.nativeElement.textContent).toContain(
-      'Application tracking is available. CV and cover-letter generation is coming next.',
+      'Application tracking is available. CV and cover-letter generation is not enabled in this environment.',
     );
   });
 

@@ -91,11 +91,13 @@ export class App implements OnInit {
       default: return 'Required validation';
     }
   });
-  documentGenerationModeLabel = computed(() =>
-    this.documentGenerationMode() === 'FIXTURE_LLM'
-      ? 'Fixture-generated'
-      : 'Not enabled for this beta',
-  );
+  documentGenerationModeLabel = computed(() => {
+    switch (this.documentGenerationMode()) {
+      case 'FIXTURE_LLM': return 'Fixture-generated';
+      case 'REAL_LLM': return 'Real OpenAI generation';
+      default: return 'Not enabled for this beta';
+    }
+  });
   activeWorkspaceTab = signal<WorkspaceTab>('search');
   activePersonalWorkspace = signal<PersonalWorkspace>(null);
   readonly jobSearchReadiness = computed(() => searchReadiness(this.structuredProfile()));

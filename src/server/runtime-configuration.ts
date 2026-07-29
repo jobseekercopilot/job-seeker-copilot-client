@@ -17,6 +17,7 @@ export function jobSearchProviderMode(
 
 export type DocumentGenerationMode =
   | 'FIXTURE_LLM'
+  | 'REAL_LLM'
   | 'REQUIRED_VALIDATION';
 
 export function documentGenerationMode(
@@ -25,7 +26,11 @@ export function documentGenerationMode(
   const configured = environment['DOCUMENT_GENERATION_MODE']
     ?.trim()
     .toUpperCase();
-  return configured === 'FIXTURE' || configured === 'FIXTURE_LLM'
-    ? 'FIXTURE_LLM'
-    : 'REQUIRED_VALIDATION';
+  if (configured === 'FIXTURE' || configured === 'FIXTURE_LLM') {
+    return 'FIXTURE_LLM';
+  }
+  if (configured === 'LIVE' || configured === 'REAL' || configured === 'REAL_LLM') {
+    return 'REAL_LLM';
+  }
+  return 'REQUIRED_VALIDATION';
 }

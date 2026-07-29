@@ -127,6 +127,20 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-search"]')).toBeNull();
   });
 
+  it('enables the documents workspace for validated real OpenAI generation', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.componentInstance.documentGenerationMode.set('REAL_LLM');
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Real OpenAI generation');
+    expect(fixture.nativeElement.querySelector('app-documents-workspace')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Document wording is fixture-generated',
+    );
+  });
+
   it('does not mount job search until the required preferences exist', async () => {
     user.set({
       name: 'New User',
