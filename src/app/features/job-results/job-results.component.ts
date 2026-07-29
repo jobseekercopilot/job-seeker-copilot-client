@@ -68,6 +68,13 @@ interface RoleSearchState {
   sort: SortOption;
 }
 
+interface EvidenceSelectionDraft {
+  cvEvidenceIds: string[];
+  coverLetterEvidenceIds: string[];
+  cvSectionOrder: EvidenceSection[];
+  coverLetterSectionOrder: EvidenceSection[];
+}
+
 @Component({
   selector: 'app-job-results',
   imports: [CommonModule, MatIconModule, JobCardComponent],
@@ -85,6 +92,7 @@ export class JobResultsComponent implements OnInit {
   private applicationTracker = inject(ApplicationTrackerService);
   private evidenceLibrary = inject(EvidenceLibraryService);
   private searchRequestSequence = 0;
+  private evidenceRequestSequence = 0;
   private searchContextFingerprint = '';
 
   // Inputs from the parent App component (profile signals)
@@ -197,10 +205,12 @@ export class JobResultsComponent implements OnInit {
   evidenceEntries = signal<EvidenceEntry[]>([]);
   evidenceLoading = signal(false);
   evidenceSelectionError = signal<string | null>(null);
+  evidenceLoadError = signal<string | null>(null);
   cvEvidenceIds = signal<string[]>([]);
   coverLetterEvidenceIds = signal<string[]>([]);
   cvSectionOrder = signal<EvidenceSection[]>([]);
   coverLetterSectionOrder = signal<EvidenceSection[]>([]);
+  evidenceSelectionDrafts = signal<Record<string, EvidenceSelectionDraft | undefined>>({});
   readonly jobsPerPage = 10;
   readonly Math = Math;
   readonly futureFilterSections = ['Status', 'Date Posted', 'Salary', 'Location', 'Remote / On-site'];
@@ -226,10 +236,9 @@ export class JobResultsComponent implements OnInit {
     this.evidenceEntries().length - this.eligibleEvidence().length);
   readonly canGenerateFromSelection = computed(() =>
     !this.evidenceLoading()
-    && this.cvEvidenceIds().length > 0
-    && this.coverLetterEvidenceIds().length > 0
-    && this.cvSectionOrder().length > 0
-    && this.coverLetterSectionOrder().length > 0);
+    && !this.evidenceLoadError()
+    && this.validEvidenceSelection(this.cvEvidenceIds(), this.cvSectionOrder())
+    && this.validEvidenceSelection(this.coverLetterEvidenceIds(), this.coverLetterSectionOrder()));
 
   activeJobs = computed(() => {
     const state = this.activeRoleState();
@@ -788,22 +797,37 @@ export class JobResultsComponent implements OnInit {
   openEvidenceSelection(job: Job): void {
     const jobKey = this.jobStateKey(job);
     if (!jobKey || this.generatingJobIds().has(jobKey)) return;
+    this.persistEvidenceDraft();
     this.evidenceSelectionJob.set(job);
+    this.restoreEvidenceDraft(jobKey);
     this.evidenceEntries.set([]);
-    this.cvEvidenceIds.set([]);
-    this.coverLetterEvidenceIds.set([]);
-    this.cvSectionOrder.set([]);
-    this.coverLetterSectionOrder.set([]);
     this.evidenceSelectionError.set(null);
+    this.evidenceLoadError.set(null);
+    this.loadEvidenceForSelection(jobKey);
+  }
+
+  retryEvidenceSelection(): void {
+    const job = this.evidenceSelectionJob();
+    const jobKey = job ? this.jobStateKey(job) : '';
+    if (!jobKey || this.evidenceLoading()) return;
+    this.loadEvidenceForSelection(jobKey);
+  }
+
+  private loadEvidenceForSelection(jobKey: string): void {
+    const requestSequence = ++this.evidenceRequestSequence;
     this.evidenceLoading.set(true);
+    this.evidenceLoadError.set(null);
     this.evidenceLibrary.listEvidence(false, 'body', false, {transferCache: false}).subscribe({
       next: entries => {
+        if (!this.isCurrentEvidenceRequest(jobKey, requestSequence)) return;
         this.evidenceEntries.set(entries);
+        this.reconcileEvidenceSelection();
         this.evidenceLoading.set(false);
       },
       error: () => {
+        if (!this.isCurrentEvidenceRequest(jobKey, requestSequence)) return;
         this.evidenceLoading.set(false);
-        this.evidenceSelectionError.set(
+        this.evidenceLoadError.set(
           'Your confirmed experience and achievements could not be loaded. Please try again.',
         );
       },
@@ -811,10 +835,13 @@ export class JobResultsComponent implements OnInit {
   }
 
   closeEvidenceSelection(): void {
-    if (!this.evidenceLoading()) {
-      this.evidenceSelectionJob.set(null);
-      this.evidenceSelectionError.set(null);
-    }
+    this.persistEvidenceDraft();
+    this.evidenceRequestSequence++;
+    this.evidenceSelectionJob.set(null);
+    this.evidenceEntries.set([]);
+    this.evidenceLoading.set(false);
+    this.evidenceSelectionError.set(null);
+    this.evidenceLoadError.set(null);
   }
 
   latestEvidence(entry: EvidenceEntry): EvidenceRevision | undefined {
@@ -854,6 +881,7 @@ export class JobResultsComponent implements OnInit {
       if (!removing && !order.includes(category)) return [...order, category];
       return order.filter(section => selectedCategories.has(section));
     });
+    this.persistEvidenceDraft();
   }
 
   moveEvidence(
@@ -863,6 +891,7 @@ export class JobResultsComponent implements OnInit {
   ): void {
     const selected = purpose === 'CV' ? this.cvEvidenceIds : this.coverLetterEvidenceIds;
     selected.update(ids => this.move(ids, entryId, direction));
+    this.persistEvidenceDraft();
   }
 
   moveEvidenceSection(
@@ -872,6 +901,7 @@ export class JobResultsComponent implements OnInit {
   ): void {
     const sections = purpose === 'CV' ? this.cvSectionOrder : this.coverLetterSectionOrder;
     sections.update(order => this.move(order, section, direction));
+    this.persistEvidenceDraft();
   }
 
   sectionOrder(purpose: EvidencePurpose): EvidenceSection[] {
@@ -881,6 +911,44 @@ export class JobResultsComponent implements OnInit {
   categoryLabel(category: string): string {
     return category.toLowerCase().replaceAll('_', ' ')
       .replace(/\b\w/g, character => character.toUpperCase());
+  }
+
+  isEvidenceSelectionJob(job: Job): boolean {
+    const active = this.evidenceSelectionJob();
+    return Boolean(active && this.jobStateKey(active) === this.jobStateKey(job));
+  }
+
+  evidenceSelectorDomId(job: Job, suffix: string): string {
+    const jobKey = this.jobStateKey(job)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-|-$/g, '') || 'job';
+    return `generation-${jobKey}-${suffix}`;
+  }
+
+  jobTitle(job: Job): string {
+    return job.title ?? job.jobTitle ?? 'Untitled role';
+  }
+
+  employerName(job: Job): string {
+    return job.companyName ?? job.company ?? 'Employer unavailable';
+  }
+
+  generationProviderLabel(job: Job): string {
+    const labels = new Set<string>();
+    for (const source of job.sources ?? []) {
+      const label = source.publisher?.trim()
+        || source.integrationProvider?.trim()
+        || source.provider?.trim();
+      if (label) labels.add(label);
+    }
+    const fallback = job.primarySource?.trim() || job.provider?.trim();
+    if (labels.size === 0 && fallback) labels.add(fallback);
+    return Array.from(labels).join(', ') || 'Provider unavailable';
+  }
+
+  canonicalJobReference(job: Job): string {
+    return job.canonicalJobId ?? job.id ?? 'Reference unavailable';
   }
 
   confirmEvidenceGeneration(): void {
@@ -901,7 +969,13 @@ export class JobResultsComponent implements OnInit {
         sectionOrder: [...this.coverLetterSectionOrder()],
       },
     };
+    this.persistEvidenceDraft();
+    this.evidenceRequestSequence++;
     this.evidenceSelectionJob.set(null);
+    this.evidenceEntries.set([]);
+    this.evidenceLoading.set(false);
+    this.evidenceSelectionError.set(null);
+    this.evidenceLoadError.set(null);
     this.generateDocuments(job, evidence);
   }
 
@@ -915,7 +989,15 @@ export class JobResultsComponent implements OnInit {
     this.generationMessages.update(messages => ({ ...messages, [jobId]: 'Generating CV & Cover Letter...' }));
     this.generationErrors.update(errors => ({ ...errors, [jobId]: undefined }));
 
-    this.documentGenerationService.generate(job, evidence).subscribe({
+    let generation: ReturnType<DocumentGenerationService['generate']>;
+    try {
+      generation = this.documentGenerationService.generate(job, evidence);
+    } catch (error) {
+      this.handleGenerationFailure(jobId, error);
+      return;
+    }
+
+    generation.subscribe({
       next: (response) => {
         this.generationDownloads.update(downloads => ({ ...downloads, [jobId]: response.downloads }));
         this.generatedDocumentIds.update(documentIds => ({
@@ -931,38 +1013,152 @@ export class JobResultsComponent implements OnInit {
           cvDocumentId: response.cvDocumentId ?? job.cvDocumentId,
           coverLetterDocumentId: response.coverLetterDocumentId ?? job.coverLetterDocumentId,
         });
+        this.clearEvidenceDraft(jobId);
         this.finishGeneration(jobId, 'CV and cover letter generated successfully.');
         this.notify.emit({ message: 'CV and cover letter generated successfully.', type: 'success' });
         this.applicationChanged.emit();
       },
-      error: (error) => {
-        this.finishGeneration(jobId, undefined);
-        const status = typeof error === 'object' && error !== null && 'status' in error
-          ? Number((error as {status?: unknown}).status)
-          : undefined;
-        const responseError = typeof error === 'object' && error !== null && 'error' in error
-          ? (error as {error?: unknown}).error
-          : undefined;
-        const detail = error instanceof Error
-          ? error.message
-          : typeof responseError === 'string'
-            ? responseError
-            : typeof responseError === 'object'
-                && responseError !== null
-                && 'message' in responseError
-                && typeof (responseError as {message?: unknown}).message === 'string'
-              ? (responseError as {message: string}).message
-              : '';
-        const message = detail.includes('Insufficient AI Credit')
-          ? 'Insufficient AI Credit for this job. No OpenAI request was made.'
-          : status === 400 || status === 409
-            ? 'One of the selected entries changed or is no longer eligible. Review Experience & achievements and choose again.'
-            : 'Generation failed. Please try again.';
-        this.generationErrors.update(errors => ({ ...errors, [jobId]: message }));
-        this.notify.emit({ message, type: 'error' });
-        console.error('[JobResults] Document generation failed');
-      }
+      error: error => this.handleGenerationFailure(jobId, error),
     });
+  }
+
+  private handleGenerationFailure(jobId: string, error: unknown): void {
+    this.finishGeneration(jobId, undefined);
+    const status = typeof error === 'object' && error !== null && 'status' in error
+      ? Number((error as {status?: unknown}).status)
+      : undefined;
+    const responseError = typeof error === 'object' && error !== null && 'error' in error
+      ? (error as {error?: unknown}).error
+      : undefined;
+    const detail = error instanceof Error
+      ? error.message
+      : typeof responseError === 'string'
+        ? responseError
+        : typeof responseError === 'object'
+            && responseError !== null
+            && 'message' in responseError
+            && typeof (responseError as {message?: unknown}).message === 'string'
+          ? (responseError as {message: string}).message
+          : '';
+    const message = detail.includes('Insufficient AI Credit')
+      ? 'Insufficient AI Credit for this job. No OpenAI request was made.'
+      : status === 400 || status === 409
+        ? 'One of the selected entries changed or is no longer eligible. Review Experience & achievements and choose again.'
+        : 'Generation failed. Please try again.';
+    this.generationErrors.update(errors => ({ ...errors, [jobId]: message }));
+    this.notify.emit({ message, type: 'error' });
+    console.error('[JobResults] Document generation failed');
+  }
+
+  private isCurrentEvidenceRequest(jobKey: string, requestSequence: number): boolean {
+    const active = this.evidenceSelectionJob();
+    return this.evidenceRequestSequence === requestSequence
+      && Boolean(active)
+      && this.jobStateKey(active as Job) === jobKey;
+  }
+
+  private restoreEvidenceDraft(jobKey: string): void {
+    const draft = this.evidenceSelectionDrafts()[jobKey];
+    this.cvEvidenceIds.set([...(draft?.cvEvidenceIds ?? [])]);
+    this.coverLetterEvidenceIds.set([...(draft?.coverLetterEvidenceIds ?? [])]);
+    this.cvSectionOrder.set([...(draft?.cvSectionOrder ?? [])]);
+    this.coverLetterSectionOrder.set([...(draft?.coverLetterSectionOrder ?? [])]);
+  }
+
+  private persistEvidenceDraft(): void {
+    const job = this.evidenceSelectionJob();
+    const jobKey = job ? this.jobStateKey(job) : '';
+    if (!jobKey) return;
+    if (
+      this.cvEvidenceIds().length === 0
+      && this.coverLetterEvidenceIds().length === 0
+      && this.cvSectionOrder().length === 0
+      && this.coverLetterSectionOrder().length === 0
+    ) {
+      this.clearEvidenceDraft(jobKey);
+      return;
+    }
+    const draft: EvidenceSelectionDraft = {
+      cvEvidenceIds: [...this.cvEvidenceIds()],
+      coverLetterEvidenceIds: [...this.coverLetterEvidenceIds()],
+      cvSectionOrder: [...this.cvSectionOrder()],
+      coverLetterSectionOrder: [...this.coverLetterSectionOrder()],
+    };
+    this.evidenceSelectionDrafts.update(drafts => ({
+      ...drafts,
+      [jobKey]: draft,
+    }));
+  }
+
+  private clearEvidenceDraft(jobKey: string): void {
+    this.evidenceSelectionDrafts.update(drafts => Object.fromEntries(
+      Object.entries(drafts).filter(([key]) => key !== jobKey),
+    ));
+  }
+
+  private reconcileEvidenceSelection(): void {
+    const eligibleById = new Map(this.eligibleEvidence().map(entry => [entry.entryId, entry]));
+    const cv = this.reconciledPurpose(
+      this.cvEvidenceIds(),
+      this.cvSectionOrder(),
+      eligibleById,
+    );
+    const coverLetter = this.reconciledPurpose(
+      this.coverLetterEvidenceIds(),
+      this.coverLetterSectionOrder(),
+      eligibleById,
+    );
+    this.cvEvidenceIds.set(cv.entryIds);
+    this.cvSectionOrder.set(cv.sectionOrder);
+    this.coverLetterEvidenceIds.set(coverLetter.entryIds);
+    this.coverLetterSectionOrder.set(coverLetter.sectionOrder);
+    this.persistEvidenceDraft();
+  }
+
+  private reconciledPurpose(
+    entryIds: string[],
+    sectionOrder: EvidenceSection[],
+    eligibleById: Map<string, EvidenceEntry>,
+  ): {entryIds: string[]; sectionOrder: EvidenceSection[]} {
+    const seenEntryIds = new Set<string>();
+    const eligibleIds = entryIds.filter(entryId => {
+      if (seenEntryIds.has(entryId) || !eligibleById.has(entryId)) return false;
+      seenEntryIds.add(entryId);
+      return true;
+    });
+    const selectedCategories = eligibleIds.map(entryId =>
+      eligibleById.get(entryId)?.category as unknown as EvidenceSection);
+    const categorySet = new Set(selectedCategories);
+    const seenSections = new Set<EvidenceSection>();
+    const reconciledOrder = sectionOrder.filter(section => {
+      if (seenSections.has(section) || !categorySet.has(section)) return false;
+      seenSections.add(section);
+      return true;
+    });
+    for (const category of selectedCategories) {
+      if (category && !seenSections.has(category)) {
+        reconciledOrder.push(category);
+        seenSections.add(category);
+      }
+    }
+    return {entryIds: eligibleIds, sectionOrder: reconciledOrder};
+  }
+
+  private validEvidenceSelection(
+    entryIds: string[],
+    sectionOrder: EvidenceSection[],
+  ): boolean {
+    if (entryIds.length === 0 || sectionOrder.length === 0) return false;
+    const eligibleById = new Map(this.eligibleEvidence().map(entry => [entry.entryId, entry]));
+    if (new Set(entryIds).size !== entryIds.length
+      || entryIds.some(entryId => !eligibleById.has(entryId))) {
+      return false;
+    }
+    const selectedCategories = new Set(entryIds.map(entryId =>
+      eligibleById.get(entryId)?.category as unknown as EvidenceSection));
+    return selectedCategories.size === sectionOrder.length
+      && new Set(sectionOrder).size === sectionOrder.length
+      && sectionOrder.every(section => selectedCategories.has(section));
   }
 
   private move<T>(values: T[], value: T, direction: -1 | 1): T[] {

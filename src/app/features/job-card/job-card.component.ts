@@ -41,6 +41,7 @@ export interface DocumentUploadRequest {
 })
 export class JobCardComponent {
   private static readonly MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+  private static readonly DESCRIPTION_PREVIEW_LENGTH = 450;
 
   job = input.required<Job>();
   generating = input(false);
@@ -54,6 +55,7 @@ export class JobCardComponent {
   creatingApplication = input(false);
   applicationTrackingAvailable = input(false);
   applicationToolsAvailable = input(false);
+  generationPanelActive = input(false);
   trackApplication = output<Job>();
   generateDocuments = output<Job>();
   updateApplicationStatus = output<StatusUpdateTarget>();
@@ -63,6 +65,7 @@ export class JobCardComponent {
   withdrawGeneratedApplication = output<boolean>();
 
   expanded = signal(false);
+  descriptionExpanded = signal(false);
   statusMenuOpen = signal(false);
   uploadModalKind = signal<UploadDocumentKind | null>(null);
   selectedFile = signal<File | null>(null);
@@ -82,7 +85,20 @@ export class JobCardComponent {
     return `${this.demoFocusGroup()}-status-menu`;
   }
 
+  detailsId(): string {
+    return `${this.demoFocusId()}-details`;
+  }
+
+  descriptionId(): string {
+    return `${this.demoFocusId()}-description`;
+  }
+
+  detailsExpanded(): boolean {
+    return this.expanded() || this.generationPanelActive();
+  }
+
   toggle(): void {
+    if (this.generationPanelActive()) return;
     this.statusMenuOpen.set(false);
     this.expanded.update(v => !v);
   }
@@ -95,7 +111,41 @@ export class JobCardComponent {
 
   requestGeneration(): void {
     if (!this.applicationToolsAvailable()) return;
+    this.expanded.set(true);
     this.generateDocuments.emit(this.job());
+  }
+
+  fullDescription(): string {
+    const description = this.job().description?.replace(/\r\n?/g, '\n').trim();
+    return description || 'No description available.';
+  }
+
+  hasExpandableDescription(): boolean {
+    return this.fullDescription().length > JobCardComponent.DESCRIPTION_PREVIEW_LENGTH;
+  }
+
+  visibleDescription(): string {
+    const description = this.fullDescription();
+    if (this.descriptionExpanded() || !this.hasExpandableDescription()) {
+      return description;
+    }
+
+    const limit = JobCardComponent.DESCRIPTION_PREVIEW_LENGTH;
+    const candidate = description.slice(0, limit + 1);
+    const whitespaceBoundary = Math.max(
+      candidate.lastIndexOf(' '),
+      candidate.lastIndexOf('\n'),
+      candidate.lastIndexOf('\t'),
+    );
+    const cutoff = whitespaceBoundary >= Math.floor(limit * 0.75)
+      ? whitespaceBoundary
+      : limit;
+    return `${description.slice(0, cutoff).trimEnd()}…`;
+  }
+
+  toggleDescription(): void {
+    if (!this.hasExpandableDescription()) return;
+    this.descriptionExpanded.update(expanded => !expanded);
   }
 
   requestTrackApplication(): void {

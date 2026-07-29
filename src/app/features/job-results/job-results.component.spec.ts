@@ -28,6 +28,7 @@ describe('JobResultsComponent', () => {
   let currentResponse = response;
   let searchErrorStatus: number | undefined;
   let queuedSearchResponses: Observable<JobSearchResponse>[] = [];
+  let queuedEvidenceResponses: Observable<any[]>[] = [];
   let evidenceEntries: any[] = [];
 
   const jobService = {
@@ -67,7 +68,7 @@ describe('JobResultsComponent', () => {
     listApplications: vi.fn(() => of([])),
   };
   const evidenceLibrary = {
-    listEvidence: () => of(evidenceEntries),
+    listEvidence: vi.fn(() => queuedEvidenceResponses.shift() ?? of(evidenceEntries)),
   };
 
   beforeEach(async () => {
@@ -76,9 +77,17 @@ describe('JobResultsComponent', () => {
     currentResponse = response;
     searchErrorStatus = undefined;
     queuedSearchResponses = [];
+    queuedEvidenceResponses = [];
     evidenceEntries = [];
     applicationTracker.listApplications.mockClear();
     documentGenerationService.generate.mockClear();
+    documentGenerationService.generate.mockImplementation(() => of({
+      applicationId: 'application-1',
+      cvDocumentId: 'cv-1',
+      coverLetterDocumentId: 'cover-1',
+      downloads: {},
+    }));
+    evidenceLibrary.listEvidence.mockClear();
     await TestBed.configureTestingModule({
       imports: [JobResultsComponent],
       providers: [
@@ -753,6 +762,328 @@ describe('JobResultsComponent', () => {
         },
       },
     );
+  });
+
+  it('renders one evidence selector inside only the selected job card with exact job context', () => {
+    evidenceEntries = [
+      evidenceEntry(
+        '50000000-0000-4000-8000-000000000001',
+        'PROJECT',
+        'Portfolio project',
+        1,
+      ),
+    ];
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    fixture.detectChanges();
+
+    const selectors = fixture.debugElement.queryAll(
+      By.css('[data-testid="generation-evidence-selector"]'),
+    );
+    expect(selectors).toHaveLength(1);
+    const selectedCard = selectors[0].nativeElement.closest('app-job-card') as HTMLElement;
+    expect(selectedCard).not.toBeNull();
+    expect(selectedCard.textContent).toContain(selectedJob.title);
+    expect(selectedCard.textContent).toContain('Example Ltd');
+    expect(selectedCard.textContent).toContain('Reed.co.uk');
+    expect(selectedCard.textContent).toContain(selectedJob.id);
+    expect(selectedCard.textContent).toContain('CV and cover letter');
+    expect(selectedCard.querySelector('[data-testid="generate-documents-button"]')).toBeNull();
+    expect(selectors[0].nativeElement.closest('[data-testid="job-results-workspace"]')).not.toBeNull();
+  });
+
+  it('keeps only the latest job panel and ignores a stale evidence response', () => {
+    const firstResponse = new Subject<any[]>();
+    const secondResponse = new Subject<any[]>();
+    queuedEvidenceResponses = [firstResponse, secondResponse];
+    const fixture = createFixture();
+    const [firstJob, secondJob] = fixture.componentInstance.paginatedJobs();
+
+    fixture.componentInstance.openEvidenceSelection(firstJob);
+    fixture.componentInstance.openEvidenceSelection(secondJob);
+    secondResponse.next([
+      evidenceEntry(
+        '50000000-0000-4000-8000-000000000002',
+        'PROJECT',
+        'Current evidence',
+        2,
+      ),
+    ]);
+    secondResponse.complete();
+    fixture.detectChanges();
+
+    firstResponse.next([
+      evidenceEntry(
+        '50000000-0000-4000-8000-000000000001',
+        'EMPLOYMENT',
+        'Stale evidence',
+        1,
+      ),
+    ]);
+    firstResponse.complete();
+    fixture.detectChanges();
+
+    const selectors = fixture.debugElement.queryAll(
+      By.css('[data-testid="generation-evidence-selector"]'),
+    );
+    expect(selectors).toHaveLength(1);
+    expect(selectors[0].nativeElement.closest('app-job-card').textContent)
+      .toContain(secondJob.title);
+    expect(fixture.componentInstance.evidenceEntries().map(entry =>
+      fixture.componentInstance.latestEvidence(entry)?.heading))
+      .toEqual(['Current evidence']);
+    expect(fixture.nativeElement.textContent).not.toContain('Stale evidence');
+  });
+
+  it('cancels while evidence is loading, restores card actions and ignores the late response', () => {
+    const pendingEvidence = new Subject<any[]>();
+    queuedEvidenceResponses = [pendingEvidence];
+    const fixture = createFixture();
+    const firstCard = jobCards(fixture)[0];
+    firstCard.componentInstance.expanded.set(true);
+    fixture.detectChanges();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    fixture.detectChanges();
+    const cancelButton = fixture.debugElement
+      .queryAll(By.css('button'))
+      .find(button => button.nativeElement.textContent.includes('Cancel'))!;
+    expect(cancelButton.nativeElement.disabled).toBe(false);
+
+    cancelButton.nativeElement.click();
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.css('[data-testid="generation-evidence-selector"]'))).toBeNull();
+    expect(firstCard.query(By.css('[data-testid="generate-documents-button"]'))).not.toBeNull();
+
+    pendingEvidence.next([
+      evidenceEntry(
+        '50000000-0000-4000-8000-000000000001',
+        'PROJECT',
+        'Late evidence',
+        1,
+      ),
+    ]);
+    pendingEvidence.complete();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.evidenceEntries()).toEqual([]);
+    expect(fixture.nativeElement.textContent).not.toContain('Late evidence');
+  });
+
+  it('offers a stable retry after evidence loading fails', () => {
+    evidenceEntries = [
+      evidenceEntry(
+        '50000000-0000-4000-8000-000000000001',
+        'PROJECT',
+        'Recovered evidence',
+        1,
+      ),
+    ];
+    queuedEvidenceResponses = [
+      throwError(() => new Error('temporary failure')),
+      of(evidenceEntries),
+    ];
+    const fixture = createFixture();
+
+    fixture.componentInstance.openEvidenceSelection(
+      fixture.componentInstance.paginatedJobs()[0],
+    );
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain(
+      'Your confirmed experience and achievements could not be loaded.',
+    );
+    clickButtonContaining(fixture, 'Retry loading evidence');
+
+    expect(fixture.componentInstance.eligibleEvidence()).toHaveLength(1);
+    expect(fixture.nativeElement.textContent).toContain('Recovered evidence');
+    expect(fixture.componentInstance.evidenceLoadError()).toBeNull();
+  });
+
+  it('retains a safe per-job draft after synchronous generation failure and clears it on success', () => {
+    evidenceEntries = [
+      evidenceEntry(
+        '50000000-0000-4000-8000-000000000001',
+        'PROJECT',
+        'Portfolio project',
+        1,
+      ),
+    ];
+    documentGenerationService.generate.mockImplementationOnce(() => {
+      throw new Error('synchronous client failure');
+    });
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    const [project] = fixture.componentInstance.eligibleEvidence();
+    fixture.componentInstance.toggleEvidence('CV', project);
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', project);
+
+    expect(() => fixture.componentInstance.confirmEvidenceGeneration()).not.toThrow();
+    expect(fixture.componentInstance.generatingJobIds().has(selectedJob.id!)).toBe(false);
+    expect(fixture.componentInstance.generationErrors()[selectedJob.id!])
+      .toBe('Generation failed. Please try again.');
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+
+    expect(fixture.componentInstance.cvEvidenceIds()).toEqual([project.entryId]);
+    expect(fixture.componentInstance.coverLetterEvidenceIds()).toEqual([project.entryId]);
+    expect(fixture.componentInstance.canGenerateFromSelection()).toBe(true);
+
+    fixture.componentInstance.confirmEvidenceGeneration();
+
+    expect(documentGenerationService.generate).toHaveBeenCalledTimes(2);
+    expect(fixture.componentInstance.evidenceSelectionDrafts()[selectedJob.id!]).toBeUndefined();
+  });
+
+  it('reconciles retained drafts against evidence that is still eligible', () => {
+    const project = evidenceEntry(
+      '50000000-0000-4000-8000-000000000001',
+      'PROJECT',
+      'Portfolio project',
+      2,
+    );
+    const volunteering = evidenceEntry(
+      '50000000-0000-4000-8000-000000000002',
+      'VOLUNTEERING',
+      'Community volunteer',
+      1,
+    );
+    evidenceEntries = [project, volunteering];
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    const [selectedProject, selectedVolunteering] = fixture.componentInstance.eligibleEvidence();
+    fixture.componentInstance.toggleEvidence('CV', selectedProject);
+    fixture.componentInstance.toggleEvidence('CV', selectedVolunteering);
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', selectedProject);
+    fixture.componentInstance.closeEvidenceSelection();
+
+    evidenceEntries = [
+      evidenceEntry(
+        project.entryId,
+        'PROJECT',
+        'Portfolio project now needs review',
+        3,
+        'DRAFT',
+      ),
+      volunteering,
+    ];
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+
+    expect(fixture.componentInstance.cvEvidenceIds()).toEqual([volunteering.entryId]);
+    expect(fixture.componentInstance.cvSectionOrder()).toEqual(['VOLUNTEERING']);
+    expect(fixture.componentInstance.coverLetterEvidenceIds()).toEqual([]);
+    expect(fixture.componentInstance.coverLetterSectionOrder()).toEqual([]);
+    expect(fixture.componentInstance.canGenerateFromSelection()).toBe(false);
+  });
+
+  it('keeps evidence drafts isolated by canonical job identity', () => {
+    evidenceEntries = [
+      evidenceEntry(
+        '50000000-0000-4000-8000-000000000001',
+        'PROJECT',
+        'Portfolio project',
+        1,
+      ),
+    ];
+    const fixture = createFixture();
+    const [firstJob, secondJob] = fixture.componentInstance.paginatedJobs();
+
+    fixture.componentInstance.openEvidenceSelection(firstJob);
+    const [project] = fixture.componentInstance.eligibleEvidence();
+    fixture.componentInstance.toggleEvidence('CV', project);
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', project);
+    fixture.componentInstance.openEvidenceSelection(secondJob);
+
+    expect(fixture.componentInstance.cvEvidenceIds()).toEqual([]);
+    expect(fixture.componentInstance.coverLetterEvidenceIds()).toEqual([]);
+
+    fixture.componentInstance.openEvidenceSelection(firstJob);
+
+    expect(fixture.componentInstance.cvEvidenceIds()).toEqual([project.entryId]);
+    expect(fixture.componentInstance.coverLetterEvidenceIds()).toEqual([project.entryId]);
+  });
+
+  it('submits only once when the generate confirmation is activated repeatedly', () => {
+    evidenceEntries = [
+      evidenceEntry(
+        '50000000-0000-4000-8000-000000000001',
+        'PROJECT',
+        'Portfolio project',
+        1,
+      ),
+    ];
+    const generation = new Subject<any>();
+    documentGenerationService.generate.mockReturnValueOnce(generation);
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+    jobCards(fixture)[0].componentInstance.expanded.set(true);
+    fixture.detectChanges();
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    const [project] = fixture.componentInstance.eligibleEvidence();
+    fixture.componentInstance.toggleEvidence('CV', project);
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', project);
+    fixture.detectChanges();
+    const generateButton: HTMLButtonElement = fixture.debugElement
+      .query(By.css('.selector-generate'))
+      .nativeElement;
+
+    generateButton.click();
+    generateButton.click();
+    fixture.detectChanges();
+
+    expect(documentGenerationService.generate).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.generatingJobIds().has(selectedJob.id!)).toBe(true);
+    const activeCard = jobCards(fixture)[0];
+    expect(activeCard.query(By.css('[data-testid="generate-documents-button"]')).nativeElement.disabled)
+      .toBe(true);
+
+    generation.next({
+      applicationId: 'application-1',
+      cvDocumentId: 'cv-1',
+      coverLetterDocumentId: 'cover-1',
+      downloads: {},
+    });
+    generation.complete();
+  });
+
+  it('keeps description expansion independent for each canonical job card', () => {
+    const firstTail = 'FIRST DESCRIPTION TAIL';
+    const secondTail = 'SECOND DESCRIPTION TAIL';
+    currentResponse = singleRoleResponse([
+      job('first long role', {
+        id: 'first-long-role',
+        canonicalJobId: 'canonical-first',
+        description: `${'First role requirement '.repeat(30)}${firstTail}`,
+      }),
+      job('second long role', {
+        id: 'second-long-role',
+        canonicalJobId: 'canonical-second',
+        description: `${'Second role requirement '.repeat(30)}${secondTail}`,
+      }),
+    ], 'cleaning');
+    const fixture = createFixture();
+    const cards = jobCards(fixture);
+    cards.forEach(card => card.componentInstance.expanded.set(true));
+    fixture.detectChanges();
+
+    cards[0].query(By.css('.description-toggle')).nativeElement.click();
+    fixture.detectChanges();
+
+    expect(cards[0].query(By.css('.job-description')).nativeElement.textContent)
+      .toContain(firstTail);
+    expect(cards[1].query(By.css('.job-description')).nativeElement.textContent)
+      .not.toContain(secondTail);
+    expect(cards[0].componentInstance.descriptionExpanded()).toBe(true);
+    expect(cards[1].componentInstance.descriptionExpanded()).toBe(false);
   });
 
   it('reports insufficient credit without implying that OpenAI failed', () => {

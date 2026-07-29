@@ -132,6 +132,72 @@ describe('JobCardComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Posted date unavailable');
   });
 
+  it('shows a bounded accessible description preview and restores it after expanding', () => {
+    const tail = 'FINAL REQUIREMENT THAT MUST ONLY APPEAR AFTER EXPANSION';
+    const description = `${'Build accessible services with a collaborative delivery team. '.repeat(12)}${tail}`;
+    const fixture = createFixture({ job: { ...job, description } });
+    expandCard(fixture);
+
+    const descriptionElement: HTMLElement = fixture.debugElement
+      .query(By.css('.job-description'))
+      .nativeElement;
+    const toggle: HTMLButtonElement = fixture.debugElement
+      .query(By.css('.description-toggle'))
+      .nativeElement;
+
+    expect(descriptionElement.textContent).toContain('Build accessible services');
+    expect(descriptionElement.textContent).not.toContain(tail);
+    expect(descriptionElement.textContent).toContain('…');
+    expect(toggle.textContent).toContain('Read more');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-controls')).toBe(descriptionElement.id);
+    expect(descriptionElement.id).toBe('job-card-job-1-description');
+
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(descriptionElement.textContent).toContain(tail);
+    expect(toggle.textContent).toContain('Show less');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(descriptionElement.textContent).not.toContain(tail);
+    expect(toggle.textContent).toContain('Read more');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('shows short descriptions without an unnecessary expansion control and preserves newlines', () => {
+    const fixture = createFixture({
+      job: { ...job, description: 'First line\r\nSecond line\nThird line' },
+    });
+    expandCard(fixture);
+
+    expect(fixture.componentInstance.fullDescription()).toBe('First line\nSecond line\nThird line');
+    expect(fixture.debugElement.query(By.css('.job-description')).nativeElement.textContent)
+      .toContain('First line\nSecond line\nThird line');
+    expect(fixture.debugElement.query(By.css('.description-toggle'))).toBeNull();
+  });
+
+  it('keeps an expanded description open while the in-card generation panel becomes active', () => {
+    const tail = 'PERSISTENT DESCRIPTION TAIL';
+    const description = `${'Relevant job detail '.repeat(30)}${tail}`;
+    const fixture = createFixture({ job: { ...job, description } });
+    expandCard(fixture);
+    fixture.debugElement.query(By.css('.description-toggle')).nativeElement.click();
+    fixture.detectChanges();
+
+    fixture.componentRef.setInput('generationPanelActive', true);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.detailsExpanded()).toBe(true);
+    expect(fixture.componentInstance.descriptionExpanded()).toBe(true);
+    expect(fixture.debugElement.query(By.css('.job-description')).nativeElement.textContent)
+      .toContain(tail);
+    expect(fixture.debugElement.query(By.css('[data-testid="generate-documents-button"]'))).toBeNull();
+  });
+
   it('renders provider HTML as text without creating executable elements', () => {
     const unsafeDescription = '<img src=x onerror="window.providerHtmlExecuted=true">';
     const fixture = createFixture({ job: { ...job, description: unsafeDescription } });
@@ -139,6 +205,23 @@ describe('JobCardComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain(unsafeDescription);
     expect(fixture.debugElement.query(By.css('.expanded-content img'))).toBeNull();
+  });
+
+  it('keeps provider HTML inert after expanding a long description', () => {
+    const unsafeTail = '<script>window.providerHtmlExecuted=true</script>';
+    const fixture = createFixture({
+      job: {
+        ...job,
+        description: `${'Safe provider text '.repeat(35)}${unsafeTail}`,
+      },
+    });
+    expandCard(fixture);
+
+    fixture.debugElement.query(By.css('.description-toggle')).nativeElement.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain(unsafeTail);
+    expect(fixture.debugElement.query(By.css('.expanded-content script'))).toBeNull();
   });
 
   it.each([
@@ -322,6 +405,7 @@ describe('JobCardComponent', () => {
     downloads?: GenerationDownloadsResponse;
     applicationToolsAvailable?: boolean;
     applicationTrackingAvailable?: boolean;
+    generationPanelActive?: boolean;
   } = {}) {
     const fixture = TestBed.createComponent(JobCardComponent);
     fixture.componentRef.setInput('job', options.job ?? job);
@@ -332,6 +416,7 @@ describe('JobCardComponent', () => {
     fixture.componentRef.setInput('coverLetterDocumentId', 'cl-456');
     fixture.componentRef.setInput('applicationToolsAvailable', options.applicationToolsAvailable ?? true);
     fixture.componentRef.setInput('applicationTrackingAvailable', options.applicationTrackingAvailable ?? true);
+    fixture.componentRef.setInput('generationPanelActive', options.generationPanelActive ?? false);
     fixture.detectChanges();
     return fixture;
   }

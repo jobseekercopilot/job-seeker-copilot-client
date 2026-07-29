@@ -148,148 +148,6 @@
       </div>
     }
 
-    @if (evidenceSelectionJob(); as selectionJob) {
-      <section class="evidence-selector" data-testid="generation-evidence-selector"
-               aria-labelledby="evidence-selector-title">
-        <header class="evidence-selector-header">
-          <div>
-            <p class="evidence-kicker">Before documents are generated</p>
-            <h3 id="evidence-selector-title">Choose evidence for {{ selectionJob.title }}</h3>
-            <p>
-              Nothing is included automatically. Choose and order user-confirmed entries separately
-              for the CV and cover letter. The service will freeze the current confirmed revisions.
-            </p>
-          </div>
-          <button type="button" class="selector-close" (click)="closeEvidenceSelection()"
-                  [disabled]="evidenceLoading()" aria-label="Close evidence selector">
-            <mat-icon>close</mat-icon>
-          </button>
-        </header>
-
-        @if (evidenceSelectionError()) {
-          <p class="selector-error" role="alert">{{ evidenceSelectionError() }}</p>
-        }
-
-        @if (evidenceLoading()) {
-          <p class="selector-loading" role="status">Loading your confirmed experience and achievements…</p>
-        } @else if (!eligibleEvidence().length) {
-          <div class="selector-empty">
-            <mat-icon>fact_check</mat-icon>
-            <div>
-              <strong>No evidence is ready for selection</strong>
-              <p>
-                Add or review an entry in Experience &amp; achievements, then confirm it before generating documents.
-              </p>
-            </div>
-          </div>
-        } @else {
-          @if (ineligibleEvidenceCount() > 0) {
-            <p class="selector-note">
-              {{ ineligibleEvidenceCount() }} draft, hidden, review-required, archived or superseded
-              item(s) are unavailable. Only active, visible entries confirmed by you can be selected.
-            </p>
-          }
-
-          <div class="purpose-grid">
-            @for (purpose of evidencePurposes; track purpose) {
-              <section class="purpose-panel" [attr.aria-labelledby]="'purpose-' + purpose">
-                <header>
-                  <span class="purpose-number">{{ purpose === 'CV' ? '1' : '2' }}</span>
-                  <div>
-                    <h4 [id]="'purpose-' + purpose">
-                      {{ purpose === 'CV' ? 'CV evidence' : 'Cover letter evidence' }}
-                    </h4>
-                    <p>Select only what is relevant to this document.</p>
-                  </div>
-                </header>
-
-                <div class="evidence-choice-list">
-                  @for (entry of eligibleEvidence(); track entry.entryId) {
-                    @let revision = latestEvidence(entry);
-                    <label class="evidence-choice"
-                           [class.evidence-choice-selected]="isEvidenceSelected(purpose, entry.entryId)">
-                      <input type="checkbox"
-                             [checked]="isEvidenceSelected(purpose, entry.entryId)"
-                             (change)="toggleEvidence(purpose, entry)" />
-                      <span>
-                        <strong>{{ revision?.heading }}</strong>
-                        <small>
-                          {{ categoryLabel(entry.category) }} · confirmed revision
-                          {{ revision?.revisionNumber }}
-                        </small>
-                        @if (entry.category === 'CAREER_BREAK') {
-                          <em>Contains optional career-break context. Include only if you want it used.</em>
-                        }
-                      </span>
-                    </label>
-                  }
-                </div>
-
-                @if (selectedEvidence(purpose).length) {
-                  <div class="selection-order">
-                    <h5>Experience and achievement order</h5>
-                    <ol>
-                      @for (entry of selectedEvidence(purpose); track entry.entryId; let index = $index) {
-                        <li>
-                          <span>{{ latestEvidence(entry)?.heading }}</span>
-                          <span class="order-actions">
-                            <button type="button" (click)="moveEvidence(purpose, entry.entryId, -1)"
-                                    [disabled]="index === 0"
-                                    [attr.aria-label]="'Move ' + latestEvidence(entry)?.heading + ' up'">
-                              <mat-icon>arrow_upward</mat-icon>
-                            </button>
-                            <button type="button" (click)="moveEvidence(purpose, entry.entryId, 1)"
-                                    [disabled]="index === selectedEvidence(purpose).length - 1"
-                                    [attr.aria-label]="'Move ' + latestEvidence(entry)?.heading + ' down'">
-                              <mat-icon>arrow_downward</mat-icon>
-                            </button>
-                          </span>
-                        </li>
-                      }
-                    </ol>
-
-                    <h5>Section order</h5>
-                    <ol>
-                      @for (section of sectionOrder(purpose); track section; let index = $index) {
-                        <li>
-                          <span>{{ categoryLabel(section) }}</span>
-                          <span class="order-actions">
-                            <button type="button" (click)="moveEvidenceSection(purpose, section, -1)"
-                                    [disabled]="index === 0"
-                                    [attr.aria-label]="'Move ' + categoryLabel(section) + ' section up'">
-                              <mat-icon>arrow_upward</mat-icon>
-                            </button>
-                            <button type="button" (click)="moveEvidenceSection(purpose, section, 1)"
-                                    [disabled]="index === sectionOrder(purpose).length - 1"
-                                    [attr.aria-label]="'Move ' + categoryLabel(section) + ' section down'">
-                              <mat-icon>arrow_downward</mat-icon>
-                            </button>
-                          </span>
-                        </li>
-                      }
-                    </ol>
-                  </div>
-                } @else {
-                  <p class="purpose-empty">No evidence selected for this document.</p>
-                }
-              </section>
-            }
-          </div>
-        }
-
-        <footer class="selector-actions">
-          <button type="button" class="dashboard-button dashboard-button-secondary"
-                  (click)="closeEvidenceSelection()" [disabled]="evidenceLoading()">
-            Cancel
-          </button>
-          <button type="button" class="selector-generate"
-                  (click)="confirmEvidenceGeneration()" [disabled]="!canGenerateFromSelection()">
-            Generate from selected evidence
-          </button>
-        </footer>
-      </section>
-    }
-
     <!-- Empty state (no error, not loading, zero jobs) -->
     @if (!loading() && !error() && activeRoleSearched() && filteredJobs().length === 0) {
       <div class="flex flex-col items-center justify-center py-12 text-center">
@@ -331,6 +189,7 @@
           [creatingApplication]="creatingApplicationIds().has(jobStateKey(job))"
           [applicationTrackingAvailable]="applicationTrackingAvailable()"
           [applicationToolsAvailable]="applicationToolsAvailable()"
+          [generationPanelActive]="isEvidenceSelectionJob(job)"
           (trackApplication)="trackApplication($event)"
           (generateDocuments)="openEvidenceSelection($event)"
           (updateApplicationStatus)="updateApplicationStatus(job, $event)"
@@ -338,6 +197,177 @@
           (downloadFile)="downloadFile($event)"
           (uploadReplacement)="uploadReplacement(job, $event)"
           (dismissGenerationError)="dismissGenerationError($event)">
+          <ng-container generation-evidence-panel>
+            @if (isEvidenceSelectionJob(job)) {
+              @let selectionJob = evidenceSelectionJob()!;
+              <section class="evidence-selector"
+                     data-testid="generation-evidence-selector"
+                     [attr.aria-labelledby]="evidenceSelectorDomId(selectionJob, 'title')">
+              <header class="evidence-selector-header">
+                <div>
+                  <p class="evidence-kicker">Prepare documents for this job</p>
+                  <h3 [id]="evidenceSelectorDomId(selectionJob, 'title')">
+                    Choose evidence for {{ jobTitle(selectionJob) }}
+                  </h3>
+                  <dl class="selection-job-context">
+                    <div>
+                      <dt>Employer</dt>
+                      <dd>{{ employerName(selectionJob) }}</dd>
+                    </div>
+                    <div>
+                      <dt>Provider</dt>
+                      <dd>{{ generationProviderLabel(selectionJob) }}</dd>
+                    </div>
+                    <div>
+                      <dt>Job reference</dt>
+                      <dd>{{ canonicalJobReference(selectionJob) }}</dd>
+                    </div>
+                    <div>
+                      <dt>Documents</dt>
+                      <dd>CV and cover letter</dd>
+                    </div>
+                  </dl>
+                  <p>
+                    Nothing is included automatically. Choose and order user-confirmed entries separately
+                    for the CV and cover letter. The service will freeze the current confirmed revisions.
+                  </p>
+                </div>
+                <button type="button" class="selector-close" (click)="closeEvidenceSelection()"
+                        aria-label="Close evidence selector">
+                  <mat-icon>close</mat-icon>
+                </button>
+              </header>
+
+              @if (evidenceSelectionError()) {
+                <p class="selector-error" role="alert">{{ evidenceSelectionError() }}</p>
+              }
+
+              @if (evidenceLoading()) {
+                <p class="selector-loading" role="status">Loading your confirmed experience and achievements…</p>
+              } @else if (evidenceLoadError(); as loadError) {
+                <div class="selector-error selector-load-error" role="alert">
+                  <p>{{ loadError }}</p>
+                  <button type="button" (click)="retryEvidenceSelection()">Retry loading evidence</button>
+                </div>
+              } @else if (!eligibleEvidence().length) {
+                <div class="selector-empty">
+                  <mat-icon>fact_check</mat-icon>
+                  <div>
+                    <strong>No evidence is ready for selection</strong>
+                    <p>
+                      Add or review an entry in Experience &amp; achievements, then confirm it before generating documents.
+                    </p>
+                  </div>
+                </div>
+              } @else {
+                @if (ineligibleEvidenceCount() > 0) {
+                  <p class="selector-note">
+                    {{ ineligibleEvidenceCount() }} draft, hidden, review-required, archived or superseded
+                    item(s) are unavailable. Only active, visible entries confirmed by you can be selected.
+                  </p>
+                }
+
+                <div class="purpose-grid">
+                  @for (purpose of evidencePurposes; track purpose) {
+                    <section class="purpose-panel"
+                             [attr.aria-labelledby]="evidenceSelectorDomId(selectionJob, 'purpose-' + purpose)">
+                      <header>
+                        <span class="purpose-number">{{ purpose === 'CV' ? '1' : '2' }}</span>
+                        <div>
+                          <h4 [id]="evidenceSelectorDomId(selectionJob, 'purpose-' + purpose)">
+                            {{ purpose === 'CV' ? 'CV evidence' : 'Cover letter evidence' }}
+                          </h4>
+                          <p>Select only what is relevant to this document.</p>
+                        </div>
+                      </header>
+
+                      <div class="evidence-choice-list">
+                        @for (entry of eligibleEvidence(); track entry.entryId) {
+                          @let revision = latestEvidence(entry);
+                          <label class="evidence-choice"
+                                 [class.evidence-choice-selected]="isEvidenceSelected(purpose, entry.entryId)">
+                            <input type="checkbox"
+                                   [checked]="isEvidenceSelected(purpose, entry.entryId)"
+                                   (change)="toggleEvidence(purpose, entry)" />
+                            <span>
+                              <strong>{{ revision?.heading }}</strong>
+                              <small>
+                                {{ categoryLabel(entry.category) }} · confirmed revision
+                                {{ revision?.revisionNumber }}
+                              </small>
+                              @if (entry.category === 'CAREER_BREAK') {
+                                <em>Contains optional career-break context. Include only if you want it used.</em>
+                              }
+                            </span>
+                          </label>
+                        }
+                      </div>
+
+                      @if (selectedEvidence(purpose).length) {
+                        <div class="selection-order">
+                          <h5>Experience and achievement order</h5>
+                          <ol>
+                            @for (entry of selectedEvidence(purpose); track entry.entryId; let index = $index) {
+                              <li>
+                                <span>{{ latestEvidence(entry)?.heading }}</span>
+                                <span class="order-actions">
+                                  <button type="button" (click)="moveEvidence(purpose, entry.entryId, -1)"
+                                          [disabled]="index === 0"
+                                          [attr.aria-label]="'Move ' + latestEvidence(entry)?.heading + ' up'">
+                                    <mat-icon>arrow_upward</mat-icon>
+                                  </button>
+                                  <button type="button" (click)="moveEvidence(purpose, entry.entryId, 1)"
+                                          [disabled]="index === selectedEvidence(purpose).length - 1"
+                                          [attr.aria-label]="'Move ' + latestEvidence(entry)?.heading + ' down'">
+                                    <mat-icon>arrow_downward</mat-icon>
+                                  </button>
+                                </span>
+                              </li>
+                            }
+                          </ol>
+
+                          <h5>Section order</h5>
+                          <ol>
+                            @for (section of sectionOrder(purpose); track section; let index = $index) {
+                              <li>
+                                <span>{{ categoryLabel(section) }}</span>
+                                <span class="order-actions">
+                                  <button type="button" (click)="moveEvidenceSection(purpose, section, -1)"
+                                          [disabled]="index === 0"
+                                          [attr.aria-label]="'Move ' + categoryLabel(section) + ' section up'">
+                                    <mat-icon>arrow_upward</mat-icon>
+                                  </button>
+                                  <button type="button" (click)="moveEvidenceSection(purpose, section, 1)"
+                                          [disabled]="index === sectionOrder(purpose).length - 1"
+                                          [attr.aria-label]="'Move ' + categoryLabel(section) + ' section down'">
+                                    <mat-icon>arrow_downward</mat-icon>
+                                  </button>
+                                </span>
+                              </li>
+                            }
+                          </ol>
+                        </div>
+                      } @else {
+                        <p class="purpose-empty">No evidence selected for this document.</p>
+                      }
+                    </section>
+                  }
+                </div>
+              }
+
+              <footer class="selector-actions">
+                <button type="button" class="dashboard-button dashboard-button-secondary"
+                        (click)="closeEvidenceSelection()">
+                  Cancel
+                </button>
+                <button type="button" class="selector-generate"
+                        (click)="confirmEvidenceGeneration()" [disabled]="!canGenerateFromSelection()">
+                  Generate from selected evidence
+                </button>
+              </footer>
+              </section>
+            }
+          </ng-container>
         </app-job-card>
       }
     </div>

@@ -110,6 +110,31 @@
   color: var(--text-primary);
 }
 
+.job-description {
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.description-toggle {
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.2rem 0.25rem;
+}
+
+.description-toggle:hover {
+  color: var(--color-primary-hover);
+  text-decoration: underline;
+}
+
+.description-toggle:focus-visible {
+  box-shadow: 0 0 0 3px #bfdbfe;
+  outline: none;
+}
+
 .source-badge,
 .status-badge {
   align-items: center;
