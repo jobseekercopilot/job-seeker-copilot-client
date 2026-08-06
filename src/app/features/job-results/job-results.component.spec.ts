@@ -1087,7 +1087,9 @@ describe('JobResultsComponent', () => {
     expect(documentGenerationService.resume).toHaveBeenCalledTimes(1);
     expect(documentGenerationService.resume).toHaveBeenCalledWith('cleaning-1');
     expect(fixture.componentInstance.generatingJobIds().has('cleaning-1')).toBe(true);
-    expect(jobCards(fixture)[0].nativeElement.textContent).toContain('Processing');
+    expect(jobCards(fixture)[0].query(
+      By.css('[data-testid="generation-progress"]'),
+    ).nativeElement.textContent).toContain('Generating');
     expect(jobCards(fixture)[0].query(
       By.css('[data-testid="cancel-generation-button"]'),
     )).not.toBeNull();

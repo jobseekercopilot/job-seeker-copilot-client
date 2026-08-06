@@ -233,13 +233,9 @@ describe('DocumentGenerationService', () => {
     expect(approveOperation).toHaveBeenCalledOnce();
   });
 
-  it('requeues one accepted safe checkpoint without requiring a page reload', async () => {
-    getOperation.mockReturnValue(of({
-      operationId,
-      state: 'CREATED',
-      replaySafe: true,
-    }));
-    startOperation
+  it('polls a fresh accepted operation without replaying its start request', async () => {
+    vi.useFakeTimers();
+    getOperation
       .mockImplementationOnce(() => of({
         operationId,
         state: 'CREATED',
@@ -253,12 +249,15 @@ describe('DocumentGenerationService', () => {
         coverLetterDocumentId,
       }));
 
-    await expect(firstValueFrom(
+    const result = firstValueFrom(
       TestBed.inject(DocumentGenerationService).generate(job, evidence),
-    )).resolves.toMatchObject({applicationId});
-    expect(startOperation).toHaveBeenCalledTimes(2);
-    expect(startOperation.mock.calls[1][1]).toBe(startOperation.mock.calls[0][1]);
-    expect(startOperation.mock.calls[1][2]).toEqual(startOperation.mock.calls[0][2]);
+    );
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    await expect(result).resolves.toMatchObject({applicationId});
+    expect(startOperation).toHaveBeenCalledOnce();
+    expect(getOperation).toHaveBeenCalledTimes(2);
+    expect(approveOperation).toHaveBeenCalledOnce();
   });
 
   it('coalesces repeated generate activations into one write workflow', async () => {

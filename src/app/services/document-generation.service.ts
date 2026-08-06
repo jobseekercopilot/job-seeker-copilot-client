@@ -309,7 +309,9 @@ export class DocumentGenerationService {
       }),
       switchMap(operation => {
         this.acceptOperation(attempt, operation);
-        return this.monitorAttempt(attempt, true);
+        // This POST was acknowledged, so poll its operation instead of immediately
+        // replaying it. Replay remains available when restoring a persisted attempt.
+        return this.monitorAttempt(attempt, false);
       }),
     );
   }

@@ -270,7 +270,6 @@ export class JobCardComponent {
   }
 
   statusDisplayLabel(): string {
-    if (this.generating()) return 'Processing';
     switch (this.statusLabel()) {
       case 'NEW':
         return 'Not saved';
@@ -390,7 +389,6 @@ export class JobCardComponent {
   }
 
   statusClass(): string {
-    if (this.generating()) return 'status-processing';
     return `status-${this.statusLabel().toLowerCase().replaceAll('_', '-')}`;
   }
 

@@ -73,13 +73,20 @@ describe('JobCardComponent', () => {
   it('shows the loading state and disables generation while generating', () => {
     const fixture = createFixture({ generating: true });
     expandCard(fixture);
+    const progress: HTMLElement = fixture.debugElement
+      .query(By.css('[data-testid="generation-progress"]'))
+      .nativeElement;
     const button: HTMLButtonElement = fixture.debugElement
       .queryAll(By.css('button'))
       .find(candidate => candidate.nativeElement.textContent.includes('Generating CV & Cover Letter'))!
       .nativeElement;
 
     expect(fixture.nativeElement.textContent).toContain('Generating CV & Cover Letter...');
-    expect(fixture.nativeElement.textContent).toContain('Processing');
+    expect(progress.textContent).toContain('Generating');
+    expect(progress.getAttribute('role')).toBe('status');
+    expect(progress.getAttribute('aria-live')).toBe('polite');
+    expect(progress.querySelector('.generation-spinner')?.getAttribute('aria-hidden')).toBe('true');
+    expect(fixture.nativeElement.textContent).not.toContain('Processing');
     expect(button.disabled).toBe(true);
   });
 
@@ -91,7 +98,8 @@ describe('JobCardComponent', () => {
       .query(By.css('[data-testid="cancel-generation-button"]'))
       .nativeElement;
 
-    expect(cancelButton.textContent).toContain('Cancel generation');
+    expect(cancelButton.getAttribute('aria-label')).toBe('Cancel document generation');
+    expect(cancelButton.getAttribute('title')).toBe('Cancel generation');
     expect(cancelButton.disabled).toBe(false);
     cancelButton.click();
 
@@ -105,7 +113,9 @@ describe('JobCardComponent', () => {
     cancellingButton.click();
 
     expect(cancellingButton.disabled).toBe(true);
-    expect(cancellingButton.textContent).toContain('Cancelling...');
+    expect(cancellingButton.getAttribute('aria-label')).toBe('Cancelling document generation');
+    expect(fixture.debugElement.query(By.css('[data-testid="generation-progress"]')).nativeElement.textContent)
+      .toContain('Cancelling');
     expect(emitted).toEqual([job]);
   });
 
