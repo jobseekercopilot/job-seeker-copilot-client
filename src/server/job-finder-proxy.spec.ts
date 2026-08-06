@@ -539,11 +539,18 @@ describe('Job Finder route allowlist', () => {
   });
 
   it('returns a stable timeout without leaking the token or upstream URL', async () => {
-    const upstream = vi.fn((_input, init) =>
-      new Promise<Response>((_resolve, reject) => {
-        init?.signal?.addEventListener('abort', () =>
-          reject(new DOMException('private upstream detail', 'AbortError')));
-      })) as typeof fetch;
+    let capturedSignal: AbortSignal | undefined;
+    const downstreamResponse = new Response(null, {
+      status: 200,
+      headers: {'Content-Type': 'application/json'},
+    });
+    const downstreamText = vi.spyOn(downstreamResponse, 'text').mockImplementation(
+      () => new Promise<string>(() => undefined),
+    );
+    const upstream = vi.fn(async (_input, init) => {
+      capturedSignal = init?.signal ?? undefined;
+      return downstreamResponse;
+    }) as typeof fetch;
     const origin = await startApp(upstream, {...LOCAL_CONFIG, timeoutMs: 5});
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
@@ -564,6 +571,8 @@ describe('Job Finder route allowlist', () => {
       error: 'DOWNSTREAM_TIMEOUT',
       message: 'Job Finder service timed out',
     });
+    expect(downstreamText).toHaveBeenCalledOnce();
+    expect(capturedSignal?.aborted).toBe(true);
     expect(console.error).toHaveBeenCalledWith(
       'BFF downstream request failed',
       {category: 'timeout', service: 'job-finder'},

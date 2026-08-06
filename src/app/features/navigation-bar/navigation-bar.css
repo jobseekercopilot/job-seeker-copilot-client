@@ -72,12 +72,52 @@
   width: 1.75rem !important;
 }
 
-.profile-dropdown h4 {
+.profile-dropdown .profile-menu-name {
   color: var(--text-primary);
+  font-weight: 800;
 }
 
 .profile-dropdown p {
   color: var(--text-secondary);
+}
+
+.profile-menu-actions {
+  border-top: 1px solid var(--border-subtle);
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+}
+
+.profile-menu-actions button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.76rem;
+  font-weight: 750;
+  gap: 0.55rem;
+  padding: 0.55rem 0.6rem;
+  text-align: left;
+  width: 100%;
+}
+
+.profile-menu-actions button:hover,
+.profile-menu-actions button:focus-visible {
+  background: var(--color-surface-soft);
+}
+
+.profile-menu-actions mat-icon {
+  font-size: 1rem;
+  height: 1rem;
+  width: 1rem;
+}
+
+.profile-menu-actions .danger {
+  color: #be123c;
 }
 
 .token-dropdown {

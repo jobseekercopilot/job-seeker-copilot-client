@@ -1,15 +1,27 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal, inject, OnInit } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  OnDestroy,
+  OnInit,
+  output,
+  signal,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
-import { forkJoin, of } from 'rxjs';
-import { catchError } from 'rxjs/operators';
+import { finalize, Observable, Subscription } from 'rxjs';
 import { DocumentUploadRequest, JobCardComponent } from '../job-card/job-card.component';
 import { JobService } from '../../services/job.service';
 import {
+  DocumentGenerationError,
+  DocumentGenerationResponse,
   DocumentGenerationService,
   GenerationDownloadsResponse,
+  PendingDocumentGeneration,
 } from '../../services/document-generation.service';
-import { Job } from '../../models/job-search.model';
+import { Job, JobSearchResponse } from '../../models/job-search.model';
 import { ApplicationRecordResponse } from '../../api/job-finder';
 import {
   DownloadFileResponse,
@@ -26,7 +38,6 @@ import {
 import {logMalformedProviderResult} from '../../../shared/provider-content-policy';
 import {
   ApplicationTrackerService,
-  TrackedApplication,
 } from '../../services/application-tracker.service';
 import type {JobSearchProviderMode} from '../../services/runtime-configuration.service';
 
@@ -43,6 +54,41 @@ type SortOption = 'MOST_RELEVANT' | 'CLOSEST' | 'HIGHEST_SALARY' | 'NEWEST_POSTE
 type EvidencePurpose = 'CV' | 'COVER_LETTER';
 type EvidenceSection = DocumentEvidenceSelectionSectionOrderEnum;
 
+interface RolePageCache {
+  jobs: Job[];
+  providerStatuses: string[];
+  providerWarnings: string[];
+  searchStatus: string | null;
+  matchingStatus: string | null;
+}
+
+interface RoleSearchState {
+  key: string;
+  targetRole: string;
+  pages: Record<number, RolePageCache>;
+  currentPage: number;
+  pageSize: number;
+  totalResults: number;
+  totalPages: number;
+  hasMore: boolean;
+  providerStatuses: string[];
+  providerWarnings: string[];
+  searchStatus: string | null;
+  matchingStatus: string | null;
+  loading: boolean;
+  error: string | null;
+  searched: boolean;
+  requestSequence: number;
+  sort: SortOption;
+}
+
+interface EvidenceSelectionDraft {
+  cvEvidenceIds: string[];
+  coverLetterEvidenceIds: string[];
+  cvSectionOrder: EvidenceSection[];
+  coverLetterSectionOrder: EvidenceSection[];
+}
+
 @Component({
   selector: 'app-job-results',
   imports: [CommonModule, MatIconModule, JobCardComponent],
@@ -54,11 +100,20 @@ type EvidenceSection = DocumentEvidenceSelectionSectionOrderEnum;
   templateUrl: './job-results.component.html',
   styleUrl: './job-results.component.css'
 })
-export class JobResultsComponent implements OnInit {
+export class JobResultsComponent implements OnInit, OnDestroy {
   private jobService = inject(JobService);
   private documentGenerationService = inject(DocumentGenerationService);
   private applicationTracker = inject(ApplicationTrackerService);
   private evidenceLibrary = inject(EvidenceLibraryService);
+  private searchRequestSequence = 0;
+  private evidenceRequestSequence = 0;
+  private searchContextFingerprint = '';
+  private readonly activeGenerationIds = new Set<string>();
+  private readonly resumedGenerationIds = new Set<string>();
+  private readonly generationSubscriptions = new Map<string, Subscription>();
+  private readonly cancellationSubscriptions = new Map<string, Subscription>();
+  private readonly localApplicationMutationSequence = new Map<string, number>();
+  private destroyed = false;
 
   // Inputs from the parent App component (profile signals)
   skills = input<string>('');
@@ -76,14 +131,39 @@ export class JobResultsComponent implements OnInit {
   applicationChanged = output<void>();
 
   // Reactive state
-  jobs = signal<Job[]>([]);
-  roleResults = signal<{ targetRole: string; jobs: Job[] }[]>([]);
+  readonly roleStates = signal<Record<string, RoleSearchState>>({});
+  private readonly roleOrder = signal<string[]>([]);
   selectedTargetRole = signal<string>('');
+  readonly activeRoleState = computed(() => {
+    const selectedKey = this.roleKey(this.selectedTargetRole());
+    return this.roleStates()[selectedKey];
+  });
+  readonly jobs = computed(() => this.allCachedJobs());
+  readonly roleResults = computed(() => this.roleOrder()
+    .map(key => this.roleStates()[key])
+    .filter((state): state is RoleSearchState => Boolean(state))
+    .map(state => ({
+      targetRole: state.targetRole,
+      jobs: state.pages[state.currentPage]?.jobs ?? [],
+      totalResults: state.totalResults,
+      loading: state.loading,
+      error: state.error,
+      searched: state.searched,
+      searchStatus: state.searchStatus,
+      matchingStatus: state.matchingStatus,
+    })));
   selectedPublisher = signal<string>('All Job Sites');
-  selectedSort = signal<SortOption>('MOST_RELEVANT');
+  readonly selectedSort = computed<SortOption>(() =>
+    this.activeRoleState()?.sort ?? 'MOST_RELEVANT');
   filtersOpen = signal(false);
-  providerWarnings = signal<string[]>([]);
-  providerStatuses = signal<string[]>([]);
+  readonly providerWarnings = computed(() =>
+    this.activeRoleState()?.providerWarnings ?? []);
+  readonly providerStatuses = computed(() =>
+    this.activeRoleState()?.providerStatuses ?? []);
+  readonly searchStatus = computed(() =>
+    this.activeRoleState()?.searchStatus ?? null);
+  readonly matchingStatus = computed(() =>
+    this.activeRoleState()?.matchingStatus ?? null);
   providerDegraded = computed(() => {
     const statuses = this.providerStatuses();
     return statuses.some(status => status !== 'SUCCESS' && status !== 'DISABLED');
@@ -123,11 +203,18 @@ export class JobResultsComponent implements OnInit {
     }
     return 'No job matches found based on your current profile.';
   });
-  currentPage = signal(1);
-  totalResults = signal(0);
-  loading = signal(false);
-  error = signal<string | null>(null);
+  readonly currentPage = computed(() =>
+    this.activeRoleState()?.currentPage ?? 1);
+  readonly totalResults = computed(() =>
+    this.activeRoleState()?.totalResults ?? 0);
+  readonly loading = computed(() =>
+    this.activeRoleState()?.loading ?? false);
+  readonly error = computed(() =>
+    this.activeRoleState()?.error ?? null);
+  readonly activeRoleSearched = computed(() =>
+    this.activeRoleState()?.searched ?? false);
   generatingJobIds = signal<Set<string>>(new Set());
+  cancellingGenerationIds = signal<Set<string>>(new Set());
   generationMessages = signal<Record<string, string | undefined>>({});
   generationErrors = signal<Record<string, string | undefined>>({});
   generationDownloads = signal<Record<string, GenerationDownloadsResponse | undefined>>({});
@@ -139,10 +226,12 @@ export class JobResultsComponent implements OnInit {
   evidenceEntries = signal<EvidenceEntry[]>([]);
   evidenceLoading = signal(false);
   evidenceSelectionError = signal<string | null>(null);
+  evidenceLoadError = signal<string | null>(null);
   cvEvidenceIds = signal<string[]>([]);
   coverLetterEvidenceIds = signal<string[]>([]);
   cvSectionOrder = signal<EvidenceSection[]>([]);
   coverLetterSectionOrder = signal<EvidenceSection[]>([]);
+  evidenceSelectionDrafts = signal<Record<string, EvidenceSelectionDraft | undefined>>({});
   readonly jobsPerPage = 10;
   readonly Math = Math;
   readonly futureFilterSections = ['Status', 'Date Posted', 'Salary', 'Location', 'Remote / On-site'];
@@ -168,16 +257,14 @@ export class JobResultsComponent implements OnInit {
     this.evidenceEntries().length - this.eligibleEvidence().length);
   readonly canGenerateFromSelection = computed(() =>
     !this.evidenceLoading()
-    && this.cvEvidenceIds().length > 0
-    && this.coverLetterEvidenceIds().length > 0
-    && this.cvSectionOrder().length > 0
-    && this.coverLetterSectionOrder().length > 0);
+    && !this.evidenceLoadError()
+    && this.validEvidenceSelection(this.cvEvidenceIds(), this.cvSectionOrder())
+    && this.validEvidenceSelection(this.coverLetterEvidenceIds(), this.coverLetterSectionOrder()));
 
-  activeRoleResults = computed(() =>
-    this.roleResults().find(group => group.targetRole === this.selectedTargetRole()) ?? this.roleResults()[0]
-  );
-
-  activeJobs = computed(() => this.activeRoleResults()?.jobs ?? []);
+  activeJobs = computed(() => {
+    const state = this.activeRoleState();
+    return state?.pages[state.currentPage]?.jobs ?? [];
+  });
 
   publisherOptions = computed(() => {
     const counts = new Map<string, number>();
@@ -207,30 +294,54 @@ export class JobResultsComponent implements OnInit {
 
   sortedJobs = computed(() => {
     const jobs = this.filteredJobs();
-    const index = new Map(jobs.map((job, position) => [job.id ?? String(position), position]));
+    const index = new Map(jobs.map((job, position) => [this.jobStateKey(job) || String(position), position]));
     return [...jobs].sort((left, right) => {
       const comparison = this.compareJobs(left, right);
       if (comparison !== 0) {
         return comparison;
       }
-      return (index.get(left.id ?? '') ?? 0) - (index.get(right.id ?? '') ?? 0);
+      return (index.get(this.jobStateKey(left)) ?? 0) - (index.get(this.jobStateKey(right)) ?? 0);
     });
   });
 
-  totalPages = computed(() => Math.max(1, Math.ceil(this.sortedJobs().length / this.jobsPerPage)));
-
-  paginatedJobs = computed(() => {
-    const start = (this.currentPage() - 1) * this.jobsPerPage;
-    return this.sortedJobs().slice(start, start + this.jobsPerPage);
+  totalPages = computed(() => this.activeRoleState()?.totalPages ?? 1);
+  hasMore = computed(() => this.activeRoleState()?.hasMore ?? false);
+  paginatedJobs = computed(() => this.sortedJobs());
+  resultRangeStart = computed(() => {
+    const state = this.activeRoleState();
+    return state && this.activeJobs().length > 0
+      ? ((state.currentPage - 1) * state.pageSize) + 1
+      : 0;
   });
+  resultRangeEnd = computed(() => Math.min(
+    this.totalResults(),
+    this.resultRangeStart() + Math.max(0, this.activeJobs().length - 1),
+  ));
 
   ngOnInit(): void {
     // Auto-trigger search when the component initialises (profile is already loaded)
     this.search();
   }
 
+  ngOnDestroy(): void {
+    this.destroyed = true;
+    for (const subscription of this.generationSubscriptions.values()) {
+      subscription.unsubscribe();
+    }
+    for (const subscription of this.cancellationSubscriptions.values()) {
+      subscription.unsubscribe();
+    }
+    this.generationSubscriptions.clear();
+    this.cancellationSubscriptions.clear();
+    this.activeGenerationIds.clear();
+  }
+
   trackByJobId(index: number, job: Job): string {
-    return job.id ?? String(index);
+    return this.jobStateKey(job) || String(index);
+  }
+
+  jobStateKey(job: Job): string {
+    return job.canonicalJobId ?? job.id ?? '';
   }
 
   private validateJob(job: Job): Job | null {
@@ -252,113 +363,355 @@ export class JobResultsComponent implements OnInit {
   }
 
   search(): void {
-    this.loading.set(true);
-    this.error.set(null);
-
-    forkJoin({
-      response: this.jobService.searchJobs(
-        this.skills(),
-        this.experience(),
-        this.aspirations(),
-        this.workPrefs()
-      ),
-      applications: this.applicationTracker.listApplications().pipe(catchError(() => of([]))),
-    }).subscribe({
-      next: ({response, applications}) => {
-        const roleGroups = response.resultsByTargetRole?.length
-          ? response.resultsByTargetRole
-          : [{ targetRole: 'All matches', jobs: response.jobs ?? [] }];
-        const validGroups: { targetRole: string; jobs: Job[] }[] = [];
-        const validJobs: Job[] = [];
-        const skippedCount = { value: 0 };
-
-        for (const group of roleGroups) {
-          const groupJobs: Job[] = [];
-          for (const job of group.jobs ?? []) {
-            const validated = this.validateJob(job);
-            if (validated) {
-              const reconciled = this.reconcilePersistedApplication(validated, applications);
-              groupJobs.push(reconciled);
-              validJobs.push(reconciled);
-            } else {
-              skippedCount.value++;
-            }
-          }
-          validGroups.push({
-            targetRole: group.targetRole || 'Untitled role',
-            jobs: groupJobs
-          });
-        }
-
-        if (skippedCount.value > 0) {
-          console.warn(`[JobResults] Filtered out ${skippedCount.value} malformed job(s)`);
-        }
-
-        this.jobs.set(validJobs);
-        this.roleResults.set(validGroups);
-        this.selectedTargetRole.set(validGroups[0]?.targetRole ?? '');
-        this.selectedPublisher.set('All Job Sites');
-        this.selectedSort.set('MOST_RELEVANT');
-        this.filtersOpen.set(false);
-        this.currentPage.set(1);
-        this.totalResults.set(validJobs.length);
-        const degradedResults = (response.providerResults ?? [])
-          .filter(result => result.status !== 'SUCCESS' && result.status !== 'DISABLED');
-        this.providerStatuses.set(
-          (response.providerResults ?? []).map(result => result.status ?? 'UNAVAILABLE')
-        );
-        this.providerWarnings.set(Array.from(new Set(
-          degradedResults.map(result => this.providerWarning(
-            result.provider ?? 'A job provider',
-            result.status ?? 'UNAVAILABLE',
-          )),
-        )));
-        this.reconcileGeneratedState(validJobs);
-        this.rehydrateGeneratedDownloads(validJobs);
-        this.loading.set(false);
-        this.notify.emit({
-          message: `Found ${validJobs.length} matching job${validJobs.length === 1 ? '' : 's'}.`,
-          type: 'success'
-        });
-      },
-      error: (err) => {
-        this.loading.set(false);
-        this.providerStatuses.set(['UNAVAILABLE']);
-        const status = err.status;
-
-        if (status === 503) {
-          this.error.set('Job search service is temporarily unavailable. Please try again later.');
-          this.notify.emit({
-            message: 'Job search service is temporarily unavailable. Please try again later.',
-            type: 'error'
-          });
-        } else if (status === 400) {
-          this.error.set('Invalid search parameters. Please update your profile and try again.');
-          this.notify.emit({
-            message: 'Invalid search parameters. Please update your profile and try again.',
-            type: 'error'
-          });
-        } else if (status === 401 || status === 403) {
-          this.error.set('Session expired. Please log in again.');
-          this.notify.emit({
-            message: 'Session expired. Please log in again.',
-            type: 'error'
-          });
-        } else {
-          this.error.set('An unexpected error occurred while searching for jobs.');
-          this.notify.emit({
-            message: 'An unexpected error occurred while searching for jobs.',
-            type: 'error'
-          });
-        }
-
-        console.error('[JobResults] Job search failed');
-      }
-    });
+    const contextChanged = this.synchroniseSearchContext();
+    const active = this.activeRoleState();
+    if (!active) return;
+    if (contextChanged || !active.searched) {
+      this.loadRolePage(active.key, active.currentPage, true);
+    }
   }
 
   refresh(): void {
-    this.search();
+    const contextChanged = this.synchroniseSearchContext();
+    const active = this.activeRoleState();
+    if (!active) return;
+    this.loadRolePage(active.key, active.currentPage, true);
+    if (contextChanged) {
+      this.selectedPublisher.set('All Job Sites');
+      this.filtersOpen.set(false);
+    }
+  }
+
+  private synchroniseSearchContext(): boolean {
+    const roles = this.targetRoles();
+    const fingerprint = JSON.stringify({
+      roles,
+      skills: this.skills(),
+      experience: this.experience(),
+      workPrefs: this.workPrefs(),
+    });
+    if (fingerprint === this.searchContextFingerprint) {
+      return false;
+    }
+
+    this.searchContextFingerprint = fingerprint;
+    const states = Object.fromEntries(roles.map(targetRole => {
+      const key = this.roleKey(targetRole);
+      return [key, this.emptyRoleState(key, targetRole)];
+    }));
+    this.roleStates.set(states);
+    this.roleOrder.set(roles.map(role => this.roleKey(role)));
+    this.selectedTargetRole.set(roles[0] ?? '');
+    this.selectedPublisher.set('All Job Sites');
+    this.filtersOpen.set(false);
+    this.reconcileGeneratedState([]);
+    return true;
+  }
+
+  private targetRoles(): string[] {
+    const roles = this.aspirations()
+      .split(',')
+      .map(role => role.trim())
+      .filter(Boolean);
+    const seen = new Set<string>();
+    return roles.filter(role => {
+      const key = this.roleKey(role);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private roleKey(targetRole: string): string {
+    return targetRole.trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  private emptyRoleState(key: string, targetRole: string): RoleSearchState {
+    return {
+      key,
+      targetRole,
+      pages: {},
+      currentPage: 1,
+      pageSize: this.jobsPerPage,
+      totalResults: 0,
+      totalPages: 1,
+      hasMore: false,
+      providerStatuses: [],
+      providerWarnings: [],
+      searchStatus: null,
+      matchingStatus: null,
+      loading: false,
+      error: null,
+      searched: false,
+      requestSequence: 0,
+      sort: 'MOST_RELEVANT',
+    };
+  }
+
+  private loadRolePage(roleKey: string, page: number, force: boolean): void {
+    const state = this.roleStates()[roleKey];
+    if (!state) return;
+    const requestedPage = Math.max(1, page);
+    const cachedPage = state.pages[requestedPage];
+    if (cachedPage && !force) {
+      this.updateRoleState(roleKey, current => ({
+        ...current,
+        currentPage: requestedPage,
+        hasMore: requestedPage < current.totalPages,
+        providerStatuses: cachedPage.providerStatuses,
+        providerWarnings: cachedPage.providerWarnings,
+        searchStatus: cachedPage.searchStatus,
+        matchingStatus: cachedPage.matchingStatus,
+        error: null,
+      }));
+      return;
+    }
+
+    const requestSequence = ++this.searchRequestSequence;
+    this.updateRoleState(roleKey, current => ({
+      ...current,
+      loading: true,
+      error: null,
+      requestSequence,
+    }));
+
+    this.jobService.searchJobs(
+      this.skills(),
+      this.experience(),
+      this.aspirations(),
+      this.workPrefs(),
+      {
+        targetRole: state.targetRole,
+        page: requestedPage,
+        pageSize: state.pageSize,
+        sort: state.sort,
+      },
+    ).subscribe({
+      next: response => this.acceptRolePage(roleKey, requestSequence, requestedPage, response),
+      error: err => this.rejectRolePage(roleKey, requestSequence, err),
+    });
+  }
+
+  private acceptRolePage(
+    roleKey: string,
+    requestSequence: number,
+    requestedPage: number,
+    response: JobSearchResponse,
+  ): void {
+    const current = this.roleStates()[roleKey];
+    if (!current || current.requestSequence !== requestSequence) return;
+
+    const roleGroups = response.resultsByTargetRole ?? [];
+    const matchingGroup = roleGroups.find(group =>
+      this.roleKey(group.targetRole ?? '') === roleKey);
+    if (roleGroups.length > 0 && !matchingGroup) {
+      const message = 'Search results for this target role could not be verified. Please try again.';
+      this.updateRoleState(roleKey, state => state.requestSequence !== requestSequence
+        ? state
+        : {
+            ...state,
+            loading: false,
+            error: message,
+            searched: true,
+            providerStatuses: ['UNAVAILABLE'],
+            providerWarnings: [],
+            searchStatus: 'UNAVAILABLE',
+            matchingStatus: 'UNAVAILABLE',
+          });
+      if (this.roleKey(this.selectedTargetRole()) === roleKey) {
+        this.notify.emit({message, type: 'error'});
+      }
+      console.error('[JobResults] Job search returned a mismatched target role');
+      return;
+    }
+    const responseJobs = matchingGroup?.jobs
+      ?? response.jobs
+      ?? [];
+    let skippedCount = 0;
+    const validJobs = responseJobs
+      .flatMap(job => {
+        const validated = this.validateJob(job);
+        if (validated) return [validated];
+        skippedCount++;
+        return [];
+      })
+      .map(job => this.preserveNewerLocalApplicationState(job, requestSequence));
+    if (skippedCount > 0) {
+      console.warn(`[JobResults] Filtered out ${skippedCount} malformed job(s)`);
+    }
+
+    const responsePage = Math.max(
+      1,
+      matchingGroup?.page ?? response.page ?? requestedPage,
+    );
+    const responsePageSize = Math.max(
+      1,
+      matchingGroup?.pageSize ?? response.pageSize ?? current.pageSize,
+    );
+    const deduplicatedJobs = this.removeCrossPageDuplicates(
+      current,
+      responsePage,
+      validJobs,
+    );
+    const minimumTotal = ((responsePage - 1) * responsePageSize) + deduplicatedJobs.length;
+    const totalResults = Math.max(
+      0,
+      matchingGroup?.totalResults ?? response.totalResults ?? minimumTotal,
+    );
+    const totalPages = Math.max(
+      1,
+      matchingGroup?.totalPages
+        ?? response.totalPages
+        ?? Math.ceil(totalResults / responsePageSize),
+    );
+    const providerResults = matchingGroup?.providerResults
+      ?? response.providerResults
+      ?? [];
+    const providerStatuses = providerResults
+      .map(result => result.status ?? 'UNAVAILABLE');
+    const providerWarnings = Array.from(new Set(
+      providerResults
+        .filter(result => result.status !== 'SUCCESS' && result.status !== 'DISABLED')
+        .map(result => this.providerWarning(
+          result.provider ?? 'A job provider',
+          result.status ?? 'UNAVAILABLE',
+        )),
+    ));
+    const searchStatus = matchingGroup?.searchStatus
+      ?? response.searchStatus
+      ?? null;
+    const matchingStatus = matchingGroup?.matchingStatus
+      ?? response.matchingStatus
+      ?? null;
+    const pageCache: RolePageCache = {
+      jobs: deduplicatedJobs,
+      providerStatuses,
+      providerWarnings,
+      searchStatus,
+      matchingStatus,
+    };
+
+    this.updateRoleState(roleKey, state => {
+      if (state.requestSequence !== requestSequence) return state;
+      const pages = {
+        ...state.pages,
+        [responsePage]: pageCache,
+      };
+      for (const cachedPage of Object.keys(pages).map(Number)) {
+        if (cachedPage > totalPages) delete pages[cachedPage];
+      }
+      return {
+        ...state,
+        pages,
+        currentPage: responsePage,
+        pageSize: responsePageSize,
+        totalResults,
+        totalPages,
+        hasMore: responsePage < totalPages,
+        providerStatuses,
+        providerWarnings,
+        searchStatus,
+        matchingStatus,
+        loading: false,
+        error: null,
+        searched: true,
+      };
+    });
+
+    this.reconcileGeneratedState(this.jobs());
+    this.rehydrateGeneratedDownloads(deduplicatedJobs);
+    this.restorePendingGenerations(this.jobs());
+    if (this.roleKey(this.selectedTargetRole()) === roleKey) {
+      this.notify.emit({
+        message: `Found ${totalResults} matching job${totalResults === 1 ? '' : 's'} for ${current.targetRole}.`,
+        type: 'success',
+      });
+    }
+  }
+
+  private rejectRolePage(roleKey: string, requestSequence: number, err: {status?: number}): void {
+    const current = this.roleStates()[roleKey];
+    if (!current || current.requestSequence !== requestSequence) return;
+    const message = this.searchErrorMessage(err.status);
+    this.updateRoleState(roleKey, state => state.requestSequence !== requestSequence
+      ? state
+      : {
+          ...state,
+          loading: false,
+          error: message,
+          searched: true,
+          providerStatuses: ['UNAVAILABLE'],
+          providerWarnings: [],
+          searchStatus: 'UNAVAILABLE',
+          matchingStatus: 'UNAVAILABLE',
+        });
+    if (this.roleKey(this.selectedTargetRole()) === roleKey) {
+      this.notify.emit({message, type: 'error'});
+    }
+    console.error('[JobResults] Job search failed');
+  }
+
+  private searchErrorMessage(status: number | undefined): string {
+    if (status === 503) {
+      return 'Job search service is temporarily unavailable. Please try again later.';
+    }
+    if (status === 400) {
+      return 'Invalid search parameters. Please update your profile and try again.';
+    }
+    if (status === 401 || status === 403) {
+      return 'Session expired. Please log in again.';
+    }
+    return 'An unexpected error occurred while searching for jobs.';
+  }
+
+  private removeCrossPageDuplicates(
+    state: RoleSearchState,
+    page: number,
+    jobs: Job[],
+  ): Job[] {
+    const otherPageIds = new Set(
+      Object.entries(state.pages)
+        .filter(([cachedPage]) => Number(cachedPage) !== page)
+        .flatMap(([, cached]) => cached.jobs)
+        .map(job => this.jobStateKey(job))
+        .filter(Boolean),
+    );
+    const pageIds = new Set<string>();
+    return jobs.filter(job => {
+      const key = this.jobStateKey(job);
+      if (!key || otherPageIds.has(key) || pageIds.has(key)) return false;
+      pageIds.add(key);
+      return true;
+    });
+  }
+
+  private updateRoleState(
+    roleKey: string,
+    update: (state: RoleSearchState) => RoleSearchState,
+  ): void {
+    this.roleStates.update(states => {
+      const state = states[roleKey];
+      if (!state) return states;
+      return {
+        ...states,
+        [roleKey]: update(state),
+      };
+    });
+  }
+
+  private allCachedJobs(): Job[] {
+    const uniqueJobs = new Map<string, Job>();
+    for (const key of this.roleOrder()) {
+      const state = this.roleStates()[key];
+      if (!state) continue;
+      for (const page of Object.values(state.pages)) {
+        for (const job of page.jobs) {
+          const jobKey = this.jobStateKey(job);
+          if (jobKey) uniqueJobs.set(jobKey, job);
+        }
+      }
+    }
+    return Array.from(uniqueJobs.values());
   }
 
   private providerWarning(provider: string, status: string): string {
@@ -383,18 +736,38 @@ export class JobResultsComponent implements OnInit {
     if (targetRole === this.selectedTargetRole()) return;
     this.selectedTargetRole.set(targetRole);
     this.selectedPublisher.set('All Job Sites');
-    this.currentPage.set(1);
+    const state = this.roleStates()[this.roleKey(targetRole)];
+    if (state && !state.searched && !state.loading) {
+      this.loadRolePage(state.key, state.currentPage, false);
+    }
   }
 
   selectPublisher(publisher: string): void {
     if (publisher === this.selectedPublisher()) return;
     this.selectedPublisher.set(publisher);
-    this.currentPage.set(1);
   }
 
   selectSort(value: string): void {
-    this.selectedSort.set(value as SortOption);
-    this.currentPage.set(1);
+    const sort = value as SortOption;
+    const state = this.activeRoleState();
+    if (!state || state.sort === sort) return;
+    this.updateRoleState(state.key, current => ({
+      ...current,
+      pages: {},
+      currentPage: 1,
+      totalResults: 0,
+      totalPages: 1,
+      hasMore: false,
+      providerStatuses: [],
+      providerWarnings: [],
+      searchStatus: null,
+      matchingStatus: null,
+      loading: false,
+      error: null,
+      searched: false,
+      sort,
+    }));
+    this.loadRolePage(state.key, 1, true);
   }
 
   toggleFilters(): void {
@@ -402,11 +775,15 @@ export class JobResultsComponent implements OnInit {
   }
 
   previousPage(): void {
-    this.currentPage.update(page => Math.max(1, page - 1));
+    const state = this.activeRoleState();
+    if (!state || state.loading || state.currentPage <= 1) return;
+    this.loadRolePage(state.key, state.currentPage - 1, false);
   }
 
   nextPage(): void {
-    this.currentPage.update(page => Math.min(this.totalPages(), page + 1));
+    const state = this.activeRoleState();
+    if (!state || state.loading || !state.hasMore) return;
+    this.loadRolePage(state.key, Math.min(state.totalPages, state.currentPage + 1), false);
   }
 
   private compareJobs(left: Job, right: Job): number {
@@ -455,34 +832,53 @@ export class JobResultsComponent implements OnInit {
   }
 
   openEvidenceSelection(job: Job): void {
-    if (!job.id || this.generatingJobIds().has(job.id)) return;
+    const jobKey = this.jobStateKey(job);
+    if (!jobKey || this.generatingJobIds().has(jobKey)) return;
+    this.persistEvidenceDraft();
     this.evidenceSelectionJob.set(job);
+    this.restoreEvidenceDraft(jobKey);
     this.evidenceEntries.set([]);
-    this.cvEvidenceIds.set([]);
-    this.coverLetterEvidenceIds.set([]);
-    this.cvSectionOrder.set([]);
-    this.coverLetterSectionOrder.set([]);
     this.evidenceSelectionError.set(null);
+    this.evidenceLoadError.set(null);
+    this.loadEvidenceForSelection(jobKey);
+  }
+
+  retryEvidenceSelection(): void {
+    const job = this.evidenceSelectionJob();
+    const jobKey = job ? this.jobStateKey(job) : '';
+    if (!jobKey || this.evidenceLoading()) return;
+    this.loadEvidenceForSelection(jobKey);
+  }
+
+  private loadEvidenceForSelection(jobKey: string): void {
+    const requestSequence = ++this.evidenceRequestSequence;
     this.evidenceLoading.set(true);
+    this.evidenceLoadError.set(null);
     this.evidenceLibrary.listEvidence(false, 'body', false, {transferCache: false}).subscribe({
       next: entries => {
+        if (!this.isCurrentEvidenceRequest(jobKey, requestSequence)) return;
         this.evidenceEntries.set(entries);
+        this.reconcileEvidenceSelection();
         this.evidenceLoading.set(false);
       },
       error: () => {
+        if (!this.isCurrentEvidenceRequest(jobKey, requestSequence)) return;
         this.evidenceLoading.set(false);
-        this.evidenceSelectionError.set(
-          'Your confirmed evidence could not be loaded. Please try again.',
+        this.evidenceLoadError.set(
+          'Your confirmed experience and achievements could not be loaded. Please try again.',
         );
       },
     });
   }
 
   closeEvidenceSelection(): void {
-    if (!this.evidenceLoading()) {
-      this.evidenceSelectionJob.set(null);
-      this.evidenceSelectionError.set(null);
-    }
+    this.persistEvidenceDraft();
+    this.evidenceRequestSequence++;
+    this.evidenceSelectionJob.set(null);
+    this.evidenceEntries.set([]);
+    this.evidenceLoading.set(false);
+    this.evidenceSelectionError.set(null);
+    this.evidenceLoadError.set(null);
   }
 
   latestEvidence(entry: EvidenceEntry): EvidenceRevision | undefined {
@@ -522,6 +918,7 @@ export class JobResultsComponent implements OnInit {
       if (!removing && !order.includes(category)) return [...order, category];
       return order.filter(section => selectedCategories.has(section));
     });
+    this.persistEvidenceDraft();
   }
 
   moveEvidence(
@@ -531,6 +928,7 @@ export class JobResultsComponent implements OnInit {
   ): void {
     const selected = purpose === 'CV' ? this.cvEvidenceIds : this.coverLetterEvidenceIds;
     selected.update(ids => this.move(ids, entryId, direction));
+    this.persistEvidenceDraft();
   }
 
   moveEvidenceSection(
@@ -540,6 +938,7 @@ export class JobResultsComponent implements OnInit {
   ): void {
     const sections = purpose === 'CV' ? this.cvSectionOrder : this.coverLetterSectionOrder;
     sections.update(order => this.move(order, section, direction));
+    this.persistEvidenceDraft();
   }
 
   sectionOrder(purpose: EvidencePurpose): EvidenceSection[] {
@@ -551,11 +950,49 @@ export class JobResultsComponent implements OnInit {
       .replace(/\b\w/g, character => character.toUpperCase());
   }
 
+  isEvidenceSelectionJob(job: Job): boolean {
+    const active = this.evidenceSelectionJob();
+    return Boolean(active && this.jobStateKey(active) === this.jobStateKey(job));
+  }
+
+  evidenceSelectorDomId(job: Job, suffix: string): string {
+    const jobKey = this.jobStateKey(job)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-|-$/g, '') || 'job';
+    return `generation-${jobKey}-${suffix}`;
+  }
+
+  jobTitle(job: Job): string {
+    return job.title ?? job.jobTitle ?? 'Untitled role';
+  }
+
+  employerName(job: Job): string {
+    return job.companyName ?? job.company ?? 'Employer unavailable';
+  }
+
+  generationProviderLabel(job: Job): string {
+    const labels = new Set<string>();
+    for (const source of job.sources ?? []) {
+      const label = source.publisher?.trim()
+        || source.integrationProvider?.trim()
+        || source.provider?.trim();
+      if (label) labels.add(label);
+    }
+    const fallback = job.primarySource?.trim() || job.provider?.trim();
+    if (labels.size === 0 && fallback) labels.add(fallback);
+    return Array.from(labels).join(', ') || 'Provider unavailable';
+  }
+
+  canonicalJobReference(job: Job): string {
+    return job.canonicalJobId ?? job.id ?? 'Reference unavailable';
+  }
+
   confirmEvidenceGeneration(): void {
     const job = this.evidenceSelectionJob();
     if (!job || !this.canGenerateFromSelection()) {
       this.evidenceSelectionError.set(
-        'Choose at least one confirmed evidence item for both documents.',
+        'Choose at least one entry confirmed by you for both documents.',
       );
       return;
     }
@@ -569,7 +1006,13 @@ export class JobResultsComponent implements OnInit {
         sectionOrder: [...this.coverLetterSectionOrder()],
       },
     };
+    this.persistEvidenceDraft();
+    this.evidenceRequestSequence++;
     this.evidenceSelectionJob.set(null);
+    this.evidenceEntries.set([]);
+    this.evidenceLoading.set(false);
+    this.evidenceSelectionError.set(null);
+    this.evidenceLoadError.set(null);
     this.generateDocuments(job, evidence);
   }
 
@@ -577,45 +1020,396 @@ export class JobResultsComponent implements OnInit {
     job: Job,
     evidence: Parameters<DocumentGenerationService['generate']>[1],
   ): void {
-    if (!job.id || this.generatingJobIds().has(job.id)) return;
-    const jobId = job.id;
-    this.generatingJobIds.update(ids => new Set(ids).add(jobId));
-    this.generationMessages.update(messages => ({ ...messages, [jobId]: 'Generating CV & Cover Letter...' }));
-    this.generationErrors.update(errors => ({ ...errors, [jobId]: undefined }));
+    const jobId = this.jobStateKey(job);
+    if (!jobId || this.activeGenerationIds.has(jobId)) return;
+    this.markGenerationProcessing(jobId, 'Generating CV & Cover Letter...');
+    this.subscribeToGeneration(
+      jobId,
+      job,
+      () => this.documentGenerationService.generate(job, evidence),
+    );
+  }
 
-    this.documentGenerationService.generate(job, evidence).subscribe({
-      next: (response) => {
-        this.generationDownloads.update(downloads => ({ ...downloads, [jobId]: response.downloads }));
-        this.generatedDocumentIds.update(documentIds => ({
-          ...documentIds,
-          [jobId]: {
-            cvDocumentId: response.cvDocumentId,
-            coverLetterDocumentId: response.coverLetterDocumentId,
-          }
+  private handleGenerationFailure(jobId: string, error: unknown): void {
+    this.finishGeneration(jobId, undefined);
+    if (error instanceof DocumentGenerationError) {
+      if (error.code === 'CANCELLED') {
+        this.generationMessages.update(messages => ({
+          ...messages,
+          [jobId]: error.message,
         }));
-        this.updateJobLocally(jobId, {
-          applicationId: response.applicationId ?? job.applicationId,
-          applicationStatus: 'DOCUMENTS_GENERATED',
-          cvDocumentId: response.cvDocumentId ?? job.cvDocumentId,
-          coverLetterDocumentId: response.coverLetterDocumentId ?? job.coverLetterDocumentId,
-        });
-        this.finishGeneration(jobId, 'CV and cover letter generated successfully.');
-        this.notify.emit({ message: 'CV and cover letter generated successfully.', type: 'success' });
-        this.applicationChanged.emit();
-      },
-      error: (error) => {
-        this.finishGeneration(jobId, undefined);
-        const status = typeof error === 'object' && error !== null && 'status' in error
-          ? Number((error as {status?: unknown}).status)
-          : undefined;
-        const message = status === 400 || status === 409
-          ? 'One of the selected evidence items changed or is no longer eligible. Review the Evidence Library and choose again.'
-          : 'Generation failed. Please try again.';
-        this.generationErrors.update(errors => ({ ...errors, [jobId]: message }));
-        this.notify.emit({ message, type: 'error' });
-        console.error('[JobResults] Document generation failed');
+        this.generationErrors.update(errors => ({ ...errors, [jobId]: undefined }));
+        this.notify.emit({message: error.message, type: 'info'});
+        return;
       }
+      this.generationErrors.update(errors => ({ ...errors, [jobId]: error.message }));
+      this.notify.emit({message: error.message, type: 'error'});
+      console.error(`[JobResults] Document generation failed (${error.code})`);
+      return;
+    }
+    const status = typeof error === 'object' && error !== null && 'status' in error
+      ? Number((error as {status?: unknown}).status)
+      : undefined;
+    const responseError = typeof error === 'object' && error !== null && 'error' in error
+      ? (error as {error?: unknown}).error
+      : undefined;
+    const detail = error instanceof Error
+      ? error.message
+      : typeof responseError === 'string'
+        ? responseError
+        : typeof responseError === 'object'
+            && responseError !== null
+            && 'message' in responseError
+            && typeof (responseError as {message?: unknown}).message === 'string'
+          ? (responseError as {message: string}).message
+          : '';
+    const message = detail.includes('Insufficient AI Credit')
+      ? 'Insufficient AI Credit for this job. No OpenAI request was made.'
+      : status === 400 || status === 409
+        ? 'One of the selected entries changed or is no longer eligible. Review Experience & achievements and choose again.'
+        : 'Generation failed. Please try again.';
+    this.generationErrors.update(errors => ({ ...errors, [jobId]: message }));
+    this.notify.emit({ message, type: 'error' });
+    console.error('[JobResults] Document generation failed');
+  }
+
+  cancelGeneration(job: Job): void {
+    const jobId = this.jobStateKey(job);
+    if (
+      !jobId
+      || !this.generatingJobIds().has(jobId)
+      || this.cancellingGenerationIds().has(jobId)
+      || this.cancellationSubscriptions.has(jobId)
+    ) {
+      return;
+    }
+
+    this.cancellingGenerationIds.update(ids => new Set(ids).add(jobId));
+    this.generationErrors.update(errors => ({...errors, [jobId]: undefined}));
+    let settled = false;
+    let cancellation: Observable<void>;
+    try {
+      cancellation = this.documentGenerationService.cancel(jobId);
+    } catch (error) {
+      this.handleCancellationFailure(jobId, error);
+      return;
+    }
+
+    const subscription = cancellation.subscribe({
+      next: () => {
+        if (settled || this.destroyed) return;
+        settled = true;
+        this.acceptCancellation(jobId);
+      },
+      error: error => {
+        if (settled || this.destroyed) return;
+        settled = true;
+        this.handleCancellationFailure(jobId, error);
+      },
+      complete: () => {
+        if (settled || this.destroyed) return;
+        settled = true;
+        this.acceptCancellation(jobId);
+      },
     });
+    if (!subscription.closed && !settled) {
+      this.cancellationSubscriptions.set(jobId, subscription);
+    }
+  }
+
+  private restorePendingGenerations(jobs: Job[]): void {
+    if (
+      this.destroyed
+      || jobs.length === 0
+    ) {
+      return;
+    }
+
+    const jobsByCanonicalId = new Map(
+      jobs
+        .map(job => [this.jobStateKey(job), job] as const)
+        .filter(([jobId]) => Boolean(jobId)),
+    );
+    let pendingGenerations: PendingDocumentGeneration[];
+    try {
+      pendingGenerations = this.documentGenerationService.pendingGenerations();
+    } catch {
+      console.error('[JobResults] Pending document generation discovery failed');
+      return;
+    }
+
+    for (const pending of pendingGenerations) {
+      const job = jobsByCanonicalId.get(pending.canonicalJobId);
+      if (
+        !job
+        || this.activeGenerationIds.has(pending.canonicalJobId)
+        || this.resumedGenerationIds.has(pending.canonicalJobId)
+      ) {
+        continue;
+      }
+      this.rememberPendingEvidence(pending);
+      this.resumedGenerationIds.add(pending.canonicalJobId);
+      this.markGenerationProcessing(
+        pending.canonicalJobId,
+        'Restoring document generation...',
+      );
+      this.subscribeToGeneration(
+        pending.canonicalJobId,
+        job,
+        () => this.documentGenerationService.resume(pending.canonicalJobId),
+      );
+    }
+  }
+
+  private rememberPendingEvidence(pending: PendingDocumentGeneration): void {
+    if (this.evidenceSelectionDrafts()[pending.canonicalJobId]) return;
+    const draft: EvidenceSelectionDraft = {
+      cvEvidenceIds: [...pending.evidence.cv.entryIds],
+      coverLetterEvidenceIds: [...pending.evidence.coverLetter.entryIds],
+      cvSectionOrder: [...pending.evidence.cv.sectionOrder],
+      coverLetterSectionOrder: [...pending.evidence.coverLetter.sectionOrder],
+    };
+    this.evidenceSelectionDrafts.update(drafts => ({
+      ...drafts,
+      [pending.canonicalJobId]: draft,
+    }));
+  }
+
+  private markGenerationProcessing(jobId: string, message: string): void {
+    this.generatingJobIds.update(ids => new Set(ids).add(jobId));
+    this.generationMessages.update(messages => ({...messages, [jobId]: message}));
+    this.generationErrors.update(errors => ({...errors, [jobId]: undefined}));
+  }
+
+  private subscribeToGeneration(
+    jobId: string,
+    sourceJob: Job,
+    createRequest: () => Observable<DocumentGenerationResponse>,
+  ): void {
+    if (this.destroyed || this.activeGenerationIds.has(jobId)) return;
+    this.activeGenerationIds.add(jobId);
+
+    let generation: Observable<DocumentGenerationResponse>;
+    try {
+      generation = createRequest();
+    } catch (error) {
+      this.clearGenerationSubscription(jobId);
+      this.handleGenerationFailure(jobId, error);
+      return;
+    }
+
+    let settled = false;
+    const subscription = generation.subscribe({
+      next: response => {
+        if (settled || this.destroyed) return;
+        settled = true;
+        this.clearGenerationSubscription(jobId);
+        this.acceptGeneration(jobId, sourceJob, response);
+      },
+      error: error => {
+        if (settled || this.destroyed) return;
+        settled = true;
+        this.clearGenerationSubscription(jobId);
+        this.handleGenerationFailure(jobId, error);
+      },
+      complete: () => {
+        if (settled || this.destroyed) return;
+        settled = true;
+        this.clearGenerationSubscription(jobId);
+        if (this.cancellingGenerationIds().has(jobId)) {
+          return;
+        }
+        this.handleGenerationFailure(
+          jobId,
+          new Error('Document generation completed without an authoritative result.'),
+        );
+      },
+    });
+    if (!subscription.closed && !settled) {
+      this.generationSubscriptions.set(jobId, subscription);
+    }
+  }
+
+  private acceptGeneration(
+    jobId: string,
+    sourceJob: Job,
+    response: DocumentGenerationResponse,
+  ): void {
+    const current = this.currentJob(jobId) ?? sourceJob;
+    this.generationDownloads.update(downloads => ({
+      ...downloads,
+      [jobId]: response.downloads,
+    }));
+    this.generatedDocumentIds.update(documentIds => ({
+      ...documentIds,
+      [jobId]: {
+        cvDocumentId: response.cvDocumentId,
+        coverLetterDocumentId: response.coverLetterDocumentId,
+      },
+    }));
+    this.updateJobLocally(jobId, {
+      applicationId: response.applicationId,
+      applicationStatus: 'DOCUMENTS_GENERATED',
+      cvDocumentId: response.cvDocumentId ?? current.cvDocumentId,
+      coverLetterDocumentId: response.coverLetterDocumentId ?? current.coverLetterDocumentId,
+    });
+    this.clearEvidenceDraft(jobId);
+    this.finishGeneration(jobId, 'CV and cover letter generated successfully.');
+    this.notify.emit({
+      message: 'CV and cover letter generated successfully.',
+      type: 'success',
+    });
+    this.applicationChanged.emit();
+  }
+
+  private acceptCancellation(jobId: string): void {
+    this.generationSubscriptions.get(jobId)?.unsubscribe();
+    this.clearGenerationSubscription(jobId);
+    this.finishGeneration(
+      jobId,
+      'Generation cancelled. Your evidence selection is ready to edit.',
+    );
+    this.generationErrors.update(errors => ({...errors, [jobId]: undefined}));
+    this.notify.emit({
+      message: 'Document generation cancelled. Your evidence selection has been kept.',
+      type: 'info',
+    });
+  }
+
+  private handleCancellationFailure(jobId: string, error: unknown): void {
+    this.clearCancellationSubscription(jobId);
+    const message = error instanceof DocumentGenerationError
+      ? error.message
+      : 'Cancellation could not be confirmed. Generation is still being reconciled.';
+    this.generationErrors.update(errors => ({...errors, [jobId]: message}));
+    this.notify.emit({message, type: 'error'});
+    console.error('[JobResults] Document generation cancellation failed');
+  }
+
+  private clearGenerationSubscription(jobId: string): void {
+    this.activeGenerationIds.delete(jobId);
+    this.generationSubscriptions.delete(jobId);
+  }
+
+  private clearCancellationSubscription(jobId: string): void {
+    this.cancellationSubscriptions.delete(jobId);
+    this.cancellingGenerationIds.update(ids => {
+      if (!ids.has(jobId)) return ids;
+      const next = new Set(ids);
+      next.delete(jobId);
+      return next;
+    });
+  }
+
+  private isCurrentEvidenceRequest(jobKey: string, requestSequence: number): boolean {
+    const active = this.evidenceSelectionJob();
+    return this.evidenceRequestSequence === requestSequence
+      && Boolean(active)
+      && this.jobStateKey(active as Job) === jobKey;
+  }
+
+  private restoreEvidenceDraft(jobKey: string): void {
+    const draft = this.evidenceSelectionDrafts()[jobKey];
+    this.cvEvidenceIds.set([...(draft?.cvEvidenceIds ?? [])]);
+    this.coverLetterEvidenceIds.set([...(draft?.coverLetterEvidenceIds ?? [])]);
+    this.cvSectionOrder.set([...(draft?.cvSectionOrder ?? [])]);
+    this.coverLetterSectionOrder.set([...(draft?.coverLetterSectionOrder ?? [])]);
+  }
+
+  private persistEvidenceDraft(): void {
+    const job = this.evidenceSelectionJob();
+    const jobKey = job ? this.jobStateKey(job) : '';
+    if (!jobKey) return;
+    if (
+      this.cvEvidenceIds().length === 0
+      && this.coverLetterEvidenceIds().length === 0
+      && this.cvSectionOrder().length === 0
+      && this.coverLetterSectionOrder().length === 0
+    ) {
+      this.clearEvidenceDraft(jobKey);
+      return;
+    }
+    const draft: EvidenceSelectionDraft = {
+      cvEvidenceIds: [...this.cvEvidenceIds()],
+      coverLetterEvidenceIds: [...this.coverLetterEvidenceIds()],
+      cvSectionOrder: [...this.cvSectionOrder()],
+      coverLetterSectionOrder: [...this.coverLetterSectionOrder()],
+    };
+    this.evidenceSelectionDrafts.update(drafts => ({
+      ...drafts,
+      [jobKey]: draft,
+    }));
+  }
+
+  private clearEvidenceDraft(jobKey: string): void {
+    this.evidenceSelectionDrafts.update(drafts => Object.fromEntries(
+      Object.entries(drafts).filter(([key]) => key !== jobKey),
+    ));
+  }
+
+  private reconcileEvidenceSelection(): void {
+    const eligibleById = new Map(this.eligibleEvidence().map(entry => [entry.entryId, entry]));
+    const cv = this.reconciledPurpose(
+      this.cvEvidenceIds(),
+      this.cvSectionOrder(),
+      eligibleById,
+    );
+    const coverLetter = this.reconciledPurpose(
+      this.coverLetterEvidenceIds(),
+      this.coverLetterSectionOrder(),
+      eligibleById,
+    );
+    this.cvEvidenceIds.set(cv.entryIds);
+    this.cvSectionOrder.set(cv.sectionOrder);
+    this.coverLetterEvidenceIds.set(coverLetter.entryIds);
+    this.coverLetterSectionOrder.set(coverLetter.sectionOrder);
+    this.persistEvidenceDraft();
+  }
+
+  private reconciledPurpose(
+    entryIds: string[],
+    sectionOrder: EvidenceSection[],
+    eligibleById: Map<string, EvidenceEntry>,
+  ): {entryIds: string[]; sectionOrder: EvidenceSection[]} {
+    const seenEntryIds = new Set<string>();
+    const eligibleIds = entryIds.filter(entryId => {
+      if (seenEntryIds.has(entryId) || !eligibleById.has(entryId)) return false;
+      seenEntryIds.add(entryId);
+      return true;
+    });
+    const selectedCategories = eligibleIds.map(entryId =>
+      eligibleById.get(entryId)?.category as unknown as EvidenceSection);
+    const categorySet = new Set(selectedCategories);
+    const seenSections = new Set<EvidenceSection>();
+    const reconciledOrder = sectionOrder.filter(section => {
+      if (seenSections.has(section) || !categorySet.has(section)) return false;
+      seenSections.add(section);
+      return true;
+    });
+    for (const category of selectedCategories) {
+      if (category && !seenSections.has(category)) {
+        reconciledOrder.push(category);
+        seenSections.add(category);
+      }
+    }
+    return {entryIds: eligibleIds, sectionOrder: reconciledOrder};
+  }
+
+  private validEvidenceSelection(
+    entryIds: string[],
+    sectionOrder: EvidenceSection[],
+  ): boolean {
+    if (entryIds.length === 0 || sectionOrder.length === 0) return false;
+    const eligibleById = new Map(this.eligibleEvidence().map(entry => [entry.entryId, entry]));
+    if (new Set(entryIds).size !== entryIds.length
+      || entryIds.some(entryId => !eligibleById.has(entryId))) {
+      return false;
+    }
+    const selectedCategories = new Set(entryIds.map(entryId =>
+      eligibleById.get(entryId)?.category as unknown as EvidenceSection));
+    return selectedCategories.size === sectionOrder.length
+      && new Set(sectionOrder).size === sectionOrder.length
+      && sectionOrder.every(section => selectedCategories.has(section));
   }
 
   private move<T>(values: T[], value: T, direction: -1 | 1): T[] {
@@ -628,8 +1422,8 @@ export class JobResultsComponent implements OnInit {
   }
 
   trackApplication(job: Job): void {
-    if (!job.id || job.applicationId || this.creatingApplicationIds().has(job.id)) return;
-    const jobId = job.id;
+    const jobId = this.jobStateKey(job);
+    if (!jobId || job.applicationId || this.creatingApplicationIds().has(jobId)) return;
     this.creatingApplicationIds.update(ids => new Set(ids).add(jobId));
 
     this.applicationTracker.createApplication(job).subscribe({
@@ -642,6 +1436,11 @@ export class JobResultsComponent implements OnInit {
         this.applicationChanged.emit();
       },
       error: () => {
+        this.creatingApplicationIds.update(ids => {
+          const next = new Set(ids);
+          next.delete(jobId);
+          return next;
+        });
         this.notify.emit({
           message: 'Could not add this application. Please try again.',
           type: 'error',
@@ -659,7 +1458,8 @@ export class JobResultsComponent implements OnInit {
   }
 
   updateApplicationStatus(job: Job, status: StatusUpdateTarget): void {
-    if (!job.id || !job.applicationId || this.updatingApplicationStatuses()[job.id]) {
+    const jobId = this.jobStateKey(job);
+    if (!jobId || !job.applicationId || this.updatingApplicationStatuses()[jobId]) {
       if (!job.applicationId) {
         this.notify.emit({
           message: 'Application record is missing. Generate documents before updating status.',
@@ -669,9 +1469,15 @@ export class JobResultsComponent implements OnInit {
       return;
     }
 
-    const jobId = job.id;
     this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: status }));
-    this.applicationTracker.updateStatus(job.applicationId, status).subscribe({
+    this.applicationTracker.updateStatus(job.applicationId, status).pipe(
+      finalize(() => {
+        this.updatingApplicationStatuses.update(updating => ({
+          ...updating,
+          [jobId]: undefined,
+        }));
+      }),
+    ).subscribe({
       next: (record) => {
         this.applyApplicationRecord(jobId, record);
         const updatedStatus = record.status ?? status;
@@ -684,21 +1490,18 @@ export class JobResultsComponent implements OnInit {
         this.applicationChanged.emit();
       },
       error: () => {
-        this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: undefined }));
         this.notify.emit({
           message: 'Could not update application status. Please try again.',
           type: 'error',
         });
         console.error('[JobResults] Application status update failed');
       },
-      complete: () => {
-        this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: undefined }));
-      },
     });
   }
 
   withdrawGeneratedApplication(job: Job): void {
-    if (!job.id || !job.applicationId || this.updatingApplicationStatuses()[job.id]) {
+    const jobId = this.jobStateKey(job);
+    if (!jobId || !job.applicationId || this.updatingApplicationStatuses()[jobId]) {
       if (!job.applicationId) {
         this.notify.emit({
           message: 'Application record is missing. Generate documents before withdrawing.',
@@ -708,10 +1511,31 @@ export class JobResultsComponent implements OnInit {
       return;
     }
 
-    const jobId = job.id;
     this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: 'WITHDRAWN' }));
-    this.applicationTracker.withdrawGeneratedApplication(job.applicationId).subscribe({
-      next: () => {
+    this.applicationTracker.withdrawGeneratedApplication(job.applicationId).pipe(
+      finalize(() => {
+        this.updatingApplicationStatuses.update(updating => ({
+          ...updating,
+          [jobId]: undefined,
+        }));
+      }),
+    ).subscribe({
+      next: outcome => {
+        if (outcome.processing || outcome.withdrawn !== true) {
+          const message = outcome.retryable
+            ? 'Withdrawal was not completed. Your application and documents have been retained; try again.'
+            : (
+                outcome.message
+                || 'Withdrawal needs recovery. Your application and documents have been retained.'
+              );
+          this.generationMessages.update(messages => ({
+            ...messages,
+            [jobId]: message,
+          }));
+          this.notify.emit({message, type: 'info'});
+          this.applicationChanged.emit();
+          return;
+        }
         this.updateJobLocally(jobId, {
           applicationId: undefined,
           applicationStatus: 'NEW',
@@ -731,22 +1555,18 @@ export class JobResultsComponent implements OnInit {
         this.applicationChanged.emit();
       },
       error: () => {
-        this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: undefined }));
         this.notify.emit({
           message: 'Could not withdraw generated application. Please try again.',
           type: 'error',
         });
         console.error('[JobResults] Generated application withdrawal failed');
       },
-      complete: () => {
-        this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: undefined }));
-      },
     });
   }
 
   uploadReplacement(job: Job, request: DocumentUploadRequest): void {
-    if (!job.id || this.uploadingDocuments()[job.id]) return;
-    const jobId = job.id;
+    const jobId = this.jobStateKey(job);
+    if (!jobId || this.uploadingDocuments()[jobId]) return;
 
     this.uploadingDocuments.update(uploading => ({ ...uploading, [jobId]: request.documentKind }));
     this.documentGenerationService.uploadReplacement(
@@ -754,6 +1574,17 @@ export class JobResultsComponent implements OnInit {
       request.file,
       request.documentKind
     ).then((response) => {
+      if (response.processing) {
+        const message = response.retryable
+          ? `${request.documentKind === 'CV' ? 'CV' : 'Cover letter'} replacement was not completed. Your current documents have been retained; try again.`
+          : (
+              response.message
+              || `${request.documentKind === 'CV' ? 'CV' : 'Cover letter'} replacement needs recovery. Your current documents have been retained.`
+            );
+        this.notify.emit({message, type: 'info'});
+        this.applicationChanged.emit();
+        return;
+      }
       this.generationDownloads.update(downloads => {
         const existing = downloads[jobId] ?? {};
         const next: GenerationDownloadsResponse = {
@@ -802,6 +1633,8 @@ export class JobResultsComponent implements OnInit {
   }
 
   private finishGeneration(jobId: string, message: string | undefined): void {
+    this.cancellationSubscriptions.get(jobId)?.unsubscribe();
+    this.clearCancellationSubscription(jobId);
     this.generatingJobIds.update(ids => {
       const next = new Set(ids);
       next.delete(jobId);
@@ -828,77 +1661,49 @@ export class JobResultsComponent implements OnInit {
     }));
   }
 
-  private reconcilePersistedApplication(
+  private updateJobLocally(jobId: string, patch: Partial<Job>): void {
+    this.localApplicationMutationSequence.set(jobId, this.searchRequestSequence);
+    const applyPatch = (job: Job): Job =>
+      this.jobStateKey(job) === jobId ? { ...job, ...patch } : job;
+    this.roleStates.update(states => Object.fromEntries(
+      Object.entries(states).map(([key, state]) => [
+        key,
+        {
+          ...state,
+          pages: Object.fromEntries(
+            Object.entries(state.pages).map(([page, cached]) => [
+              page,
+              {
+                ...cached,
+                jobs: cached.jobs.map(applyPatch),
+              },
+            ]),
+          ),
+        },
+      ]),
+    ));
+  }
+
+  private preserveNewerLocalApplicationState(
     job: Job,
-    applications: TrackedApplication[],
+    requestSequence: number,
   ): Job {
-    const application = applications
-      .filter(candidate => this.matchesPersistedApplication(job, candidate))
-      .sort((left, right) => this.applicationTime(right) - this.applicationTime(left))[0];
-
-    if (!application) return job;
-
+    const jobId = this.jobStateKey(job);
+    const mutationSequence = this.localApplicationMutationSequence.get(jobId);
+    if (mutationSequence == null || mutationSequence < requestSequence) {
+      return job;
+    }
+    const current = this.currentJob(jobId);
+    if (!current) return job;
     return {
       ...job,
-      applicationId: application.applicationId ?? application.id,
-      applicationStatus: application.status,
-      cvDocumentId: application.cvDocumentId,
-      coverLetterDocumentId: application.coverLetterDocumentId,
-      appliedAt: application.appliedAt,
-      applicationUpdatedAt: application.updatedAt,
+      applicationId: current.applicationId,
+      applicationStatus: current.applicationStatus,
+      cvDocumentId: current.cvDocumentId,
+      coverLetterDocumentId: current.coverLetterDocumentId,
+      appliedAt: current.appliedAt,
+      applicationUpdatedAt: current.applicationUpdatedAt,
     };
-  }
-
-  private matchesPersistedApplication(job: Job, application: TrackedApplication): boolean {
-    const jobIds = new Set(
-      [job.canonicalJobId, job.id]
-        .map(value => value?.trim())
-        .filter((value): value is string => Boolean(value))
-    );
-    const applicationJobIds = [
-      application.canonicalJobId,
-      application.jobId,
-    ]
-      .map(value => value?.trim())
-      .filter((value): value is string => Boolean(value));
-
-    if (applicationJobIds.some(id => jobIds.has(id))) return true;
-
-    const jobExternalId = job.externalJobId?.trim();
-    const applicationExternalId = application.externalJobId?.trim();
-    if (!jobExternalId || !applicationExternalId || jobExternalId !== applicationExternalId) {
-      return false;
-    }
-
-    const jobProvider = (
-      job.primarySource
-      ?? job.provider
-      ?? job.sources?.[0]?.integrationProvider
-      ?? job.sources?.[0]?.provider
-    )?.trim().toUpperCase();
-    const applicationProvider = (
-      application.providerName
-      ?? application.provider
-      ?? application.source
-    )?.trim().toUpperCase();
-
-    return Boolean(jobProvider && applicationProvider && jobProvider === applicationProvider);
-  }
-
-  private applicationTime(application: TrackedApplication): number {
-    const value = application.updatedAt ?? application.createdAt;
-    if (!value) return 0;
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? 0 : parsed;
-  }
-
-  private updateJobLocally(jobId: string, patch: Partial<Job>): void {
-    const applyPatch = (job: Job): Job => job.id === jobId ? { ...job, ...patch } : job;
-    this.jobs.update(jobs => jobs.map(applyPatch));
-    this.roleResults.update(groups => groups.map(group => ({
-      ...group,
-      jobs: group.jobs.map(applyPatch),
-    })));
   }
 
   private friendlyStatus(status: string): string {
@@ -908,14 +1713,15 @@ export class JobResultsComponent implements OnInit {
   private reconcileGeneratedState(jobs: Job[]): void {
     const visibleGeneratedJobIds = new Set(
       jobs
-        .filter(job => job.id && this.hasPersistedGeneratedDocuments(job))
-        .map(job => job.id as string)
+        .filter(job => this.jobStateKey(job) && this.hasPersistedGeneratedDocuments(job))
+        .map(job => this.jobStateKey(job))
     );
 
     this.generationDownloads.update(downloads => this.keepKeys(downloads, visibleGeneratedJobIds));
     this.generatedDocumentIds.update(documentIds => this.keepKeys(documentIds, visibleGeneratedJobIds));
     this.generationMessages.update(messages => this.keepKeys(messages, visibleGeneratedJobIds));
-    this.generationErrors.update(errors => this.keepKeys(errors, new Set(jobs.map(job => job.id).filter(Boolean) as string[])));
+    this.generationErrors.update(errors =>
+      this.keepKeys(errors, new Set(jobs.map(job => this.jobStateKey(job)).filter(Boolean))));
   }
 
   private keepKeys<T>(record: Record<string, T | undefined>, keysToKeep: Set<string>): Record<string, T | undefined> {
@@ -937,13 +1743,13 @@ export class JobResultsComponent implements OnInit {
   }
 
   private currentJob(jobId: string): Job | undefined {
-    return this.jobs().find(job => job.id === jobId);
+    return this.jobs().find(job => this.jobStateKey(job) === jobId);
   }
 
   private rehydrateGeneratedDownloads(jobs: Job[]): void {
     for (const job of jobs) {
-      if (!job.id || !this.hasPersistedGeneratedDocuments(job)) continue;
-      const jobId = job.id;
+      const jobId = this.jobStateKey(job);
+      if (!jobId || !this.hasPersistedGeneratedDocuments(job)) continue;
       const cvDocumentId = job.cvDocumentId as string;
       const coverLetterDocumentId = job.coverLetterDocumentId as string;
       this.generatedDocumentIds.update(documentIds => ({

@@ -7,6 +7,7 @@ describe('user management proxy boundary', () => {
       'x-user-id': 'another-user',
       cookie: 'jsc-access-local=opaque; jsc-csrf-local=csrf-value',
       'x-csrf-token': 'csrf-value',
+      'if-match': '"3"',
     }, true);
 
     expect(headers).toEqual({
@@ -14,14 +15,57 @@ describe('user management proxy boundary', () => {
       'Content-Type': 'application/json',
       Cookie: 'jsc-access-local=opaque; jsc-csrf-local=csrf-value',
       'X-CSRF-Token': 'csrf-value',
+      'If-Match': '"3"',
     });
     expect(headers['Authorization']).toBeUndefined();
     expect(headers['X-User-Id']).toBeUndefined();
   });
 
   it('does not invent a cookie, CSRF value, or request body header', () => {
-    expect(userManagementHeaders({authorization: 'Bearer forged'}, false)).toEqual({
+    expect(userManagementHeaders({
+      authorization: 'Bearer forged',
+      'if-match': 'attacker-selected',
+    }, false)).toEqual({
       Accept: 'application/json',
+    });
+  });
+
+  it('forwards progressive profile updates as PATCH with revision awareness', async () => {
+    const fetchMock = vi.fn(async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      void input;
+      void init;
+      return new Response('{"success":true}', {
+        status: 200,
+        headers: {'Content-Type': 'application/json'},
+      });
+    });
+
+    await callUserManagement(
+      'https://gateway.example.test',
+      '/api/auth/profile',
+      'PATCH',
+      {
+        cookie: 'jsc-access-local=opaque; jsc-csrf-local=csrf-value',
+        'x-csrf-token': 'csrf-value',
+        'if-match': '"4"',
+      },
+      {workPreferences: {noticePeriodDays: 30}},
+      100,
+      fetchMock as typeof fetch,
+    );
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://gateway.example.test/api/auth/profile');
+    expect(init?.method).toBe('PATCH');
+    expect(init?.headers).toEqual({
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Cookie: 'jsc-access-local=opaque; jsc-csrf-local=csrf-value',
+      'X-CSRF-Token': 'csrf-value',
+      'If-Match': '"4"',
     });
   });
 

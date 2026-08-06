@@ -202,3 +202,47 @@
   background: #eef2ff;
   color: #3730a3;
 }
+
+.evidence-summary-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.evidence-summary-row {
+  display: grid;
+  gap: 0.1rem;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.5rem;
+}
+
+.evidence-summary-row dt {
+  color: #0f172a;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.evidence-summary-row dd {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.6875rem;
+}
+
+.manage-evidence-button {
+  width: 100%;
+  border: 1px solid #c7d2fe;
+  border-radius: 0.75rem;
+  background: #eef2ff;
+  padding: 0.6rem 0.7rem;
+  color: #3730a3;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.summary-retry {
+  border: 1px solid #fecdd3;
+  border-radius: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  color: #be123c;
+  font-size: 0.6875rem;
+  font-weight: 800;
+}

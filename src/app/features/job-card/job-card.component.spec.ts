@@ -39,6 +39,21 @@ describe('JobCardComponent', () => {
     expandCard(fixture);
 
     expect(fixture.nativeElement.textContent).toContain('Generate CV & Cover Letter');
+    expect(fixture.nativeElement.textContent).toContain('Not saved');
+  });
+
+  it('shows a saved job accurately and still allows document generation', () => {
+    const fixture = createFixture({
+      job: {...job, applicationId: 'app-1', applicationStatus: 'SAVED'},
+    });
+    expandCard(fixture);
+
+    expect(fixture.nativeElement.textContent).toContain('Saved to applications');
+    expect(fixture.nativeElement.textContent).toContain('Generate CV & Cover Letter');
+    expect(fixture.nativeElement.textContent).not.toContain('Add to My Applications');
+
+    openStatusMenu(fixture);
+    expect(fixture.nativeElement.textContent).toContain('Mark as Applied');
   });
 
   it('keeps document generation disabled while identifying application tracking as available', () => {
@@ -46,25 +61,62 @@ describe('JobCardComponent', () => {
     expandCard(fixture);
     const button: HTMLButtonElement = fixture.debugElement
       .queryAll(By.css('button'))
-      .find(candidate => candidate.nativeElement.textContent.includes('CV & Cover Letter — Coming next'))!
+      .find(candidate => candidate.nativeElement.textContent.includes('CV & Cover Letter unavailable'))!
       .nativeElement;
 
     expect(button.disabled).toBe(true);
     expect(fixture.nativeElement.textContent).toContain(
-      'Application tracking is available. CV and cover-letter generation is coming next.',
+      'Application tracking is available. CV and cover-letter generation is not enabled in this environment.',
     );
   });
 
   it('shows the loading state and disables generation while generating', () => {
     const fixture = createFixture({ generating: true });
     expandCard(fixture);
+    const progress: HTMLElement = fixture.debugElement
+      .query(By.css('[data-testid="generation-progress"]'))
+      .nativeElement;
     const button: HTMLButtonElement = fixture.debugElement
       .queryAll(By.css('button'))
       .find(candidate => candidate.nativeElement.textContent.includes('Generating CV & Cover Letter'))!
       .nativeElement;
 
     expect(fixture.nativeElement.textContent).toContain('Generating CV & Cover Letter...');
+    expect(progress.textContent).toContain('Generating');
+    expect(progress.getAttribute('role')).toBe('status');
+    expect(progress.getAttribute('aria-live')).toBe('polite');
+    expect(progress.querySelector('.generation-spinner')?.getAttribute('aria-hidden')).toBe('true');
+    expect(fixture.nativeElement.textContent).not.toContain('Processing');
     expect(button.disabled).toBe(true);
+  });
+
+  it('keeps cancellation visible while processing and emits it only when available', () => {
+    const fixture = createFixture({generating: true});
+    const emitted: Job[] = [];
+    fixture.componentInstance.cancelGeneration.subscribe(selected => emitted.push(selected));
+    const cancelButton: HTMLButtonElement = fixture.debugElement
+      .query(By.css('[data-testid="cancel-generation-button"]'))
+      .nativeElement;
+
+    expect(cancelButton.getAttribute('aria-label')).toBe('Cancel document generation');
+    expect(cancelButton.getAttribute('title')).toBe('Cancel generation');
+    expect(cancelButton.disabled).toBe(false);
+    cancelButton.click();
+
+    expect(emitted).toEqual([job]);
+
+    fixture.componentRef.setInput('cancellingGeneration', true);
+    fixture.detectChanges();
+    const cancellingButton: HTMLButtonElement = fixture.debugElement
+      .query(By.css('[data-testid="cancel-generation-button"]'))
+      .nativeElement;
+    cancellingButton.click();
+
+    expect(cancellingButton.disabled).toBe(true);
+    expect(cancellingButton.getAttribute('aria-label')).toBe('Cancelling document generation');
+    expect(fixture.debugElement.query(By.css('[data-testid="generation-progress"]')).nativeElement.textContent)
+      .toContain('Cancelling');
+    expect(emitted).toEqual([job]);
   });
 
   it('shows the success panel and four download buttons after generation', () => {
@@ -116,6 +168,72 @@ describe('JobCardComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Posted date unavailable');
   });
 
+  it('shows a bounded accessible description preview and restores it after expanding', () => {
+    const tail = 'FINAL REQUIREMENT THAT MUST ONLY APPEAR AFTER EXPANSION';
+    const description = `${'Build accessible services with a collaborative delivery team. '.repeat(12)}${tail}`;
+    const fixture = createFixture({ job: { ...job, description } });
+    expandCard(fixture);
+
+    const descriptionElement: HTMLElement = fixture.debugElement
+      .query(By.css('.job-description'))
+      .nativeElement;
+    const toggle: HTMLButtonElement = fixture.debugElement
+      .query(By.css('.description-toggle'))
+      .nativeElement;
+
+    expect(descriptionElement.textContent).toContain('Build accessible services');
+    expect(descriptionElement.textContent).not.toContain(tail);
+    expect(descriptionElement.textContent).toContain('…');
+    expect(toggle.textContent).toContain('Read more');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-controls')).toBe(descriptionElement.id);
+    expect(descriptionElement.id).toBe('job-card-job-1-description');
+
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(descriptionElement.textContent).toContain(tail);
+    expect(toggle.textContent).toContain('Show less');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(descriptionElement.textContent).not.toContain(tail);
+    expect(toggle.textContent).toContain('Read more');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('shows short descriptions without an unnecessary expansion control and preserves newlines', () => {
+    const fixture = createFixture({
+      job: { ...job, description: 'First line\r\nSecond line\nThird line' },
+    });
+    expandCard(fixture);
+
+    expect(fixture.componentInstance.fullDescription()).toBe('First line\nSecond line\nThird line');
+    expect(fixture.debugElement.query(By.css('.job-description')).nativeElement.textContent)
+      .toContain('First line\nSecond line\nThird line');
+    expect(fixture.debugElement.query(By.css('.description-toggle'))).toBeNull();
+  });
+
+  it('keeps an expanded description open while the in-card generation panel becomes active', () => {
+    const tail = 'PERSISTENT DESCRIPTION TAIL';
+    const description = `${'Relevant job detail '.repeat(30)}${tail}`;
+    const fixture = createFixture({ job: { ...job, description } });
+    expandCard(fixture);
+    fixture.debugElement.query(By.css('.description-toggle')).nativeElement.click();
+    fixture.detectChanges();
+
+    fixture.componentRef.setInput('generationPanelActive', true);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.detailsExpanded()).toBe(true);
+    expect(fixture.componentInstance.descriptionExpanded()).toBe(true);
+    expect(fixture.debugElement.query(By.css('.job-description')).nativeElement.textContent)
+      .toContain(tail);
+    expect(fixture.debugElement.query(By.css('[data-testid="generate-documents-button"]'))).toBeNull();
+  });
+
   it('renders provider HTML as text without creating executable elements', () => {
     const unsafeDescription = '<img src=x onerror="window.providerHtmlExecuted=true">';
     const fixture = createFixture({ job: { ...job, description: unsafeDescription } });
@@ -123,6 +241,23 @@ describe('JobCardComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain(unsafeDescription);
     expect(fixture.debugElement.query(By.css('.expanded-content img'))).toBeNull();
+  });
+
+  it('keeps provider HTML inert after expanding a long description', () => {
+    const unsafeTail = '<script>window.providerHtmlExecuted=true</script>';
+    const fixture = createFixture({
+      job: {
+        ...job,
+        description: `${'Safe provider text '.repeat(35)}${unsafeTail}`,
+      },
+    });
+    expandCard(fixture);
+
+    fixture.debugElement.query(By.css('.description-toggle')).nativeElement.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain(unsafeTail);
+    expect(fixture.debugElement.query(By.css('.expanded-content script'))).toBeNull();
   });
 
   it.each([
@@ -244,7 +379,7 @@ describe('JobCardComponent', () => {
     const fixture = createFixture({ job: { ...job, applicationId: 'app-1', applicationStatus: 'ACCEPTED' } });
     expandCard(fixture);
 
-    expect(fixture.nativeElement.textContent).toContain('ACCEPTED');
+    expect(fixture.nativeElement.textContent).toContain('Accepted');
     expect(fixture.nativeElement.textContent).not.toContain('Mark as Applied');
     expect(fixture.nativeElement.textContent).not.toContain('Mark Interview');
     expect(fixture.debugElement.query(By.css('.status-dropdown'))).toBeNull();
@@ -302,20 +437,24 @@ describe('JobCardComponent', () => {
   function createFixture(options: {
     job?: Job;
     generating?: boolean;
+    cancellingGeneration?: boolean;
     generationError?: string;
     downloads?: GenerationDownloadsResponse;
     applicationToolsAvailable?: boolean;
     applicationTrackingAvailable?: boolean;
+    generationPanelActive?: boolean;
   } = {}) {
     const fixture = TestBed.createComponent(JobCardComponent);
     fixture.componentRef.setInput('job', options.job ?? job);
     fixture.componentRef.setInput('generating', options.generating ?? false);
+    fixture.componentRef.setInput('cancellingGeneration', options.cancellingGeneration ?? false);
     fixture.componentRef.setInput('generationError', options.generationError ?? null);
     fixture.componentRef.setInput('downloads', options.downloads ?? null);
     fixture.componentRef.setInput('cvDocumentId', 'cv-123');
     fixture.componentRef.setInput('coverLetterDocumentId', 'cl-456');
     fixture.componentRef.setInput('applicationToolsAvailable', options.applicationToolsAvailable ?? true);
     fixture.componentRef.setInput('applicationTrackingAvailable', options.applicationTrackingAvailable ?? true);
+    fixture.componentRef.setInput('generationPanelActive', options.generationPanelActive ?? false);
     fixture.detectChanges();
     return fixture;
   }

@@ -13,6 +13,7 @@ interface JobSearchModeResponse {
 
 export type DocumentGenerationMode =
   | 'FIXTURE_LLM'
+  | 'REAL_LLM'
   | 'REQUIRED_VALIDATION';
 
 interface DocumentGenerationModeResponse {

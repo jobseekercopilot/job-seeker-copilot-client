@@ -90,7 +90,7 @@
                 <summary>
                   <span>
                     <mat-icon>verified_user</mat-icon>
-                    Evidence used
+                    Experience &amp; achievements used
                   </span>
                   <small>{{ evidenceScopeText(application) }}</small>
                   <mat-icon class="evidence-expand">expand_more</mat-icon>
@@ -117,13 +117,13 @@
                           </dd>
                         </div>
                         <div>
-                          <dt>Evidence snapshot</dt>
+                          <dt>Source snapshot</dt>
                           <dd [title]="item.reference.evidenceProvenance?.evidenceSnapshotId ?? ''">
                             {{ compactReference(item.reference.evidenceProvenance?.evidenceSnapshotId) }}
                           </dd>
                         </div>
                         <div>
-                          <dt>Evidence revisions</dt>
+                          <dt>Source revisions</dt>
                           <dd>{{ evidenceCount(item.reference) }}</dd>
                         </div>
                         <div>

@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, OnInit, output, signal } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
+import { finalize } from 'rxjs';
 import {
   ApplicationEvent,
   ApplicationFilter,
@@ -88,6 +89,7 @@ export class MyApplicationsComponent implements OnInit {
   downloads = signal<Record<string, GenerationDownloadsResponse | undefined>>({});
   uploadingDocuments = signal<Record<string, DocumentKind | undefined>>({});
   updatingStatuses = signal<Record<string, StatusUpdateTarget | undefined>>({});
+  private refreshSequence = 0;
 
   readonly filters: FilterOption[] = [
     { key: 'ALL', label: 'All' },
@@ -119,15 +121,18 @@ export class MyApplicationsComponent implements OnInit {
   }
 
   refresh(): void {
+    const requestSequence = ++this.refreshSequence;
     this.loading.set(true);
     this.error.set(null);
     this.applicationTracker.listApplications().subscribe({
       next: applications => {
+        if (requestSequence !== this.refreshSequence) return;
         this.applications.set(applications);
         this.loading.set(false);
-        this.loadDownloads(applications);
+        this.loadDownloads(applications, requestSequence);
       },
       error: err => {
+        if (requestSequence !== this.refreshSequence) return;
         this.loading.set(false);
         this.error.set('Could not load saved applications. Please try again.');
         console.error('Application list load failed:', err);
@@ -145,6 +150,9 @@ export class MyApplicationsComponent implements OnInit {
 
   statusLabel(status: string | undefined | null): string {
     if (!status) return 'Unknown';
+    if (status === 'SAVED') return 'Saved to applications';
+    if (status === 'DOCUMENTS_GENERATED') return 'Documents prepared';
+    if (status === 'REJECTED_BY_USER') return 'Offer declined';
     return status.toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase());
   }
 
@@ -225,7 +233,7 @@ export class MyApplicationsComponent implements OnInit {
   groundingLabel(reference: DocumentVersionReference): string {
     switch (reference.groundingState) {
       case 'AI_GENERATED_EVIDENCE_VALIDATED':
-        return 'Evidence validated';
+        return 'Sources validated';
       case 'USER_EDITED_REVALIDATED':
         return 'Edit revalidated';
       case 'USER_EDITED_REVIEW_REQUIRED':
@@ -254,6 +262,10 @@ export class MyApplicationsComponent implements OnInit {
 
   actions(application: TrackedApplication): { label: string; status: StatusUpdateTarget; danger?: boolean }[] {
     switch (application.status) {
+      case 'SAVED':
+        return [
+          { label: 'Mark as Applied', status: 'APPLIED' },
+        ];
       case 'DOCUMENTS_GENERATED':
         return [
           { label: 'Mark as Applied', status: 'APPLIED' },
@@ -322,6 +334,16 @@ export class MyApplicationsComponent implements OnInit {
       file,
       kind,
     ).then(response => {
+      if (response.processing) {
+        this.notify.emit({
+          message: response.retryable
+            ? 'Document replacement was not completed. Your current document has been kept; try the replacement again.'
+            : (response.message || 'Document replacement needs recovery. Your current document has been kept.'),
+          type: 'info',
+        });
+        this.applicationChanged.emit();
+        return;
+      }
       const existing = this.downloads()[applicationId] ?? {};
       this.downloads.update(downloads => ({
         ...downloads,
@@ -362,7 +384,12 @@ export class MyApplicationsComponent implements OnInit {
     }
 
     this.updatingStatuses.update(updating => ({ ...updating, [applicationId]: status }));
-    this.applicationTracker.updateStatus(applicationId, status).subscribe({
+    this.applicationTracker.updateStatus(applicationId, status).pipe(
+      finalize(() => this.updatingStatuses.update(updating => ({
+        ...updating,
+        [applicationId]: undefined,
+      }))),
+    ).subscribe({
       next: record => {
         this.upsert(record);
         this.notify.emit({ message: `Application updated to ${this.statusLabel(record.status)}.`, type: 'success' });
@@ -372,7 +399,6 @@ export class MyApplicationsComponent implements OnInit {
         this.notify.emit({ message: 'Could not update application status. Please try again.', type: 'error' });
         console.error('Application workspace status update failed:', err);
       },
-      complete: () => this.updatingStatuses.update(updating => ({ ...updating, [applicationId]: undefined })),
     });
   }
 
@@ -418,8 +444,23 @@ export class MyApplicationsComponent implements OnInit {
   private withdraw(application: TrackedApplication): void {
     const applicationId = this.applicationId(application);
     this.updatingStatuses.update(updating => ({ ...updating, [applicationId]: 'WITHDRAWN' }));
-    this.applicationTracker.withdrawGeneratedApplication(applicationId).subscribe({
-      next: () => {
+    this.applicationTracker.withdrawGeneratedApplication(applicationId).pipe(
+      finalize(() => this.updatingStatuses.update(updating => ({
+        ...updating,
+        [applicationId]: undefined,
+      }))),
+    ).subscribe({
+      next: outcome => {
+        if (outcome.processing) {
+          this.notify.emit({
+            message: outcome.retryable
+              ? 'Withdrawal was not completed. The application has been retained; try again.'
+              : (outcome.message || 'Withdrawal needs recovery. The application has been retained.'),
+            type: 'info',
+          });
+          this.applicationChanged.emit();
+          return;
+        }
         this.applications.update(applications => applications.filter(item => this.applicationId(item) !== applicationId));
         this.notify.emit({ message: 'Generated application withdrawn.', type: 'success' });
         this.applicationChanged.emit();
@@ -428,7 +469,6 @@ export class MyApplicationsComponent implements OnInit {
         this.notify.emit({ message: 'Could not withdraw this application. Please try again.', type: 'error' });
         console.error('Application workspace withdraw failed:', err);
       },
-      complete: () => this.updatingStatuses.update(updating => ({ ...updating, [applicationId]: undefined })),
     });
   }
 
@@ -439,33 +479,50 @@ export class MyApplicationsComponent implements OnInit {
     ));
   }
 
-  private loadDownloads(applications: TrackedApplication[]): void {
+  private loadDownloads(
+    applications: TrackedApplication[],
+    requestSequence: number,
+  ): void {
     for (const application of applications) {
       const applicationId = this.applicationId(application);
       if (!applicationId) continue;
       if (application.cvDocumentId) {
         this.documentGenerationService.latestFiles(application.cvDocumentId).subscribe({
-          next: cv => this.downloads.update(downloads => ({
-            ...downloads,
-            [applicationId]: { ...(downloads[applicationId] ?? {}), cv },
-          })),
+          next: cv => {
+            if (requestSequence !== this.refreshSequence) return;
+            this.downloads.update(downloads => ({
+              ...downloads,
+              [applicationId]: { ...(downloads[applicationId] ?? {}), cv },
+            }));
+          },
           error: err => console.warn('Could not load CV files for application:', err),
         });
         this.documentGenerationService.allFileMetadata(application.cvDocumentId).subscribe({
-          next: metadata => this.recordDocumentUpload(applicationId, metadata),
+          next: metadata => {
+            if (requestSequence === this.refreshSequence) {
+              this.recordDocumentUpload(applicationId, metadata);
+            }
+          },
           error: err => console.warn('Could not load CV upload history for application:', err),
         });
       }
       if (application.coverLetterDocumentId) {
         this.documentGenerationService.latestFiles(application.coverLetterDocumentId).subscribe({
-          next: coverLetter => this.downloads.update(downloads => ({
-            ...downloads,
-            [applicationId]: { ...(downloads[applicationId] ?? {}), coverLetter },
-          })),
+          next: coverLetter => {
+            if (requestSequence !== this.refreshSequence) return;
+            this.downloads.update(downloads => ({
+              ...downloads,
+              [applicationId]: { ...(downloads[applicationId] ?? {}), coverLetter },
+            }));
+          },
           error: err => console.warn('Could not load cover letter files for application:', err),
         });
         this.documentGenerationService.allFileMetadata(application.coverLetterDocumentId).subscribe({
-          next: metadata => this.recordDocumentUpload(applicationId, metadata),
+          next: metadata => {
+            if (requestSequence === this.refreshSequence) {
+              this.recordDocumentUpload(applicationId, metadata);
+            }
+          },
           error: err => console.warn('Could not load cover letter upload history for application:', err),
         });
       }
@@ -491,7 +548,8 @@ export class MyApplicationsComponent implements OnInit {
       case 'ALL':
         return true;
       case 'NEEDS_ACTION':
-        return application.status === 'DOCUMENTS_GENERATED';
+        return application.status === 'SAVED'
+          || application.status === 'DOCUMENTS_GENERATED';
       case 'APPLIED':
         return application.status === 'APPLIED';
       case 'INTERVIEW':

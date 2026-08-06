@@ -1,8 +1,19 @@
 import {TestBed} from '@angular/core/testing';
 import axe from 'axe-core';
-import {of, throwError} from 'rxjs';
-import type {GatewayResponse, ProfilePreferencesUpdate, UserProfile} from '../../api';
-import {ProfileService} from '../../api';
+import {of, Subject, throwError} from 'rxjs';
+import type {
+  EvidenceEntry,
+  EvidenceRevision,
+  GatewayResponse,
+  ProfilePreferencesUpdate,
+  UserProfile,
+} from '../../api';
+import {
+  EvidenceEntryCategoryEnum,
+  EvidenceLibraryService,
+  EvidenceRevisionConfirmationStateEnum,
+  ProfileService,
+} from '../../api';
 import {BrowserSessionService} from '../../services/browser-session.service';
 import {idleLocationLookup, LocationService} from '../../services/location.service';
 import {ClaimantProfileComponent} from './claimant-profile';
@@ -14,6 +25,7 @@ describe('ClaimantProfileComponent progressive profile', () => {
   const handleAuthenticatedError = vi.fn();
   const updateCurrentProfile = vi.fn();
   const lookup = vi.fn(() => of(idleLocationLookup));
+  const listEvidence = vi.fn();
 
   beforeEach(async () => {
     updatePreferences.mockReset();
@@ -23,6 +35,8 @@ describe('ClaimantProfileComponent progressive profile', () => {
     updateCurrentProfile.mockReset();
     lookup.mockReset();
     lookup.mockReturnValue(of(idleLocationLookup));
+    listEvidence.mockReset();
+    listEvidence.mockReturnValue(of(evidenceEntries()));
     updatePreferences.mockImplementation((update: ProfilePreferencesUpdate) => of<GatewayResponse>({
       statusCode: 200,
       success: true,
@@ -42,6 +56,7 @@ describe('ClaimantProfileComponent progressive profile', () => {
       imports: [ClaimantProfileComponent],
       providers: [
         {provide: ProfileService, useValue: {updatePreferences}},
+        {provide: EvidenceLibraryService, useValue: {listEvidence}},
         {provide: BrowserSessionService, useValue: {
           ensureCsrf,
           invalidateCsrf,
@@ -86,13 +101,15 @@ describe('ClaimantProfileComponent progressive profile', () => {
 
     expect(fixture.componentInstance.profileProgress()).toBe(0);
     expect(fixture.componentInstance.searchReady()).toBe(false);
-    expect(fixture.nativeElement.textContent).toContain('Add a target role or skill');
-    expect(fixture.nativeElement.textContent).toContain('Documents need confirmed evidence');
+    expect(fixture.nativeElement.textContent).not.toContain('Add a target role or skill');
+    expect(fixture.nativeElement.textContent).not.toContain('Documents need confirmed evidence');
+    expect(fixture.nativeElement.textContent).not.toContain('Sign out');
 
     fixture.componentInstance.localTargetRoles.set(['Support analyst']);
+    fixture.componentInstance.localWorkplaceArrangements.set(['REMOTE']);
     fixture.detectChanges();
     expect(fixture.componentInstance.searchReady()).toBe(true);
-    expect(fixture.nativeElement.textContent).toContain('Search can begin');
+    expect(fixture.nativeElement.textContent).toContain('Find jobs');
   });
 
   it('stores a selected location and clears stale derived metadata before lookup', () => {
@@ -130,6 +147,72 @@ describe('ClaimantProfileComponent progressive profile', () => {
     expect(handleAuthenticatedError).toHaveBeenCalledWith(expect.objectContaining({status: 409}));
   });
 
+  it('uses professional section labels with unique accessible Edit controls', async () => {
+    const fixture = TestBed.createComponent(ClaimantProfileComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent;
+    for (const label of [
+      'Target roles',
+      'Key skills',
+      'Location and commute',
+      'Working preferences',
+      'Availability',
+    ]) {
+      expect(text).toContain(label);
+      expect(fixture.nativeElement.querySelector(`[aria-label="Edit ${label}"]`)).not.toBeNull();
+    }
+    expect(text).not.toContain('What jobs are you looking for?');
+    expect(text).not.toContain('Which skills should stand out?');
+    expect(text).not.toContain('When can you start?');
+  });
+
+  it('shows a compact three-row active evidence summary and opens the manager', async () => {
+    const fixture = TestBed.createComponent(ClaimantProfileComponent);
+    const openManager = vi.fn();
+    fixture.componentInstance.manageEvidenceRequested.subscribe(openManager);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const summary = fixture.nativeElement.querySelector(
+      '[data-testid="profile-evidence-summary"]',
+    ) as HTMLElement;
+    expect(summary.querySelectorAll('.evidence-summary-row')).toHaveLength(3);
+    expect(summary.textContent).toContain('Work experience');
+    expect(summary.textContent).toContain('1 confirmed · 1 needs review');
+    expect(summary.textContent).toContain('Qualifications');
+    expect(summary.textContent).toContain('1 confirmed');
+    expect(summary.textContent).toContain('Projects and achievements');
+    expect(summary.textContent).toContain('No entries yet');
+
+    (summary.querySelector('#manage-experience-evidence') as HTMLButtonElement).click();
+    expect(openManager).toHaveBeenCalledOnce();
+  });
+
+  it('does not let a stale evidence response overwrite the current summary', async () => {
+    const older = new Subject<EvidenceEntry[]>();
+    const newer = new Subject<EvidenceEntry[]>();
+    listEvidence.mockReturnValueOnce(older).mockReturnValueOnce(newer);
+    const fixture = TestBed.createComponent(ClaimantProfileComponent);
+    fixture.detectChanges();
+
+    const refresh = fixture.componentInstance.refreshEvidenceSummary();
+    newer.next([evidenceEntries()[2]]);
+    newer.complete();
+    await refresh;
+    older.next(evidenceEntries());
+    older.complete();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.evidenceEntries()).toHaveLength(1);
+    expect(fixture.componentInstance.evidenceSummary(
+      fixture.componentInstance.evidenceSummaryRows[1],
+    )).toBe('1 confirmed');
+  });
+
   it('has no detectable axe violations in read and section-edit modes', async () => {
     const fixture = TestBed.createComponent(ClaimantProfileComponent);
     fixture.detectChanges();
@@ -148,4 +231,65 @@ async function expectNoAxeViolations(element: HTMLElement): Promise<void> {
     id: violation.id,
     targets: violation.nodes.map(node => node.target),
   }))).toEqual([]);
+}
+
+function evidenceEntries(): EvidenceEntry[] {
+  return [
+    evidenceEntry(
+      EvidenceEntryCategoryEnum.Employment,
+      EvidenceRevisionConfirmationStateEnum.UserConfirmed,
+      false,
+      'employment-confirmed',
+    ),
+    evidenceEntry(
+      EvidenceEntryCategoryEnum.Freelance,
+      EvidenceRevisionConfirmationStateEnum.UserConfirmed,
+      true,
+      'freelance-review',
+    ),
+    evidenceEntry(
+      EvidenceEntryCategoryEnum.QualificationTraining,
+      EvidenceRevisionConfirmationStateEnum.UserConfirmed,
+      false,
+      'qualification',
+    ),
+    {
+      ...evidenceEntry(
+        EvidenceEntryCategoryEnum.Project,
+        EvidenceRevisionConfirmationStateEnum.UserConfirmed,
+        false,
+        'archived-project',
+      ),
+      lifecycle: 'ARCHIVED',
+    } as EvidenceEntry,
+  ];
+}
+
+function evidenceEntry(
+  category: EvidenceEntry['category'],
+  confirmationState: EvidenceRevision['confirmationState'],
+  reviewRequired: boolean,
+  id: string,
+): EvidenceEntry {
+  return {
+    entryId: id,
+    category,
+    lifecycle: 'ACTIVE',
+    visibility: 'VISIBLE',
+    reviewRequired,
+    version: 1,
+    revisions: [{
+      revisionId: `${id}-revision`,
+      revisionNumber: 1,
+      confirmationState,
+      contentDigest: 'digest',
+      heading: id,
+      ongoing: false,
+      demonstratedSkills: [],
+      supportingLinks: [],
+      facts: [],
+      createdAt: '2026-07-29T00:00:00Z',
+      createdBy: 'USER',
+    } as EvidenceRevision],
+  } as EvidenceEntry;
 }

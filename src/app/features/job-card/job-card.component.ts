@@ -41,9 +41,11 @@ export interface DocumentUploadRequest {
 })
 export class JobCardComponent {
   private static readonly MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+  private static readonly DESCRIPTION_PREVIEW_LENGTH = 450;
 
   job = input.required<Job>();
   generating = input(false);
+  cancellingGeneration = input(false);
   generationMessage = input<string | null>(null);
   generationError = input<string | null>(null);
   downloads = input<GenerationDownloadsResponse | null>(null);
@@ -54,8 +56,10 @@ export class JobCardComponent {
   creatingApplication = input(false);
   applicationTrackingAvailable = input(false);
   applicationToolsAvailable = input(false);
+  generationPanelActive = input(false);
   trackApplication = output<Job>();
   generateDocuments = output<Job>();
+  cancelGeneration = output<Job>();
   updateApplicationStatus = output<StatusUpdateTarget>();
   downloadFile = output<DownloadFileResponse>();
   uploadReplacement = output<DocumentUploadRequest>();
@@ -63,6 +67,7 @@ export class JobCardComponent {
   withdrawGeneratedApplication = output<boolean>();
 
   expanded = signal(false);
+  descriptionExpanded = signal(false);
   statusMenuOpen = signal(false);
   uploadModalKind = signal<UploadDocumentKind | null>(null);
   selectedFile = signal<File | null>(null);
@@ -70,19 +75,32 @@ export class JobCardComponent {
 
   demoFocusId(): string {
     const job = this.job();
-    return `job-card-${this.slug(job.id ?? job.applicationId ?? `${job.title ?? 'role'}-${job.company ?? 'company'}`)}`;
+    return `job-card-${this.slug(job.canonicalJobId ?? job.id ?? job.applicationId ?? `${job.title ?? 'role'}-${job.company ?? 'company'}`)}`;
   }
 
   demoFocusGroup(): string {
     const job = this.job();
-    return `job-card-${this.slug(job.applicationId ?? job.id ?? `${job.title ?? 'role'}-${job.company ?? 'company'}`)}`;
+    return `job-card-${this.slug(job.applicationId ?? job.canonicalJobId ?? job.id ?? `${job.title ?? 'role'}-${job.company ?? 'company'}`)}`;
   }
 
   statusMenuId(): string {
     return `${this.demoFocusGroup()}-status-menu`;
   }
 
+  detailsId(): string {
+    return `${this.demoFocusId()}-details`;
+  }
+
+  descriptionId(): string {
+    return `${this.demoFocusId()}-description`;
+  }
+
+  detailsExpanded(): boolean {
+    return this.expanded() || this.generationPanelActive();
+  }
+
   toggle(): void {
+    if (this.generationPanelActive()) return;
     this.statusMenuOpen.set(false);
     this.expanded.update(v => !v);
   }
@@ -95,7 +113,46 @@ export class JobCardComponent {
 
   requestGeneration(): void {
     if (!this.applicationToolsAvailable()) return;
+    this.expanded.set(true);
     this.generateDocuments.emit(this.job());
+  }
+
+  requestCancelGeneration(): void {
+    if (!this.generating() || this.cancellingGeneration()) return;
+    this.cancelGeneration.emit(this.job());
+  }
+
+  fullDescription(): string {
+    const description = this.job().description?.replace(/\r\n?/g, '\n').trim();
+    return description || 'No description available.';
+  }
+
+  hasExpandableDescription(): boolean {
+    return this.fullDescription().length > JobCardComponent.DESCRIPTION_PREVIEW_LENGTH;
+  }
+
+  visibleDescription(): string {
+    const description = this.fullDescription();
+    if (this.descriptionExpanded() || !this.hasExpandableDescription()) {
+      return description;
+    }
+
+    const limit = JobCardComponent.DESCRIPTION_PREVIEW_LENGTH;
+    const candidate = description.slice(0, limit + 1);
+    const whitespaceBoundary = Math.max(
+      candidate.lastIndexOf(' '),
+      candidate.lastIndexOf('\n'),
+      candidate.lastIndexOf('\t'),
+    );
+    const cutoff = whitespaceBoundary >= Math.floor(limit * 0.75)
+      ? whitespaceBoundary
+      : limit;
+    return `${description.slice(0, cutoff).trimEnd()}…`;
+  }
+
+  toggleDescription(): void {
+    if (!this.hasExpandableDescription()) return;
+    this.descriptionExpanded.update(expanded => !expanded);
   }
 
   requestTrackApplication(): void {
@@ -173,7 +230,8 @@ export class JobCardComponent {
   }
 
   dismissError(): void {
-    const jobId = this.job().id;
+    const job = this.job();
+    const jobId = job.canonicalJobId ?? job.id;
     if (jobId) {
       this.dismissGenerationError.emit(jobId);
     }
@@ -208,12 +266,42 @@ export class JobCardComponent {
     const applicationStatus = this.job().applicationStatus;
     if (applicationStatus) return applicationStatus;
     if (this.downloads()) return 'DOCUMENTS_GENERATED';
-    if (this.generating()) return 'DOCUMENTS_GENERATED';
     return 'NEW';
+  }
+
+  statusDisplayLabel(): string {
+    switch (this.statusLabel()) {
+      case 'NEW':
+        return 'Not saved';
+      case 'SAVED':
+        return 'Saved to applications';
+      case 'DOCUMENTS_GENERATED':
+        return 'Documents prepared';
+      case 'APPLIED':
+        return 'Applied';
+      case 'INTERVIEW':
+        return 'Interview';
+      case 'OFFER':
+        return 'Offer';
+      case 'UNSUCCESSFUL':
+        return 'Unsuccessful';
+      case 'ACCEPTED':
+        return 'Accepted';
+      case 'REJECTED_BY_USER':
+        return 'Offer declined';
+      case 'WITHDRAWN':
+        return 'Withdrawn';
+      default:
+        return 'Application status unavailable';
+    }
   }
 
   statusActions(): StatusAction[] {
     switch (this.statusLabel() as ApplicationStatus) {
+      case 'SAVED':
+        return [
+          { label: 'Mark as Applied', icon: 'send', status: 'APPLIED', variant: 'primary' },
+        ];
       case 'DOCUMENTS_GENERATED':
         return [
           { label: 'Mark as Applied', icon: 'send', status: 'APPLIED', variant: 'primary' },

@@ -68,13 +68,13 @@ test('pins the reporting summary and evidence contract', async () => {
   assert.ok(contract.paths['/api/v1/reports/evidence.txt']);
 });
 
-test('pins the progressive-profile and Evidence Library UMG browser contract', async () => {
+test('pins the stabilised progressive-profile and Evidence Library UMG browser contract', async () => {
   const lock = await verifyContractManifest(rootDir);
   const umg = lock.contracts.find(({id}) => id === 'user-management-gateway');
   const contract = JSON.parse(await readFile(resolve(rootDir, umg.path), 'utf8'));
 
-  assert.equal(umg.version, '2.1.0');
-  assert.equal(contract.info.version, '2.1.0');
+  assert.equal(umg.version, '3.0.0');
+  assert.equal(contract.info.version, '3.0.0');
   assert.equal(contract.components.schemas.User.properties.token, undefined);
   assert.equal(contract.components.securitySchemes.browserSession.in, 'cookie');
   assert.equal(contract.components.securitySchemes.browserRefresh.in, 'cookie');
@@ -131,6 +131,22 @@ test('pins the progressive-profile and Evidence Library UMG browser contract', a
     contract.components.schemas.EvidenceEntry.properties.supersededByEntryId.type,
     ['string', 'null'],
   );
+  assert.equal(
+    contract.components.schemas.EvidenceWriteRequest.properties.description.maxLength,
+    2000,
+  );
+  assert.equal(
+    contract.components.schemas.EvidenceWriteRequest.properties.responsibilities.maxLength,
+    2000,
+  );
+  assert.equal(
+    contract.components.schemas.EvidenceWriteRequest.properties.achievements.maxLength,
+    2000,
+  );
+  assert.equal(
+    contract.components.schemas.EvidenceFact.properties.factValue.maxLength,
+    2000,
+  );
   assert.ok(contract.paths['/api/auth/profile'].patch);
   assert.ok(contract.paths['/api/auth/evidence'].post);
   assert.ok(contract.paths['/api/auth/evidence/{entryId}/confirm'].post);
@@ -162,12 +178,22 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
     await readFile(resolve(rootDir, gateway.path), 'utf8'),
   );
   const savedJob = contract.components.schemas.SavedJobResponse.properties;
+  const targetRoleResults =
+    contract.components.schemas.TargetRoleJobResults;
 
-  assert.equal(gateway.version, '1.6.0');
+  assert.equal(gateway.version, '1.7.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
   assert.equal(
     gateway.sourceCommit,
-    'c3b601aa4594c9c884eb89a5b141a0b8801e2cb3',
+    '590b693f74c4b1ab6813df9a4f627e9958fa70ab',
+  );
+  assert.equal(
+    gateway.sha256,
+    '99a98c212e06cdef2701daa7e0f349ddeb9dfead5fcf0ee8f787ea00d4b36a2a',
+  );
+  assert.equal(
+    gateway.path,
+    'contracts/job-finder-gateway/1.7.0/openapi.json',
   );
   assert.equal(gateway.output, 'src/app/api/job-finder');
   assert.deepEqual(gateway.requiredPaths, [
@@ -177,7 +203,7 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
     '/api/jobs/applications',
     '/api/jobs/applications/{applicationId}/status',
   ]);
-  assert.equal(contract.info.version, '1.6.0');
+  assert.equal(contract.info.version, '1.7.0');
   assert.equal(savedJob.savedJobId.format, 'uuid');
   assert.equal(savedJob.snapshotVersion.format, 'int64');
   assert.equal(savedJob.contentSha256.type, 'string');
@@ -217,6 +243,43 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
     contract.components.schemas.DocumentEvidenceProvenance.properties
       .evidenceSnapshotDigest,
   );
+  assert.deepEqual(targetRoleResults.required, [
+    'jobs',
+    'matchingStatus',
+    'page',
+    'pageSize',
+    'providerResults',
+    'searchStatus',
+    'targetRole',
+    'totalPages',
+    'totalResults',
+  ]);
+  assert.deepEqual(targetRoleResults.properties.page, {
+    maximum: 100,
+    minimum: 1,
+    type: 'integer',
+    format: 'int32',
+  });
+  assert.deepEqual(targetRoleResults.properties.pageSize, {
+    maximum: 50,
+    minimum: 1,
+    type: 'integer',
+    format: 'int32',
+  });
+  assert.equal(targetRoleResults.properties.totalResults.minimum, 0);
+  assert.equal(targetRoleResults.properties.totalPages.minimum, 0);
+  assert.deepEqual(targetRoleResults.properties.searchStatus.enum, [
+    'COMPLETE',
+    'PARTIAL',
+    'UNAVAILABLE',
+  ]);
+  assert.deepEqual(targetRoleResults.properties.matchingStatus.enum, [
+    'COMPLETE',
+    'NOT_RUN',
+    'UNAVAILABLE',
+    'TIMED_OUT',
+    'SATURATED',
+  ]);
 });
 
 test('rejects unsafe or incomplete Job Finder saved-job drift', async (context) => {
@@ -283,7 +346,7 @@ test('rejects unsafe or incomplete Job Finder saved-job drift', async (context) 
         delete contract.components.schemas.DocumentEvidenceProvenance
           .properties.evidenceSnapshotDigest;
       },
-      /must expose exact non-sensitive application evidence provenance/,
+      /must expose canonical application identity, version and exact non-sensitive evidence provenance/,
     ],
   ];
 
@@ -291,6 +354,103 @@ test('rejects unsafe or incomplete Job Finder saved-job drift', async (context) 
     await context.test(name, async () => {
       const fixtureRoot = await contractFixture('job-finder-gateway', mutate);
       await assert.rejects(verifyContractManifest(fixtureRoot), expected);
+    });
+  }
+});
+
+test('rejects incomplete or unbounded role-scoped Job Finder paging', async (context) => {
+  const requiredFields = [
+    'targetRole',
+    'jobs',
+    'totalResults',
+    'page',
+    'pageSize',
+    'totalPages',
+    'providerResults',
+    'searchStatus',
+    'matchingStatus',
+  ];
+  for (const field of requiredFields) {
+    await context.test(`optional ${field}`, async () => {
+      const fixtureRoot = await contractFixture(
+        'job-finder-gateway',
+        contract => {
+          contract.components.schemas.TargetRoleJobResults.required =
+            contract.components.schemas.TargetRoleJobResults.required
+              .filter(candidate => candidate !== field);
+        },
+      );
+      await assert.rejects(
+        verifyContractManifest(fixtureRoot),
+        /must require all nine role-scoped result, paging and provider fields/,
+      );
+    });
+  }
+
+  const boundedCases = [
+    ['page minimum', 'page', 'minimum', 0],
+    ['page maximum', 'page', 'maximum', 101],
+    ['page-size minimum', 'pageSize', 'minimum', 0],
+    ['page-size maximum', 'pageSize', 'maximum', 51],
+    ['total-results minimum', 'totalResults', 'minimum', -1],
+    ['total-pages minimum', 'totalPages', 'minimum', -1],
+  ];
+  for (const [name, field, bound, value] of boundedCases) {
+    await context.test(name, async () => {
+      const fixtureRoot = await contractFixture(
+        'job-finder-gateway',
+        contract => {
+          contract.components.schemas.TargetRoleJobResults
+            .properties[field][bound] = value;
+        },
+      );
+      await assert.rejects(
+        verifyContractManifest(fixtureRoot),
+        /must preserve bounded role-scoped paging and result types/,
+      );
+    });
+  }
+
+  const statusCases = [
+    [
+      'non-string search status',
+      contract => {
+        contract.components.schemas.TargetRoleJobResults
+          .properties.searchStatus.type = 'integer';
+      },
+    ],
+    [
+      'extra search status',
+      contract => {
+        contract.components.schemas.TargetRoleJobResults
+          .properties.searchStatus.enum.push('UNKNOWN');
+      },
+    ],
+    [
+      'non-string matching status',
+      contract => {
+        contract.components.schemas.TargetRoleJobResults
+          .properties.matchingStatus.type = 'integer';
+      },
+    ],
+    [
+      'extra matching status',
+      contract => {
+        contract.components.schemas.TargetRoleJobResults
+          .properties.matchingStatus.enum.push('UNKNOWN');
+      },
+    ],
+  ];
+  for (const [name, mutate] of statusCases) {
+    await context.test(name, async () => {
+      const fixtureRoot = await contractFixture(
+        'job-finder-gateway',
+        mutate,
+      );
+      await assert.rejects(
+        verifyContractManifest(fixtureRoot),
+        /must preserve role-scoped search and matching status semantics/,
+      );
     });
   }
 });

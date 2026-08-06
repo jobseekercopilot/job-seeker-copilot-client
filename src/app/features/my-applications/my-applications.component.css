@@ -180,6 +180,12 @@
   color: #c2410c;
 }
 
+.status-saved {
+  background: var(--color-soft-blue);
+  border-color: #bfdbfe;
+  color: var(--color-primary-hover);
+}
+
 .status-applied {
   background: var(--color-soft-blue);
   border-color: #bfdbfe;

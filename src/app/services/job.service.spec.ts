@@ -39,7 +39,50 @@ describe('JobService', () => {
       false,
       {transferCache: false},
     );
+    const request = searchJobs.mock.calls[0][0];
+    expect(request.aspirations.locations).toEqual([]);
+    expect(request.workPreferences).not.toHaveProperty('employmentType');
+    expect(request.workPreferences).not.toHaveProperty('remotePreference');
     expect(response).toEqual({jobs: [], totalResults: 0});
+  });
+
+  it('scopes a paged search to one target role and forwards server sorting', () => {
+    const searchJobs = vi.fn((request: JobSearchRequest) => {
+      void request;
+      return of({jobs: [], totalResults: 0});
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        JobService,
+        {provide: GeneratedJobSearchService, useValue: {searchJobs}},
+        {provide: BrowserSessionService, useValue: {ensureCsrf: vi.fn(() => of(undefined))}},
+        {provide: LocationService, useValue: {getByPostcode: vi.fn()}},
+      ],
+    });
+
+    TestBed.inject(JobService)
+      .searchJobs(
+        'TypeScript',
+        '',
+        'Programmer, Software Developer',
+        '{}',
+        {
+          targetRole: 'Software Developer',
+          page: 3,
+          pageSize: 10,
+          sort: 'NEWEST_POSTED',
+        },
+      )
+      .subscribe();
+
+    expect(searchJobs.mock.calls[0][0]).toEqual(expect.objectContaining({
+      aspirations: expect.objectContaining({
+        desiredRoles: ['Software Developer'],
+      }),
+      page: 3,
+      pageSize: 10,
+      sort: 'NEWEST_POSTED',
+    }));
   });
 
   it('uses the searchable town before the postcode while retaining secure home coordinates', () => {
@@ -93,5 +136,65 @@ describe('JobService', () => {
       false,
       {transferCache: false},
     );
+  });
+
+  it('translates profile work choices into only supported search employment types', () => {
+    const searchJobs = vi.fn((request: JobSearchRequest) => {
+      void request;
+      return of({jobs: [], totalResults: 0});
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        JobService,
+        {provide: GeneratedJobSearchService, useValue: {searchJobs}},
+        {provide: BrowserSessionService, useValue: {ensureCsrf: vi.fn(() => of(undefined))}},
+        {provide: LocationService, useValue: {getByPostcode: vi.fn()}},
+      ],
+    });
+
+    TestBed.inject(JobService)
+      .searchJobs(
+        '',
+        '',
+        'Software Developer',
+        JSON.stringify({
+          employmentTypes: ['PERMANENT', 'CONTRACT', 'FIXED_TERM'],
+          workingPatterns: ['FULL_TIME', 'FLEXIBLE', 'CONTRACT'],
+        }),
+      )
+      .subscribe();
+
+    expect(searchJobs.mock.calls[0][0].workPreferences!.employmentType)
+      .toEqual(['CONTRACT', 'FULL_TIME']);
+  });
+
+  it('omits unsupported profile work choices from the search request', () => {
+    const searchJobs = vi.fn((request: JobSearchRequest) => {
+      void request;
+      return of({jobs: [], totalResults: 0});
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        JobService,
+        {provide: GeneratedJobSearchService, useValue: {searchJobs}},
+        {provide: BrowserSessionService, useValue: {ensureCsrf: vi.fn(() => of(undefined))}},
+        {provide: LocationService, useValue: {getByPostcode: vi.fn()}},
+      ],
+    });
+
+    TestBed.inject(JobService)
+      .searchJobs(
+        '',
+        '',
+        'Software Developer',
+        JSON.stringify({
+          employmentTypes: ['PERMANENT', 'APPRENTICESHIP'],
+          workingPatterns: ['FLEXIBLE', 'WEEKEND'],
+        }),
+      )
+      .subscribe();
+
+    expect(searchJobs.mock.calls[0][0].workPreferences!)
+      .not.toHaveProperty('employmentType');
   });
 });

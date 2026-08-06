@@ -10,6 +10,20 @@ import {
 import { LocationService } from './location.service';
 import { BrowserSessionService } from './browser-session.service';
 
+const SEARCH_EMPLOYMENT_TYPES = new Set([
+  'FULL_TIME',
+  'PART_TIME',
+  'CONTRACT',
+  'TEMPORARY',
+]);
+
+export interface JobSearchOptions {
+  targetRole?: string;
+  page?: number;
+  pageSize?: number;
+  sort?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -31,30 +45,40 @@ export class JobService {
     skills: string,
     experience: string,
     aspirations: string,
-    workPrefs: string
+    workPrefs: string,
+    options: JobSearchOptions = {},
   ): Observable<ReedJobSearchResponse> {
     // Parse aspirations into desired roles
-    const desiredRoles = aspirations
+    const profileRoles = aspirations
       .split(',')
       .map(s => s.trim())
       .filter(s => s.length > 0);
+    const targetRole = options.targetRole?.trim();
+    const desiredRoles = targetRole ? [targetRole] : profileRoles;
 
     // Parse workPrefs JSON string into work preferences
-    let employmentType: string[] = ['FULL_TIME'];
-    let remotePreference: 'REMOTE' | 'HYBRID' | 'ONSITE' = 'HYBRID';
+    let employmentType: string[] = [];
+    let remotePreference: string | undefined;
     try {
       const prefs = JSON.parse(workPrefs);
-      const hours = (prefs.hours || '').toLowerCase();
-      if (hours.includes('full')) {
-        employmentType = ['FULL_TIME'];
-      } else if (hours.includes('part')) {
-        employmentType = ['PART_TIME'];
-      }
-      if (prefs.remotePreference) {
-        remotePreference = prefs.remotePreference;
-      }
+      const profileEmploymentTypes = Array.isArray(prefs.employmentTypes)
+        ? prefs.employmentTypes
+        : [];
+      const profileWorkingPatterns = Array.isArray(prefs.workingPatterns)
+        ? prefs.workingPatterns
+        : [];
+      employmentType = Array.from(new Set(
+        [...profileEmploymentTypes, ...profileWorkingPatterns]
+          .filter((value: unknown): value is string =>
+            typeof value === 'string' && SEARCH_EMPLOYMENT_TYPES.has(value)),
+      ));
+      const workplaceArrangements = Array.isArray(prefs.workplaceArrangements)
+        ? prefs.workplaceArrangements
+        : [];
+      remotePreference = workplaceArrangements.find((value: unknown): value is string =>
+        typeof value === 'string' && ['REMOTE', 'HYBRID', 'ONSITE'].includes(value));
     } catch {
-      // Use defaults if parsing fails
+      // Omit preferences that the user has not supplied.
     }
 
     // Default location from work prefs postcode or use a broad search
@@ -90,10 +114,6 @@ export class JobService {
     } catch {
       // Fallback
     }
-    if (locations.length === 0) {
-      locations.push('United Kingdom');
-    }
-
     const body: JobSearchRequest = {
       aspirations: {
         desiredRoles,
@@ -104,8 +124,8 @@ export class JobService {
         locations
       },
       workPreferences: {
-        employmentType,
-        remotePreference,
+        ...(employmentType.length ? {employmentType} : {}),
+        ...(remotePreference ? {remotePreference} : {}),
         companySize: [],
         culture: [],
         homeLatitude,
@@ -116,7 +136,12 @@ export class JobService {
         postcode: homePostcode,
         latitude: homeLatitude,
         longitude: homeLongitude
-      }
+      },
+      ...(options.page != null ? {page: options.page} : {}),
+      ...(options.pageSize != null ? {pageSize: options.pageSize} : {}),
+      ...(options.sort
+        ? {sort: options.sort as JobSearchRequest['sort']}
+        : {}),
     };
 
     return this.browserSession.ensureCsrf().pipe(

@@ -10,11 +10,11 @@
   "contracts": [
     {
       "id": "user-management-gateway",
-      "version": "2.1.0",
+      "version": "3.0.0",
       "sourceRepository": "jobseekercopilot/user-management-gateway",
-      "sourceCommit": "3ff2890c6e958291d78edd3d3cd44a17a1e582fc",
-      "path": "contracts/user-management-gateway/2.1.0/openapi.json",
-      "sha256": "7ad9e2ca6c98042ef1763e32126e3906c16eb0ac7fe3f4ff7be3ca29651d10ca",
+      "sourceCommit": "90f184fcd7ef578ddebd9a22b8ead159f9bf8338",
+      "path": "contracts/user-management-gateway/3.0.0/openapi.json",
+      "sha256": "6140e0c9f18d39726dfa521913fba192e33bbda932d6304c8db210187cba9582",
       "output": "src/app/api",
       "requiredPaths": [
         "/api/auth/csrf",
@@ -50,11 +50,11 @@
     },
     {
       "id": "job-finder-gateway",
-      "version": "1.6.0",
+      "version": "1.7.0",
       "sourceRepository": "jobseekercopilot/job-finder-gateway",
-      "sourceCommit": "c3b601aa4594c9c884eb89a5b141a0b8801e2cb3",
-      "path": "contracts/job-finder-gateway/1.6.0/openapi.json",
-      "sha256": "d50a8a6ec708f844b9f6cdb76d4ae275f4eb3b0c12f38b2a8ba196edc981f615",
+      "sourceCommit": "590b693f74c4b1ab6813df9a4f627e9958fa70ab",
+      "path": "contracts/job-finder-gateway/1.7.0/openapi.json",
+      "sha256": "99a98c212e06cdef2701daa7e0f349ddeb9dfead5fcf0ee8f787ea00d4b36a2a",
       "output": "src/app/api/job-finder",
       "requiredPaths": [
         "/api/jobs/search",

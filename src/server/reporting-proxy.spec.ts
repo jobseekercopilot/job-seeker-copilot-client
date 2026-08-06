@@ -16,11 +16,15 @@ describe("Reporting BFF", () => {
   afterEach(async () => {
     if (server) await new Promise<void>((resolve, reject) => server?.close(error => error ? reject(error) : resolve()));
     server = undefined;
+    vi.restoreAllMocks();
   });
 
-  async function start(fetchImplementation: typeof fetch): Promise<string> {
+  async function start(
+    fetchImplementation: typeof fetch,
+    timeoutMs = CONFIG.timeoutMs,
+  ): Promise<string> {
     const app = express();
-    registerReportingRoutes(app, CONFIG, fetchImplementation);
+    registerReportingRoutes(app, {...CONFIG, timeoutMs}, fetchImplementation);
     server = app.listen(0, "127.0.0.1");
     await new Promise<void>(resolve => server?.once("listening", resolve));
     const address = server.address();
@@ -92,6 +96,33 @@ describe("Reporting BFF", () => {
     expect(response.headers.get("content-disposition")).toBe("attachment; filename=job-search-evidence.txt");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(await response.text()).toBe("Persisted evidence");
+  });
+
+  it("keeps body consumption bounded and preserves the reporting unavailable contract", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const downstreamResponse = new Response(null, {
+      status: 200,
+      headers: {"Content-Type": "application/json"},
+    });
+    const downstreamText = vi.spyOn(downstreamResponse, "text").mockImplementation(
+      () => new Promise<string>(() => undefined),
+    );
+    const origin = await start((async (_input, init) => {
+      capturedSignal = init?.signal ?? undefined;
+      return downstreamResponse;
+    }) as typeof fetch, 5);
+
+    const response = await fetch(`${origin}/api/v1/reports/summary`, {
+      headers: {Cookie: `jsc-access-local=${TOKEN}`},
+    });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: "REPORTING_UNAVAILABLE",
+      message: "Reporting is currently unavailable",
+    });
+    expect(downstreamText).toHaveBeenCalledOnce();
+    expect(capturedSignal?.aborted).toBe(true);
   });
 
   it("fails closed when a downstream response leaks the session token", async () => {

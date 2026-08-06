@@ -201,6 +201,10 @@
   justify-content: space-between;
 }
 
+.evidence-selector-header > div {
+  min-width: 0;
+}
+
 .evidence-selector-header h3 {
   color: var(--text-primary);
   font-size: 1.05rem;
@@ -250,6 +254,29 @@
   font-weight: 700;
 }
 
+.selector-load-error {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.selector-load-error p {
+  color: inherit;
+  margin: 0;
+}
+
+.selector-load-error button {
+  background: white;
+  border: 1px solid #fda4af;
+  border-radius: var(--radius-control);
+  color: #9f1239;
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 750;
+  padding: 0.35rem 0.55rem;
+}
+
 .selector-note {
   background: #fffbeb;
   border: 1px solid #fde68a;
@@ -258,6 +285,37 @@
 
 .selector-loading {
   color: var(--text-secondary);
+}
+
+.selection-job-context {
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0.75rem 0;
+}
+
+.selection-job-context div {
+  background: white;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.55rem;
+  min-width: 0;
+  padding: 0.45rem 0.55rem;
+}
+
+.selection-job-context dt {
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.selection-job-context dd {
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 650;
+  margin: 0.1rem 0 0;
+  overflow-wrap: anywhere;
 }
 
 .selector-empty {
@@ -448,5 +506,15 @@
 @media (min-width: 900px) {
   .purpose-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .selection-job-context {
+    grid-template-columns: 1fr;
+  }
+
+  .selector-load-error {
+    display: grid;
   }
 }

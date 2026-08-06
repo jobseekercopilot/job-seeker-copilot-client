@@ -70,6 +70,8 @@
                         [aiTokenBalance]="aiTokenBalance()"
                         [aiCreditPencePerToken]="aiCreditPencePerToken()"
                         (refreshTokens)="refreshAiTokenBalance()"
+                        (openProfile)="openMyProfile()"
+                        (openExperience)="openExperienceAndAchievements('navigation')"
                         (logout)="logout()"></app-navigation-bar>
 
     <!-- Main Grid Workspace Content wrapper -->
@@ -115,7 +117,8 @@
           </div>
           
           <!-- Claimant Professional Profile -->
-          <app-claimant-profile [claimantName]="profileName()"
+          <app-claimant-profile #claimantProfile
+                                [claimantName]="profileName()"
                                 [claimantEmail]="profileEmail()"
                                 [profile]="structuredProfile()"
                                 [skills]="profileSkills()"
@@ -123,7 +126,7 @@
                                 [aspirations]="profileAspirations()"
                                 [workPrefs]="profileWorkPrefs()"
                                 (profileSaved)="handleSaveProfile($event)"
-                                (logoutRequested)="logout()"
+                                (manageEvidenceRequested)="openExperienceAndAchievements('summary')"
                                 (findJobsRequested)="triggerJobSearch()">
           </app-claimant-profile>
 
@@ -136,49 +139,33 @@
                     class="workspace-tab"
                     data-testid="workspace-tab-search"
                     [class.workspace-tab-active]="activeWorkspaceTab() === 'search'"
-                    (click)="activeWorkspaceTab.set('search')">
+                    [attr.aria-current]="activeWorkspaceTab() === 'search' ? 'page' : null"
+                    (click)="selectWorkspace('search')">
               <mat-icon>search</mat-icon>
-              <span>
-                Search Results
-                <small>Find new opportunities</small>
-              </span>
+              <span>Search</span>
             </button>
             <button type="button"
                     class="workspace-tab"
                     data-testid="workspace-tab-applications"
                     [class.workspace-tab-active]="activeWorkspaceTab() === 'applications'"
-                    (click)="activeWorkspaceTab.set('applications')">
+                    [attr.aria-current]="activeWorkspaceTab() === 'applications' ? 'page' : null"
+                    (click)="selectWorkspace('applications')">
               <mat-icon>work_history</mat-icon>
-              <span>
-                My Applications
-                <small>Track and manage</small>
-              </span>
-            </button>
-            <button type="button"
-                    class="workspace-tab"
-                    data-testid="workspace-tab-evidence"
-                    [class.workspace-tab-active]="activeWorkspaceTab() === 'evidence'"
-                    (click)="activeWorkspaceTab.set('evidence')">
-              <mat-icon>inventory_2</mat-icon>
-              <span>
-                Evidence
-                <small>Review and reuse</small>
-              </span>
+              <span>Applications</span>
             </button>
             <button type="button"
                     class="workspace-tab"
                     data-testid="workspace-tab-documents"
                     [class.workspace-tab-active]="activeWorkspaceTab() === 'documents'"
-                    (click)="activeWorkspaceTab.set('documents')">
+                    [attr.aria-current]="activeWorkspaceTab() === 'documents' ? 'page' : null"
+                    (click)="selectWorkspace('documents')">
               <mat-icon>description</mat-icon>
-              <span>
-                Documents
-                <small>Your CVs and cover letters</small>
-              </span>
+              <span>Documents</span>
             </button>
           </div>
 
-          <div data-testid="workspace-panel-search" [hidden]="activeWorkspaceTab() !== 'search'">
+          @if (activeWorkspaceTab() === 'search') {
+          <div data-testid="workspace-panel-search">
             <div class="workspace-status-line">
               <span class="capability-state"
                     [class.state-fixture]="jobSearchProviderMode() === 'FIXTURE'"
@@ -188,20 +175,32 @@
               </span>
               <strong>Job search, matching and details</strong>
             </div>
-            <app-job-results #jobResults
-              [skills]="profileSkills()"
-              [experience]="profileExperience()"
-              [aspirations]="profileAspirations()"
-              [workPrefs]="profileWorkPrefs()"
-              [providerMode]="jobSearchProviderMode()"
-              [applicationTrackingAvailable]="true"
-              [applicationToolsAvailable]="documentGenerationMode() === 'FIXTURE_LLM'"
-              (notify)="showToast($event.message, $event.type)"
-              (applicationChanged)="refreshApplicationTracking()">
-            </app-job-results>
+            @if (jobSearchReadiness().ready) {
+              <app-job-results #jobResults
+                [skills]="profileSkills()"
+                [experience]="profileExperience()"
+                [aspirations]="profileAspirations()"
+                [workPrefs]="profileWorkPrefs()"
+                [providerMode]="jobSearchProviderMode()"
+                [applicationTrackingAvailable]="true"
+                [applicationToolsAvailable]="documentGenerationMode() !== 'REQUIRED_VALIDATION'"
+                (notify)="showToast($event.message, $event.type)"
+                (applicationChanged)="refreshApplicationTracking()">
+              </app-job-results>
+            } @else {
+              <section class="search-setup-prompt" data-testid="search-setup-prompt">
+                <mat-icon>manage_search</mat-icon>
+                <h2>Tell us what kind of work you want</h2>
+                <p>
+                  Add a target role, workplace preference and search location before searching.
+                  We have not sent a job-search request.
+                </p>
+                <button type="button" (click)="openMyProfile()">Complete job preferences</button>
+              </section>
+            }
           </div>
-
-          <div data-testid="workspace-panel-applications" [hidden]="activeWorkspaceTab() !== 'applications'">
+          } @else if (activeWorkspaceTab() === 'applications') {
+          <div data-testid="workspace-panel-applications">
             <div class="workspace-status-line">
               <span class="capability-state state-available">Available</span>
               <strong>Application tracking and status history</strong>
@@ -212,26 +211,23 @@
               (applicationChanged)="refreshApplicationTracking()">
             </app-my-applications>
           </div>
-
-          <div data-testid="workspace-panel-evidence" [hidden]="activeWorkspaceTab() !== 'evidence'">
-            <app-evidence-library
-              (notify)="showToast($event.message, $event.type)">
-            </app-evidence-library>
-          </div>
-
-          <div data-testid="workspace-panel-documents" [hidden]="activeWorkspaceTab() !== 'documents'">
+          } @else {
+          <div data-testid="workspace-panel-documents">
             <div class="workspace-status-line">
               <span class="capability-state"
                     [class.state-fixture]="documentGenerationMode() === 'FIXTURE_LLM'"
-                    [class.state-unavailable]="documentGenerationMode() !== 'FIXTURE_LLM'">
+                    [class.state-available]="documentGenerationMode() === 'REAL_LLM'"
+                    [class.state-unavailable]="documentGenerationMode() === 'REQUIRED_VALIDATION'">
                 {{ documentGenerationModeLabel() }}
               </span>
               <strong>Documents, storage and export</strong>
             </div>
-            @if (documentGenerationMode() === 'FIXTURE_LLM') {
-              <p class="capability-fixture-notice" role="status">
-                Document wording is fixture-generated by the mock AI provider. Storage, DOCX/PDF export and downloads use the real internal services.
-              </p>
+            @if (documentGenerationMode() !== 'REQUIRED_VALIDATION') {
+              @if (documentGenerationMode() === 'FIXTURE_LLM') {
+                <p class="capability-fixture-notice" role="status">
+                  Document wording is fixture-generated by the mock AI provider. Storage, DOCX/PDF export and downloads use the real internal services.
+                </p>
+              }
               <app-documents-workspace #documentsWorkspace
                 [enabled]="true"
                 [selectedApplicationId]="selectedApplicationId()"
@@ -247,6 +243,7 @@
               </section>
             }
           </div>
+          }
         </section>
 
         <aside id="right-sidebar" class="dashboard-right flex flex-col gap-5">

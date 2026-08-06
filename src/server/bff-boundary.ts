@@ -253,22 +253,84 @@ export class DownstreamTimeoutError extends Error {
   }
 }
 
-export async function fetchWithTimeout(
+export async function fetchAndConsumeWithTimeout<Result>(
+  input: string,
+  init: RequestInit,
+  timeoutMs: number,
+  consumeResponse: (response: Response) => Promise<Result>,
+  fetchImplementation: typeof fetch,
+): Promise<Result> {
+  const controller = new AbortController();
+  const callerSignal = init.signal;
+  let didTimeout = false;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let rejectCallerCancellation: ((reason?: unknown) => void) | undefined;
+  const callerCancellation = callerSignal
+    ? new Promise<never>((_resolve, reject) => {
+      rejectCallerCancellation = reject;
+    })
+    : undefined;
+  const relayCallerAbort = (): void => {
+    const reason = callerSignal?.reason
+      ?? new DOMException('Caller cancelled downstream request', 'AbortError');
+    controller.abort(reason);
+    rejectCallerCancellation?.(reason);
+  };
+  if (callerSignal?.aborted) {
+    relayCallerAbort();
+  } else {
+    callerSignal?.addEventListener('abort', relayCallerAbort, {once: true});
+  }
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      didTimeout = true;
+      controller.abort();
+      reject(new DownstreamTimeoutError());
+    }, timeoutMs);
+  });
+  try {
+    const downstream = (async () => {
+      const response = await fetchImplementation(
+        input,
+        {...init, signal: controller.signal},
+      );
+      return consumeResponse(response);
+    })().catch((error: unknown) => {
+      if (didTimeout) throw new DownstreamTimeoutError();
+      throw error;
+    });
+    return await Promise.race([
+      downstream,
+      deadline,
+      ...(callerCancellation ? [callerCancellation] : []),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    callerSignal?.removeEventListener('abort', relayCallerAbort);
+  }
+}
+
+export interface TextResponse {
+  body: string;
+  response: Response;
+}
+
+export async function fetchTextWithTimeout(
   input: string,
   init: RequestInit,
   timeoutMs: number,
   fetchImplementation: typeof fetch = fetch,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetchImplementation(input, {...init, signal: controller.signal});
-  } catch (error: unknown) {
-    if (controller.signal.aborted) throw new DownstreamTimeoutError();
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+): Promise<TextResponse> {
+  return fetchAndConsumeWithTimeout(
+    input,
+    init,
+    timeoutMs,
+    async response => ({
+      body: await response.text(),
+      response,
+    }),
+    fetchImplementation,
+  );
 }
 
 export function downstreamFailureCategory(error: unknown): 'timeout' | 'unavailable' {

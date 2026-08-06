@@ -1,7 +1,9 @@
 import type {Express, Request, Response} from 'express';
+import {randomUUID} from 'node:crypto';
 import {
   downstreamFailureCategory,
-  fetchWithTimeout,
+  fetchAndConsumeWithTimeout,
+  fetchTextWithTimeout,
 } from './bff-boundary';
 import {
   jobFinderCredentials,
@@ -10,6 +12,29 @@ import {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const CORRELATION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+const FAILURE_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
+const OPERATION_STATES = new Set([
+  'CREATED',
+  'SNAPSHOTS_RESOLVED',
+  'ESTIMATED',
+  'CREDIT_RESERVED',
+  'GENERATION_IN_PROGRESS',
+  'GENERATION_OUTCOME_UNKNOWN',
+  'DRAFT_GENERATED',
+  'CREDIT_COMMITTED',
+  'DRAFTS_STORED',
+  'AWAITING_APPROVAL',
+  'APPROVED',
+  'CV_EXPORT_IN_PROGRESS',
+  'CV_EXPORTED',
+  'COVER_LETTER_EXPORT_IN_PROGRESS',
+  'EXPORTED',
+  'COMPLETED',
+  'RECOVERY_REQUIRED',
+  'FAILED',
+  'CANCELLED',
+]);
 const SAFE_DOWNLOAD_TYPES = new Set([
   'application/octet-stream',
   'application/pdf',
@@ -45,6 +70,8 @@ interface ProxyPayload {
   status: number;
 }
 
+type JsonMethod = 'DELETE' | 'GET' | 'POST';
+
 function validUuid(value: string): boolean {
   return UUID.test(value);
 }
@@ -57,6 +84,11 @@ interface DocumentEvidenceSelectionBody {
 
 interface StartGenerationBody {
   documents: DocumentEvidenceSelectionBody[];
+}
+
+interface ApproveGenerationBody {
+  cvDocumentId: string;
+  coverLetterDocumentId: string;
 }
 
 function exactObjectKeys(
@@ -110,6 +142,27 @@ function startGenerationBody(value: unknown): StartGenerationBody | undefined {
   return {documents};
 }
 
+function approveGenerationBody(value: unknown): ApproveGenerationBody | undefined {
+  if (!exactObjectKeys(value, ['cvDocumentId', 'coverLetterDocumentId'])) {
+    return undefined;
+  }
+  const cvDocumentId = value['cvDocumentId'];
+  const coverLetterDocumentId = value['coverLetterDocumentId'];
+  if (
+    typeof cvDocumentId !== 'string'
+    || !validUuid(cvDocumentId)
+    || typeof coverLetterDocumentId !== 'string'
+    || !validUuid(coverLetterDocumentId)
+    || cvDocumentId.toLowerCase() === coverLetterDocumentId.toLowerCase()
+  ) {
+    return undefined;
+  }
+  return {
+    cvDocumentId: cvDocumentId.toLowerCase(),
+    coverLetterDocumentId: coverLetterDocumentId.toLowerCase(),
+  };
+}
+
 function sendFailure(
   response: Response,
   status: number,
@@ -127,7 +180,7 @@ async function callJson(
   origin: string,
   path: string,
   request: Request,
-  method: 'GET' | 'POST',
+  method: JsonMethod,
   requiresCsrf: boolean,
   fetchImplementation: typeof fetch,
   additionalHeaders: Record<string, string> = {},
@@ -147,7 +200,7 @@ async function callJson(
     status: credentials.status,
   };
 
-  const response = await fetchWithTimeout(
+  const {body, response} = await fetchTextWithTimeout(
     `${origin}${path}`,
     {
       method,
@@ -157,7 +210,6 @@ async function callJson(
     config.timeoutMs,
     fetchImplementation,
   );
-  const body = await response.text();
   const accessToken = credentials.headers['Authorization'].slice('Bearer '.length);
   if (body.includes(accessToken)) return undefined;
 
@@ -172,6 +224,178 @@ async function callJson(
       ? 'application/problem+json'
       : 'application/json',
     status: response.status,
+  };
+}
+
+function requestCorrelationId(request: Request): string {
+  const candidate = request.get('X-Correlation-ID')?.trim();
+  return candidate && CORRELATION_ID.test(candidate)
+    ? candidate
+    : randomUUID();
+}
+
+function safeTimestamp(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 64) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? undefined : value;
+}
+
+function safeOperationDownloads(value: unknown): Record<string, object> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const downloads: Record<string, object> = {};
+  for (const purpose of ['cv', 'coverLetter']) {
+    const group = (value as Record<string, unknown>)[purpose];
+    if (!group || typeof group !== 'object' || Array.isArray(group)) continue;
+    const exports = (group as {exports?: unknown}).exports;
+    if (!Array.isArray(exports)) continue;
+    const safeExports = exports.flatMap(candidate => {
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
+      const item = candidate as Record<string, unknown>;
+      if (
+        typeof item['fileId'] !== 'string'
+        || !validUuid(item['fileId'])
+        || !['DOCX', 'PDF'].includes(String(item['format']))
+      ) {
+        return [];
+      }
+      return [{
+        fileId: item['fileId'].toLowerCase(),
+        format: item['format'],
+        ...(safeFileName(item['fileName']) ? {fileName: safeFileName(item['fileName'])} : {}),
+      }];
+    });
+    downloads[purpose] = {exports: safeExports};
+  }
+  return Object.keys(downloads).length ? downloads : undefined;
+}
+
+function safeOperationPayload(body: string): Record<string, unknown> | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  if (
+    typeof source['operationId'] !== 'string'
+    || !validUuid(source['operationId'])
+    || typeof source['state'] !== 'string'
+    || !OPERATION_STATES.has(source['state'])
+  ) {
+    return undefined;
+  }
+
+  const payload: Record<string, unknown> = {
+    operationId: source['operationId'].toLowerCase(),
+    state: source['state'],
+  };
+  for (const key of [
+    'savedJobId',
+    'cvDocumentId',
+    'coverLetterDocumentId',
+    'applicationId',
+  ]) {
+    const candidate = source[key];
+    if (typeof candidate === 'string' && validUuid(candidate)) {
+      payload[key] = candidate.toLowerCase();
+    }
+  }
+  for (const key of ['replaySafe', 'manualActionRequired']) {
+    if (typeof source[key] === 'boolean') payload[key] = source[key];
+  }
+  if (
+    typeof source['failureCode'] === 'string'
+    && FAILURE_CODE.test(source['failureCode'])
+  ) {
+    payload['failureCode'] = source['failureCode'];
+  }
+  for (const key of ['deadlineAt', 'createdAt', 'updatedAt']) {
+    const timestamp = safeTimestamp(source[key]);
+    if (timestamp) payload[key] = timestamp;
+  }
+  const downloads = safeOperationDownloads(source['downloads']);
+  if (downloads) payload['downloads'] = downloads;
+  return payload;
+}
+
+function stableOperationFailure(status: number, body: string): {
+  error: string;
+  message: string;
+} {
+  let upstreamCode: string | undefined;
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown>;
+    const candidate = parsed['error'] ?? parsed['code'] ?? parsed['failureCode'];
+    if (typeof candidate === 'string' && FAILURE_CODE.test(candidate)) {
+      upstreamCode = candidate;
+    }
+  } catch {
+    // Downstream bodies are deliberately not reflected to the browser.
+  }
+
+  if (upstreamCode === 'REQUEST_FORBIDDEN') {
+    return {
+      error: 'REQUEST_FORBIDDEN',
+      message: 'A valid CSRF token is required',
+    };
+  }
+  if (upstreamCode === 'SESSION_REQUIRED') {
+    return {
+      error: 'SESSION_REQUIRED',
+      message: 'An authenticated browser session is required',
+    };
+  }
+  if (status === 401 || status === 403) {
+    return {
+      error: 'GENERATION_AUTH_REQUIRED',
+      message: 'Your session is not authorised for document generation',
+    };
+  }
+  if (status === 402 || upstreamCode?.includes('CREDIT') || upstreamCode?.includes('QUOTA')) {
+    return {
+      error: 'GENERATION_QUOTA_EXHAUSTED',
+      message: 'Document generation credit is not available',
+    };
+  }
+  if (status === 429 || upstreamCode?.includes('RATE_LIMIT')) {
+    return {
+      error: 'GENERATION_RATE_LIMITED',
+      message: 'Document generation is temporarily rate limited',
+    };
+  }
+  if (status === 409) {
+    return {
+      error: upstreamCode === 'GENERATION_OUTCOME_UNKNOWN'
+        ? 'GENERATION_OUTCOME_UNKNOWN'
+        : 'GENERATION_CONFLICT',
+      message: upstreamCode === 'GENERATION_OUTCOME_UNKNOWN'
+        ? 'The provider outcome is unknown; no automatic retry was made'
+        : 'The generation operation changed and must be refreshed',
+    };
+  }
+  if (status === 404) {
+    return {
+      error: 'GENERATION_OPERATION_NOT_FOUND',
+      message: 'The generation operation was not found for this session',
+    };
+  }
+  if (status === 422 || upstreamCode?.includes('EVIDENCE')) {
+    return {
+      error: 'GENERATION_EVIDENCE_CHANGED',
+      message: 'Selected evidence changed and must be reviewed',
+    };
+  }
+  if (status === 503 || upstreamCode?.includes('DISABLED')) {
+    return {
+      error: 'GENERATION_DISABLED',
+      message: 'Document generation is currently unavailable',
+    };
+  }
+  return {
+    error: 'GENERATION_REQUEST_REJECTED',
+    message: 'The document generation request could not be completed',
   };
 }
 
@@ -294,6 +518,74 @@ export function registerDocumentGenerationRoutes(
     }
   };
 
+  const proxyOperation = async (
+    request: Request,
+    response: Response,
+    path: string,
+    method: JsonMethod,
+    requiresCsrf: boolean,
+    additionalHeaders: Record<string, string> = {},
+  ): Promise<void> => {
+    const correlationId = requestCorrelationId(request);
+    response.setHeader('X-Correlation-ID', correlationId);
+    try {
+      const payload = await callJson(
+        config,
+        config.origin,
+        path,
+        request,
+        method,
+        requiresCsrf,
+        fetchImplementation,
+        {
+          ...additionalHeaders,
+          'X-Correlation-ID': correlationId,
+        },
+      );
+      response.setHeader('Cache-Control', 'private, no-store');
+      if (!payload) {
+        sendFailure(
+          response,
+          502,
+          'INVALID_DOWNSTREAM_RESPONSE',
+          'The document service returned an invalid response',
+        );
+        return;
+      }
+      if (payload.status < 200 || payload.status >= 300) {
+        const failure = stableOperationFailure(payload.status, payload.body);
+        sendFailure(response, payload.status, failure.error, failure.message);
+        return;
+      }
+      const operation = safeOperationPayload(payload.body);
+      if (!operation) {
+        sendFailure(
+          response,
+          502,
+          'INVALID_DOWNSTREAM_RESPONSE',
+          'The document service returned an invalid operation',
+        );
+        return;
+      }
+      response.status(payload.status).json(operation);
+    } catch (error: unknown) {
+      const category = downstreamFailureCategory(error);
+      console.error('BFF downstream request failed', {
+        category,
+        correlationId,
+        service: 'document-generation-operation',
+      });
+      sendFailure(
+        response,
+        category === 'timeout' ? 504 : 503,
+        category === 'timeout' ? 'GENERATION_TIMEOUT' : 'GENERATION_DISABLED',
+        category === 'timeout'
+          ? 'The document generation request timed out; its outcome may still be processing'
+          : 'Document generation is currently unavailable',
+      );
+    }
+  };
+
   app.post('/api/v1/document-generation/saved-jobs/:savedJobId/operations', async (request, response) => {
     const savedJobId = request.params['savedJobId'];
     const idempotencyKey = request.get('Idempotency-Key')?.trim();
@@ -316,10 +608,9 @@ export function registerDocumentGenerationRoutes(
       return;
     }
     request.body = body;
-    await proxyJson(
+    await proxyOperation(
       request,
       response,
-      config.origin,
       `/api/v1/document-generation/saved-jobs/${savedJobId.toLowerCase()}/operations`,
       'POST',
       true,
@@ -333,12 +624,52 @@ export function registerDocumentGenerationRoutes(
       sendFailure(response, 400, 'INVALID_OPERATION_ID', 'The generation operation identifier is invalid');
       return;
     }
-    await proxyJson(
+    const body = approveGenerationBody(request.body);
+    if (!body) {
+      sendFailure(
+        response,
+        400,
+        'INVALID_APPROVAL_REQUEST',
+        'Valid distinct CV and cover letter document identifiers are required',
+      );
+      return;
+    }
+    request.body = body;
+    await proxyOperation(
       request,
       response,
-      config.origin,
       `/api/v1/document-generation/operations/${operationId.toLowerCase()}/approve`,
       'POST',
+      true,
+    );
+  });
+
+  app.get('/api/v1/document-generation/operations/:operationId', async (request, response) => {
+    const operationId = request.params['operationId'];
+    if (!validUuid(operationId)) {
+      sendFailure(response, 400, 'INVALID_OPERATION_ID', 'The generation operation identifier is invalid');
+      return;
+    }
+    await proxyOperation(
+      request,
+      response,
+      `/api/v1/document-generation/operations/${operationId.toLowerCase()}`,
+      'GET',
+      false,
+    );
+  });
+
+  app.delete('/api/v1/document-generation/operations/:operationId', async (request, response) => {
+    const operationId = request.params['operationId'];
+    if (!validUuid(operationId)) {
+      sendFailure(response, 400, 'INVALID_OPERATION_ID', 'The generation operation identifier is invalid');
+      return;
+    }
+    await proxyOperation(
+      request,
+      response,
+      `/api/v1/document-generation/operations/${operationId.toLowerCase()}`,
+      'DELETE',
       true,
     );
   });
@@ -392,7 +723,7 @@ export function registerDocumentGenerationRoutes(
 
     try {
       const body = await boundedRequestBody(request, MAX_MULTIPART_BYTES);
-      const upstream = await fetchWithTimeout(
+      const {body: payload, response: upstream} = await fetchTextWithTimeout(
         `${config.origin}/api/v1/document-generation/applications/${applicationId.toLowerCase()}/replace?documentType=${documentType}`,
         {
           method: 'POST',
@@ -406,7 +737,6 @@ export function registerDocumentGenerationRoutes(
         config.timeoutMs,
         fetchImplementation,
       );
-      const payload = await upstream.text();
       const accessToken = credentials.headers['Authorization'].slice('Bearer '.length);
       if (payload.includes(accessToken)) {
         sendPayload(response, undefined);
@@ -463,10 +793,24 @@ export function registerDocumentGenerationRoutes(
     }
 
     try {
-      const upstream = await fetchWithTimeout(
+      const {body, response: upstream} = await fetchAndConsumeWithTimeout(
         `${config.origin}/api/v1/document-generation/files/${fileId.toLowerCase()}/download`,
         {method: 'GET', headers: credentials.headers},
         config.timeoutMs,
+        async downstream => {
+          const contentType = downstream.headers
+            .get('content-type')
+            ?.split(';', 1)[0]
+            .trim()
+            .toLowerCase();
+          const validDownload = downstream.ok
+            && contentType !== undefined
+            && SAFE_DOWNLOAD_TYPES.has(contentType);
+          return {
+            body: validDownload ? await downstream.arrayBuffer() : undefined,
+            response: downstream,
+          };
+        },
         fetchImplementation,
       );
       response.setHeader('Cache-Control', 'private, no-store');
@@ -486,6 +830,15 @@ export function registerDocumentGenerationRoutes(
         );
         return;
       }
+      if (!body) {
+        sendFailure(
+          response,
+          502,
+          'INVALID_DOWNSTREAM_RESPONSE',
+          'The document service returned an invalid file',
+        );
+        return;
+      }
 
       const contentDisposition = upstream.headers.get('content-disposition');
       if (
@@ -496,7 +849,7 @@ export function registerDocumentGenerationRoutes(
         response.setHeader('Content-Disposition', contentDisposition);
       }
       response.status(200).type(contentType).send(
-        Buffer.from(await upstream.arrayBuffer()),
+        Buffer.from(body),
       );
     } catch (error: unknown) {
       const category = downstreamFailureCategory(error);

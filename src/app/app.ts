@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, OnInit, signal, PLATFORM_ID, inject, ViewChild } from '@angular/core';
 import { isPlatformBrowser, CommonModule } from '@angular/common';
 import { NavigationEnd, Router } from '@angular/router';
+import {MatDialog, MatDialogModule, MatDialogRef} from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import {firstValueFrom} from 'rxjs';
 import { ClaimantProfileComponent } from './features/claimant-profile/claimant-profile';
@@ -16,6 +17,7 @@ import { EvidenceLibraryComponent } from './features/evidence-library/evidence-l
 import { PaymentService } from './services/payment.service';
 import type { GatewayResponse, UserProfile } from './api';
 import { normaliseProfile, profileToSearchText } from './models/user-profile.model';
+import {searchReadiness} from './models/search-readiness';
 import { FALLBACK_PENCE_PER_TOKEN, pencePerTokenFromPlans } from './utils/ai-credit';
 import {removeLegacySessionData} from './services/browser-storage';
 import {BrowserSessionService} from './services/browser-session.service';
@@ -25,13 +27,14 @@ import {
   RuntimeConfigurationService,
 } from './services/runtime-configuration.service';
 
-type WorkspaceTab = 'search' | 'applications' | 'evidence' | 'documents';
+type WorkspaceTab = 'search' | 'applications' | 'documents';
 
 @Component({
   changeDetection: ChangeDetectionStrategy.OnPush,
   selector: 'app-root',
   imports: [
     CommonModule,
+    MatDialogModule,
     MatIconModule,
     ClaimantProfileComponent,
     NavigationBar,
@@ -39,7 +42,6 @@ type WorkspaceTab = 'search' | 'applications' | 'evidence' | 'documents';
     PasswordRecoveryComponent,
     JobResultsComponent,
     MyApplicationsComponent,
-    EvidenceLibraryComponent,
     DocumentsWorkspaceComponent,
     ReportingPanelComponent,
   ],
@@ -52,6 +54,7 @@ export class App implements OnInit {
   private paymentService = inject(PaymentService);
   private browserSession = inject(BrowserSessionService);
   private runtimeConfiguration = inject(RuntimeConfigurationService);
+  private dialog = inject(MatDialog);
   readonly sessionStatus = this.browserSession.status;
 
   // User Onboarding & Auth Details
@@ -89,15 +92,19 @@ export class App implements OnInit {
       default: return 'Required validation';
     }
   });
-  documentGenerationModeLabel = computed(() =>
-    this.documentGenerationMode() === 'FIXTURE_LLM'
-      ? 'Fixture-generated'
-      : 'Not enabled for this beta',
-  );
+  documentGenerationModeLabel = computed(() => {
+    switch (this.documentGenerationMode()) {
+      case 'FIXTURE_LLM': return 'Fixture-generated';
+      case 'REAL_LLM': return 'Real OpenAI generation';
+      default: return 'Not enabled for this beta';
+    }
+  });
   activeWorkspaceTab = signal<WorkspaceTab>('search');
+  readonly jobSearchReadiness = computed(() => searchReadiness(this.structuredProfile()));
   selectedApplicationId = signal<string | null>(null);
 
   @ViewChild('jobResults') jobResults!: JobResultsComponent;
+  @ViewChild('claimantProfile') claimantProfile?: ClaimantProfileComponent;
   @ViewChild('myApplications') myApplications?: MyApplicationsComponent;
   @ViewChild('documentsWorkspace') documentsWorkspace?: DocumentsWorkspaceComponent;
   @ViewChild('reportingPanel') reportingPanel!: ReportingPanelComponent;
@@ -105,11 +112,14 @@ export class App implements OnInit {
   // Notice/Alert Toast triggers
   toastMessage = signal<string | null>(null);
   toastType = signal<'success' | 'info' | 'error'>('success');
+  private walletSessionKey = '';
+  private evidenceDialogRef?: MatDialogRef<EvidenceLibraryComponent>;
 
   constructor() {
     effect(() => {
       const user = this.browserSession.user();
       if (user) {
+        this.userAccountId.set(user.id ?? '');
         this.profileName.set(user.name ?? '');
         this.profileEmail.set(user.email ?? '');
         this.structuredProfile.set(user.profile ?? null);
@@ -119,6 +129,12 @@ export class App implements OnInit {
         this.profileAspirations.set(searchText.aspirations);
         this.profileWorkPrefs.set(searchText.workPrefs);
         this.isLoggedIn.set(true);
+        const walletSessionKey = user.id ?? user.email ?? '';
+        if (walletSessionKey
+            && walletSessionKey !== this.walletSessionKey) {
+          this.walletSessionKey = walletSessionKey;
+          this.refreshAiTokenBalance();
+        }
         return;
       }
       if (this.sessionStatus() === 'anonymous') {
@@ -293,8 +309,14 @@ export class App implements OnInit {
     return fallback;
   }
 
-  handleOnboarded(data: { profile: UserProfile; name: string; email: string }) {
+  handleOnboarded(data: {
+    profile: UserProfile;
+    id?: string;
+    name: string;
+    email: string;
+  }) {
     this.browserSession.acceptAuthenticatedUser({
+      id: data.id,
       name: data.name,
       email: data.email,
       profile: normaliseProfile(data.profile),
@@ -325,6 +347,8 @@ export class App implements OnInit {
   }
 
   private clearAuthenticatedView(): void {
+    this.evidenceDialogRef?.close();
+    this.evidenceDialogRef = undefined;
     this.isLoggedIn.set(false);
     this.profileName.set('');
     this.profileEmail.set('');
@@ -334,15 +358,73 @@ export class App implements OnInit {
     this.profileAspirations.set('');
     this.profileWorkPrefs.set('');
     this.userAccountId.set('');
+    this.aiTokenBalance.set(null);
+    this.walletSessionKey = '';
   }
 
   triggerJobSearch() {
-    this.activeWorkspaceTab.set('search');
+    this.selectWorkspace('search');
+    if (!this.jobSearchReadiness().ready) {
+      this.showToast('Complete the required job preferences before searching.', 'info');
+      return;
+    }
     if (this.jobResults) {
       this.jobResults.refresh();
     } else {
       this.showToast('Preparing job search...', 'info');
     }
+  }
+
+  selectWorkspace(tab: WorkspaceTab): void {
+    this.activeWorkspaceTab.set(tab);
+  }
+
+  openMyProfile(): void {
+    setTimeout(() => {
+      const missing = this.jobSearchReadiness().missing;
+      this.claimantProfile?.startEditing(
+        missing.includes('targetRole')
+          ? 'jobs'
+          : missing.includes('location')
+            ? 'location'
+            : missing.includes('workplace')
+              ? 'patterns'
+              : 'jobs',
+      );
+      if (isPlatformBrowser(this.platformId)) {
+        document.querySelector('#left-sidebar')?.scrollIntoView({behavior: 'smooth', block: 'start'});
+      }
+    });
+  }
+
+  openExperienceAndAchievements(origin: 'navigation' | 'summary' = 'navigation'): void {
+    if (!isPlatformBrowser(this.platformId) || this.evidenceDialogRef) return;
+    const dialogRef = this.dialog.open(EvidenceLibraryComponent, {
+      ariaDescribedBy: 'evidence-manager-description',
+      ariaLabelledBy: 'evidence-manager-title',
+      ariaModal: true,
+      autoFocus: 'dialog',
+      closeOnNavigation: true,
+      id: 'experience-evidence-dialog',
+      maxHeight: '100dvh',
+      maxWidth: '100vw',
+      panelClass: 'evidence-library-dialog',
+      restoreFocus: origin === 'summary',
+      width: 'min(72rem, calc(100vw - 2rem))',
+    });
+    this.evidenceDialogRef = dialogRef;
+    dialogRef.componentInstance.notify.subscribe(event =>
+      this.showToast(event.message, event.type));
+    dialogRef.componentInstance.changed.subscribe(() =>
+      void this.claimantProfile?.refreshEvidenceSummary());
+    dialogRef.afterClosed().subscribe(() => {
+      if (this.evidenceDialogRef === dialogRef) {
+        this.evidenceDialogRef = undefined;
+      }
+      if (origin === 'navigation' && isPlatformBrowser(this.platformId)) {
+        document.querySelector<HTMLElement>('#btn-profile-dropdown')?.focus();
+      }
+    });
   }
 
   refreshReporting() {
@@ -365,7 +447,7 @@ export class App implements OnInit {
 
   openApplicationFromDocument(applicationId: string): void {
     this.selectedApplicationId.set(applicationId);
-    this.activeWorkspaceTab.set('applications');
+    this.selectWorkspace('applications');
   }
 
   updateAiTokenBalance(balance: number) {

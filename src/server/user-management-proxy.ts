@@ -1,6 +1,7 @@
-import { fetchWithTimeout } from './bff-boundary';
+import {fetchTextWithTimeout} from './bff-boundary';
 
 const CSRF_HEADER = 'x-csrf-token';
+const PROFILE_REVISION = /^"?[0-9]+"?$/;
 
 type BrowserHeaders = Record<string, string | string[] | undefined>;
 
@@ -16,6 +17,11 @@ export function userManagementHeaders(
 
   const csrf = browserHeaders[CSRF_HEADER];
   if (typeof csrf === 'string' && csrf.trim()) headers['X-CSRF-Token'] = csrf;
+
+  const ifMatch = browserHeaders['if-match'];
+  if (typeof ifMatch === 'string' && PROFILE_REVISION.test(ifMatch)) {
+    headers['If-Match'] = ifMatch;
+  }
 
   return headers;
 }
@@ -39,21 +45,21 @@ export interface UserManagementProxyResult {
 export async function callUserManagement(
   origin: string,
   path: string,
-  method: 'GET' | 'POST' | 'PUT',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH',
   browserHeaders: BrowserHeaders,
   body: unknown,
   timeoutMs: number,
   fetchImplementation: typeof fetch = fetch,
 ): Promise<UserManagementProxyResult> {
   const hasBody = method !== 'GET';
-  const response = await fetchWithTimeout(`${origin}${path}`, {
+  const {body: responseBody, response} = await fetchTextWithTimeout(`${origin}${path}`, {
     method,
     headers: userManagementHeaders(browserHeaders, hasBody),
     body: hasBody ? JSON.stringify(body ?? {}) : undefined,
   }, timeoutMs, fetchImplementation);
 
   return {
-    body: await response.text(),
+    body: responseBody,
     cacheControl: response.headers.get('cache-control') || 'no-store',
     contentType: response.headers.get('content-type') || 'application/json',
     setCookies: upstreamSetCookies(response.headers),

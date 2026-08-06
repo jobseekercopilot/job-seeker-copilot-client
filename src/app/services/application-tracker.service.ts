@@ -14,6 +14,7 @@ export type ApplicationStatus = NonNullable<ApplicationRecordResponse['status']>
 export type ApplicationStatusUpdate = `${UpdateApplicationStatusRequest['status']}`;
 export type ApplicationFilter = 'ALL' | 'NEEDS_ACTION' | 'APPLIED' | 'INTERVIEW' | 'OFFERS' | 'ARCHIVED';
 export type ApplicationEventType =
+  | 'SAVED'
   | 'CV_GENERATED'
   | 'COVER_LETTER_GENERATED'
   | 'DOCUMENTS_UPLOADED'
@@ -39,6 +40,11 @@ export interface TrackedApplication extends ApplicationRecordResponse {
   documentsUploadedAt?: string;
 }
 
+export interface TrackedApplicationWithdrawal
+    extends WithdrawGeneratedApplicationResponse {
+  processing: boolean;
+}
+
 export interface ApplicationEvent {
   id: string;
   applicationId?: string;
@@ -60,7 +66,6 @@ export class ApplicationTrackerService {
       map(applications => (applications ?? []).map(application => ({
         ...application,
         applicationId: application.id,
-        canonicalJobId: application.jobId,
       }))),
     );
   }
@@ -114,14 +119,18 @@ export class ApplicationTrackerService {
 
   withdrawGeneratedApplication(
     applicationId: string,
-  ): Observable<WithdrawGeneratedApplicationResponse> {
+  ): Observable<TrackedApplicationWithdrawal> {
     return this.browserSession.ensureCsrf().pipe(
       switchMap(() => this.api.withdrawGeneratedApplication(
         applicationId,
-        'body',
+        'response',
         false,
         {transferCache: false},
       )),
+      map(response => ({
+        ...(response.body ?? {}),
+        processing: response.status === 202,
+      })),
     );
   }
 
@@ -151,6 +160,9 @@ export class ApplicationTrackerService {
 
     const status = application.status;
     const statusAt = application.updatedAt ?? application.appliedAt ?? application.createdAt;
+    if (statusAt && status === 'SAVED') {
+      events.push(this.event(application, 'SAVED', application.createdAt ?? statusAt, 'Saved to applications'));
+    }
     if (statusAt && status === 'INTERVIEW') {
       events.push(this.event(application, 'INTERVIEW', application.interviewAt ?? statusAt, 'Interview marked or scheduled'));
     }
@@ -205,6 +217,8 @@ export class ApplicationTrackerService {
     const job = event.jobTitle || 'this role';
     const company = event.companyName || 'the employer';
     switch (event.eventType) {
+      case 'SAVED':
+        return `Saved ${job} at ${company} to applications.`;
       case 'CV_GENERATED':
         return `Generated CV for ${job} at ${company}.`;
       case 'COVER_LETTER_GENERATED':

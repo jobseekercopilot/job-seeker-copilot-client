@@ -100,6 +100,11 @@ export class BrowserSessionService {
     return request;
   }
 
+  refreshCsrf(): Observable<void> {
+    this.invalidateCsrf();
+    return this.ensureCsrf();
+  }
+
   invalidateCsrf(): void {
     this.state.clearCsrf();
   }

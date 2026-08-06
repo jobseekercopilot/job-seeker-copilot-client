@@ -2,6 +2,7 @@ import {CommonModule} from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   ElementRef,
   inject,
   input,
@@ -12,8 +13,12 @@ import {
 import {FormsModule} from '@angular/forms';
 import {MatIconModule} from '@angular/material/icon';
 import {firstValueFrom} from 'rxjs';
-import type {GatewayResponse, UserProfile} from '../../api';
-import {AuthenticationService} from '../../api';
+import type {GatewayResponse, ProfilePreferencesUpdate, UserProfile} from '../../api';
+import {
+  AuthenticationService,
+  ProfileService,
+  WorkPreferencesWorkplaceArrangementsEnum,
+} from '../../api';
 import {normaliseProfile} from '../../models/user-profile.model';
 import {BrowserSessionService} from '../../services/browser-session.service';
 import {
@@ -36,11 +41,17 @@ import {
 })
 export class LandingAuthComponent implements OnInit {
   private readonly authenticationApi = inject(AuthenticationService);
+  private readonly profileApi = inject(ProfileService);
   private readonly browserSession = inject(BrowserSessionService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   readonly initialMode = input<'create' | 'signin'>('create');
-  readonly onboarded = output<{profile: UserProfile; name: string; email: string}>();
+  readonly onboarded = output<{
+    profile: UserProfile;
+    id?: string;
+    name: string;
+    email: string;
+  }>();
 
   readonly mode = signal<'create' | 'signin'>('create');
   readonly errorMessage = signal<string | null>(null);
@@ -52,6 +63,24 @@ export class LandingAuthComponent implements OnInit {
   readonly formPassword = signal('');
   readonly loginEmail = signal('');
   readonly loginPassword = signal('');
+  readonly setupStep = signal<1 | 2 | 3 | 4 | null>(null);
+  readonly setupTargetRoles = signal('');
+  readonly setupPostcode = signal('');
+  readonly setupWorkplaceArrangements = signal<string[]>([]);
+  readonly setupSkills = signal('');
+  readonly setupAccount = signal<{
+    profile: UserProfile;
+    id?: string;
+    name: string;
+    email: string;
+  } | null>(null);
+  readonly setupProgress = computed(() => `${this.setupStep() ?? 1} of 4`);
+
+  readonly workplaceOptions = [
+    ['ONSITE', 'On-site'],
+    ['HYBRID', 'Hybrid'],
+    ['REMOTE', 'Remote'],
+  ] as const;
 
   ngOnInit(): void {
     if (this.initialMode() === 'signin') this.mode.set('signin');
@@ -95,7 +124,7 @@ export class LandingAuthComponent implements OnInit {
       }));
       if (response.success && response.user) {
         this.browserSession.invalidateCsrf();
-        this.emitProfileFromResponse(response);
+        this.beginSetup(response);
       } else {
         this.showError(response.message || 'Registration could not be completed.');
       }
@@ -158,6 +187,101 @@ export class LandingAuthComponent implements OnInit {
       : loginPasswordError(this.loginPassword());
   }
 
+  goToSetupStep(step: 1 | 2 | 3 | 4): void {
+    if (this.isLoading()) return;
+    this.errorMessage.set(null);
+    this.setupStep.set(step);
+  }
+
+  previousSetupStep(): void {
+    const step = this.setupStep();
+    if (step && step > 1) this.goToSetupStep((step - 1) as 1 | 2 | 3);
+  }
+
+  continueSetup(): void {
+    const step = this.setupStep();
+    this.errorMessage.set(null);
+    if (step === 1) {
+      if (!this.tags(this.setupTargetRoles()).length) {
+        this.showError('Add at least one target role before continuing, or set this up later.');
+        return;
+      }
+      this.setupStep.set(2);
+    } else if (step === 2) {
+      if (!this.setupPostcode().trim()) {
+        this.showError('Add a postcode before continuing, or set this up later.');
+        return;
+      }
+      this.setupStep.set(3);
+    } else if (step === 3) {
+      if (!this.setupWorkplaceArrangements().length) {
+        this.showError('Choose at least one workplace arrangement before continuing.');
+        return;
+      }
+      this.setupStep.set(4);
+    } else if (step === 4) {
+      void this.finishSetup();
+    }
+  }
+
+  toggleWorkplace(value: string): void {
+    this.setupWorkplaceArrangements.update(current =>
+      current.includes(value)
+        ? current.filter(candidate => candidate !== value)
+        : [...current, value]);
+  }
+
+  isWorkplaceSelected(value: string): boolean {
+    return this.setupWorkplaceArrangements().includes(value);
+  }
+
+  skipSetup(): void {
+    if (this.isLoading()) return;
+    const account = this.setupAccount();
+    if (!account) return;
+    this.onboarded.emit(account);
+  }
+
+  async finishSetup(): Promise<void> {
+    if (this.isLoading()) return;
+    const account = this.setupAccount();
+    if (!account) return;
+    const workplaceArrangements = this.setupWorkplaceArrangements() as unknown as
+      Set<WorkPreferencesWorkplaceArrangementsEnum>;
+    const update: ProfilePreferencesUpdate = {
+      skills: this.tags(this.setupSkills()),
+      aspirations: {targetRoles: this.tags(this.setupTargetRoles())},
+      workPreferences: {
+        ...(this.setupPostcode().trim() ? {
+          location: {postcode: this.setupPostcode().trim().toUpperCase()},
+        } : {}),
+        workplaceArrangements,
+      },
+    };
+    const ifMatch = account.profile.revision == null
+      ? undefined
+      : `"${account.profile.revision}"`;
+
+    this.isLoading.set(true);
+    this.errorMessage.set(null);
+    try {
+      await firstValueFrom(this.browserSession.ensureCsrf());
+      const response = await firstValueFrom(this.profileApi.updatePreferences(
+        update, ifMatch, 'body', false, {transferCache: false},
+      ));
+      if (!response.success || !response.user?.profile) {
+        throw new Error(response.message || 'Profile setup could not be saved.');
+      }
+      this.browserSession.invalidateCsrf();
+      this.emitProfileFromResponse(response);
+    } catch (error: unknown) {
+      this.browserSession.handleAuthenticatedError(error);
+      this.showError(this.httpErrorMessage(error, 'Your setup could not be saved. Please try again.'));
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
   private showError(message: string): void {
     this.errorMessage.set(message);
     setTimeout(() => this.host.nativeElement.querySelector<HTMLElement>('#auth-error-alert')?.focus());
@@ -176,11 +300,27 @@ export class LandingAuthComponent implements OnInit {
   private emitProfileFromResponse(response: GatewayResponse): void {
     if (!response.user) return;
     const profile = normaliseProfile(response.user.profile);
-    this.browserSession.acceptAuthenticatedUser({...response.user, profile});
     this.onboarded.emit({
       profile,
+      id: response.user.id,
       name: response.user.name || '',
       email: response.user.email || '',
     });
+  }
+
+  private beginSetup(response: GatewayResponse): void {
+    if (!response.user) return;
+    const profile = normaliseProfile(response.user.profile);
+    this.setupAccount.set({
+      profile,
+      id: response.user.id,
+      name: response.user.name || '',
+      email: response.user.email || '',
+    });
+    this.setupStep.set(1);
+  }
+
+  private tags(value: string): string[] {
+    return value.split(/[,;\n]/).map(item => item.trim()).filter(Boolean);
   }
 }

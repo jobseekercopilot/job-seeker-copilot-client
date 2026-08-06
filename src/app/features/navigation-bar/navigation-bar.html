@@ -61,6 +61,10 @@
       <div id="user-profile-widget" class="relative inline-block text-left">
         <button id="btn-profile-dropdown"
                 (click)="toggleDropdown()"
+                type="button"
+                aria-haspopup="menu"
+                aria-controls="profile-dropdown-menu"
+                [attr.aria-expanded]="dropdownOpen()"
                 class="user-menu-button flex items-center gap-2.5 rounded-2xl px-3.5 py-1.5 select-none cursor-pointer transition-all">
           <div class="flex flex-col items-end hidden sm:flex">
             <span class="text-xs font-black tracking-tight flex items-center gap-1">
@@ -93,14 +97,24 @@
             
             <div class="pb-3 border-b border-slate-100 select-none">
               <span class="text-[9px] font-black uppercase tracking-widest text-slate-400">Signed in</span>
-              <h4 class="text-xs font-extrabold mt-0.5 truncate">{{ userName() }}</h4>
+              <p class="profile-menu-name text-xs font-extrabold mt-0.5 truncate">{{ userName() }}</p>
               <p class="text-[10px] truncate mt-0.5">{{ userEmail() }}</p>
             </div>
 
-            <div class="pt-2.5 border-t border-slate-100">
+            <div class="profile-menu-actions" role="menu" aria-label="Account">
+              <button type="button" role="menuitem" (click)="triggerProfile()">
+                <mat-icon>person</mat-icon>
+                My profile
+              </button>
+              <button type="button" role="menuitem" (click)="triggerExperience()">
+                <mat-icon>workspace_premium</mat-icon>
+                Experience &amp; achievements
+              </button>
               <button id="btn-dropdown-logout"
+                      type="button"
+                      role="menuitem"
                       (click)="triggerLogout()"
-                      class="w-full py-2 px-3 text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100/80 border border-rose-100 rounded-xl transition-all cursor-pointer font-bold text-2xs uppercase tracking-wider flex items-center justify-center gap-1.5">
+                      class="danger">
                 <mat-icon class="text-base">logout</mat-icon>
                 Sign out
               </button>
@@ -110,12 +124,4 @@
       </div>
     </div>
   </div>
-  <nav class="workspace-navigation mx-auto px-4 sm:px-6 lg:px-8" aria-label="Product workspaces">
-    <a href="/dashboard#left-sidebar">Profile</a>
-    <a href="/dashboard#center-workspace">Job search &amp; matching</a>
-    <a href="/dashboard#center-workspace">Applications</a>
-    <a href="/dashboard#center-workspace">Documents</a>
-    <a href="/dashboard#right-sidebar">Reporting</a>
-    <a href="/payment">AI Credit &amp; Payments</a>
-  </nav>
 </header>
