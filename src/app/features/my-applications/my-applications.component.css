@@ -418,6 +418,20 @@
   margin: 0;
 }
 
+.document-picker select {
+  background: var(--color-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  min-height: 2.35rem;
+  padding: 0.4rem;
+  width: 100%;
+}
+
+.document-picker > p {
+  margin: 0.7rem;
+}
+
 .application-source {
   color: var(--text-secondary);
   font-size: 0.75rem;

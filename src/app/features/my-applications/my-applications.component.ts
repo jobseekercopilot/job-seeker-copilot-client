@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, OnInit, output, signal } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
-import { finalize } from 'rxjs';
+import { finalize, forkJoin, map, of, switchMap } from 'rxjs';
 import {
   ApplicationEvent,
   ApplicationFilter,
@@ -12,13 +12,20 @@ import {
   DocumentFileMetadata,
   DocumentGenerationService,
   DocumentKind,
-  GenerationDownloadsResponse,
+  documentArtifactDownloadLabel,
 } from '../../services/document-generation.service';
 import {
-  DocumentDownloadsResponse,
-  DownloadFileResponse,
+  DocumentArtifactManifestItem,
+  DocumentFamilySummary,
+  DocumentVersionHistoryItem,
 } from '../../api/document-generation-gateway';
 import { DocumentVersionReference } from '../../api/job-finder';
+import {
+  ApplicationDocumentSelectionConflict,
+  ApplicationDocumentSelectionService,
+  ApplicationSelectionRecord,
+} from '../../services/application-document-selection.service';
+import {DocumentLifecycleService} from '../../services/document-lifecycle.service';
 
 type StatusUpdateTarget =
   | 'DOCUMENTS_GENERATED'
@@ -44,6 +51,26 @@ interface TimelineStep {
 interface EvidenceUsedReference {
   label: string;
   reference: DocumentVersionReference;
+}
+
+type DocumentSlot = 'CV' | 'COVER_LETTER';
+
+interface DocumentVersionChoice extends DocumentVersionHistoryItem {
+  documentId: string;
+  documentFamilyId: string;
+  documentType: DocumentSlot;
+  version: number;
+}
+
+interface ApplicationDocumentPanel {
+  loaded: boolean;
+  loading: boolean;
+  saving: boolean;
+  error?: string;
+  message?: string;
+  cvSelection: string;
+  coverLetterSelection: string;
+  options: DocumentVersionChoice[];
 }
 
 export function latestUserUploadTimestamp(metadata: DocumentFileMetadata[]): string | undefined {
@@ -75,6 +102,8 @@ function latestTimestamp(left: string | undefined, right: string): string {
 export class MyApplicationsComponent implements OnInit {
   private readonly applicationTracker = inject(ApplicationTrackerService);
   private readonly documentGenerationService = inject(DocumentGenerationService);
+  private readonly documentSelections = inject(ApplicationDocumentSelectionService);
+  private readonly documentLifecycle = inject(DocumentLifecycleService);
 
   userId = input<string>('');
   authToken = input<string>('');
@@ -86,9 +115,10 @@ export class MyApplicationsComponent implements OnInit {
   selectedFilter = signal<ApplicationFilter>('ALL');
   loading = signal(false);
   error = signal<string | null>(null);
-  downloads = signal<Record<string, GenerationDownloadsResponse | undefined>>({});
+  documentPanels = signal<Record<string, ApplicationDocumentPanel | undefined>>({});
   uploadingDocuments = signal<Record<string, DocumentKind | undefined>>({});
   updatingStatuses = signal<Record<string, StatusUpdateTarget | undefined>>({});
+  private readonly selectionIdempotencyKeys = new Map<string, string>();
   private refreshSequence = 0;
 
   readonly filters: FilterOption[] = [
@@ -129,7 +159,7 @@ export class MyApplicationsComponent implements OnInit {
         if (requestSequence !== this.refreshSequence) return;
         this.applications.set(applications);
         this.loading.set(false);
-        this.loadDownloads(applications, requestSequence);
+        this.loadUploadHistory(applications, requestSequence);
       },
       error: err => {
         if (requestSequence !== this.refreshSequence) return;
@@ -192,10 +222,17 @@ export class MyApplicationsComponent implements OnInit {
   }
 
   evidenceReferences(application: TrackedApplication): EvidenceUsedReference[] {
-    const cv = application.applicationUsedCvDocumentReference
-      ?? application.cvDocumentReference;
-    const coverLetter = application.applicationUsedCoverLetterDocumentReference
-      ?? application.coverLetterDocumentReference;
+    const frozen = !this.canEditDocumentSelections(application);
+    const cv = frozen
+      ? application.applicationUsedCvState === 'SELECTED'
+        ? application.applicationUsedCvDocumentReference
+        : undefined
+      : application.cvDocumentReference;
+    const coverLetter = frozen
+      ? application.applicationUsedCoverLetterState === 'SELECTED'
+        ? application.applicationUsedCoverLetterDocumentReference
+        : undefined
+      : application.coverLetterDocumentReference;
     return [
       cv ? { label: 'CV', reference: cv } : undefined,
       coverLetter ? { label: 'Cover letter', reference: coverLetter } : undefined,
@@ -203,8 +240,7 @@ export class MyApplicationsComponent implements OnInit {
   }
 
   evidenceScopeText(application: TrackedApplication): string {
-    if (application.applicationUsedCvDocumentReference
-      || application.applicationUsedCoverLetterDocumentReference) {
+    if (!this.canEditDocumentSelections(application)) {
       return application.applicationUsedAt
         ? `Frozen when applied ${this.formatDate(application.applicationUsedAt, true)}`
         : 'Frozen when this application was submitted';
@@ -245,6 +281,220 @@ export class MyApplicationsComponent implements OnInit {
 
   groundingNeedsReview(reference: DocumentVersionReference): boolean {
     return reference.groundingState === 'USER_EDITED_REVIEW_REQUIRED';
+  }
+
+  canEditDocumentSelections(application: TrackedApplication): boolean {
+    return application.status === 'SAVED'
+      || application.status === 'DOCUMENTS_GENERATED';
+  }
+
+  documentPanel(application: TrackedApplication): ApplicationDocumentPanel {
+    return this.documentPanels()[this.applicationId(application)] ?? {
+      loaded: false,
+      loading: false,
+      saving: false,
+      cvSelection: application.cvDocumentReference?.documentId
+        ?? application.cvDocumentId
+        ?? '',
+      coverLetterSelection: application.coverLetterDocumentReference?.documentId
+        ?? application.coverLetterDocumentId
+        ?? '',
+      options: [],
+    };
+  }
+
+  documentPanelToggled(application: TrackedApplication, event: Event): void {
+    const details = event.currentTarget as HTMLDetailsElement;
+    if (!details.open || this.documentPanel(application).loaded
+      || this.documentPanel(application).loading) return;
+
+    if (this.canEditDocumentSelections(application)) {
+      this.loadEditableDocumentOptions(application);
+    } else {
+      this.loadFrozenDocumentOptions(application);
+    }
+  }
+
+  documentOptions(
+    application: TrackedApplication,
+    documentType: DocumentSlot,
+  ): DocumentVersionChoice[] {
+    return this.documentPanel(application).options
+      .filter(option => option.documentType === documentType);
+  }
+
+  hasDocumentOption(
+    application: TrackedApplication,
+    documentType: DocumentSlot,
+    documentId: string,
+  ): boolean {
+    return this.documentOptions(application, documentType)
+      .some(option => option.documentId === documentId);
+  }
+
+  selectionsEligible(application: TrackedApplication): boolean {
+    const panel = this.documentPanel(application);
+    return (!panel.cvSelection
+        || this.hasDocumentOption(application, 'CV', panel.cvSelection))
+      && (!panel.coverLetterSelection
+        || this.hasDocumentOption(application, 'COVER_LETTER', panel.coverLetterSelection));
+  }
+
+  optionLabel(option: DocumentVersionChoice): string {
+    const source = option.source
+      ? this.statusLabel(option.source)
+      : 'Trusted document';
+    const date = this.formatDate(option.approvedAt ?? option.createdAt);
+    return [
+      option.title || `${option.documentType === 'CV' ? 'CV' : 'Cover letter'} version ${option.version}`,
+      `Version ${option.version}`,
+      source,
+      date,
+      option.current ? 'Recommended' : '',
+    ].filter(Boolean).join(' · ');
+  }
+
+  selectionChanged(
+    application: TrackedApplication,
+    documentType: DocumentSlot,
+    event: Event,
+  ): void {
+    const value = (event.target as HTMLSelectElement).value;
+    this.updateDocumentPanel(application, panel => ({
+      ...panel,
+      ...(documentType === 'CV'
+        ? {cvSelection: value}
+        : {coverLetterSelection: value}),
+      error: undefined,
+      message: undefined,
+    }));
+  }
+
+  saveDocumentSelections(application: TrackedApplication): void {
+    const applicationId = this.applicationId(application);
+    const panel = this.documentPanel(application);
+    const version = application.version;
+    if (!this.canEditDocumentSelections(application)
+      || panel.saving
+      || !panel.loaded
+      || !this.selectionsEligible(application)
+      || !Number.isSafeInteger(version)) return;
+
+    const signature = [
+      applicationId,
+      version,
+      panel.cvSelection || 'OMITTED',
+      panel.coverLetterSelection || 'OMITTED',
+    ].join(':');
+    const idempotencyKey = this.selectionIdempotencyKeys.get(signature)
+      ?? `browser-${crypto.randomUUID()}`;
+    this.selectionIdempotencyKeys.set(signature, idempotencyKey);
+    this.updateDocumentPanel(application, current => ({
+      ...current,
+      saving: true,
+      error: undefined,
+      message: undefined,
+    }));
+
+    try {
+      this.documentSelections.saveSelections(applicationId, {
+        cvSelection: panel.cvSelection
+          ? this.documentSelections.selected(panel.cvSelection)
+          : this.documentSelections.omitted(),
+        coverLetterSelection: panel.coverLetterSelection
+          ? this.documentSelections.selected(panel.coverLetterSelection)
+          : this.documentSelections.omitted(),
+        expectedVersion: version as number,
+      }, idempotencyKey).pipe(
+        finalize(() => this.updateDocumentPanel(application, current => ({
+          ...current,
+          saving: false,
+        }))),
+      ).subscribe({
+        next: record => {
+          this.selectionIdempotencyKeys.delete(signature);
+          this.applySelectionRecord(application, record);
+          this.updateDocumentPanel(application, current => ({
+            ...current,
+            cvSelection: record.cvDocumentReference?.documentId ?? '',
+            coverLetterSelection: record.coverLetterDocumentReference?.documentId ?? '',
+            message: 'Exact document selections saved.',
+          }));
+          this.notify.emit({message: 'Application documents saved.', type: 'success'});
+          this.applicationChanged.emit();
+        },
+        error: error => this.handleSelectionSaveError(application, error),
+      });
+    } catch (error) {
+      this.updateDocumentPanel(application, current => ({
+        ...current,
+        saving: false,
+        error: error instanceof Error ? error.message : 'Could not save document selections.',
+      }));
+    }
+  }
+
+  frozenState(application: TrackedApplication, documentType: DocumentSlot): string {
+    return documentType === 'CV'
+      ? application.applicationUsedCvState ?? 'UNKNOWN'
+      : application.applicationUsedCoverLetterState ?? 'UNKNOWN';
+  }
+
+  frozenReference(
+    application: TrackedApplication,
+    documentType: DocumentSlot,
+  ): DocumentVersionReference | undefined {
+    return documentType === 'CV'
+      ? application.applicationUsedCvDocumentReference
+      : application.applicationUsedCoverLetterDocumentReference;
+  }
+
+  frozenSlotText(application: TrackedApplication, documentType: DocumentSlot): string {
+    const label = documentType === 'CV' ? 'CV' : 'Cover letter';
+    const state = this.frozenState(application, documentType);
+    if (state === 'OMITTED') {
+      return documentType === 'CV' ? 'No CV used' : 'No cover letter used';
+    }
+    if (state !== 'SELECTED') return `${label} used is unknown for this legacy application`;
+    const reference = this.frozenReference(application, documentType);
+    return reference?.version
+      ? `${label} used · Version ${reference.version}`
+      : `${label} used · Exact version unavailable`;
+  }
+
+  frozenVersion(
+    application: TrackedApplication,
+    documentType: DocumentSlot,
+  ): DocumentVersionChoice | undefined {
+    const documentId = this.frozenReference(application, documentType)?.documentId;
+    return documentId
+      ? this.documentPanel(application).options.find(option => option.documentId === documentId)
+      : undefined;
+  }
+
+  availableArtifacts(version: DocumentVersionChoice | undefined): DocumentArtifactManifestItem[] {
+    return (version?.artifacts ?? []).filter(artifact =>
+      Boolean(documentArtifactDownloadLabel(artifact as Parameters<typeof documentArtifactDownloadLabel>[0]))
+    );
+  }
+
+  artifactLabel(artifact: DocumentArtifactManifestItem): string {
+    return documentArtifactDownloadLabel(
+      artifact as Parameters<typeof documentArtifactDownloadLabel>[0],
+    ) ?? 'Unavailable';
+  }
+
+  downloadExact(
+    version: DocumentVersionChoice,
+    artifact: DocumentArtifactManifestItem,
+  ): void {
+    this.documentGenerationService.downloadArtifact(
+      version.documentId,
+      artifact as Parameters<DocumentGenerationService['downloadArtifact']>[1],
+    ).catch(error => {
+      this.notify.emit({message: 'This exact document could not be downloaded.', type: 'error'});
+      console.error('Exact application document download failed:', error);
+    });
   }
 
   timeline(application: TrackedApplication): TimelineStep[] {
@@ -299,19 +549,6 @@ export class MyApplicationsComponent implements OnInit {
     );
   }
 
-  downloadGroup(application: TrackedApplication, kind: DocumentKind): DocumentDownloadsResponse | undefined {
-    const applicationId = this.applicationId(application);
-    return kind === 'CV' ? this.downloads()[applicationId]?.cv : this.downloads()[applicationId]?.coverLetter;
-  }
-
-  downloadFile(file: DownloadFileResponse | undefined): void {
-    if (!file) return;
-    this.documentGenerationService.download(file).catch(err => {
-      this.notify.emit({ message: 'Download failed. Please try again.', type: 'error' });
-      console.error('Application document download failed:', err);
-    });
-  }
-
   onFileSelected(application: TrackedApplication, kind: DocumentKind, event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -344,15 +581,6 @@ export class MyApplicationsComponent implements OnInit {
         this.applicationChanged.emit();
         return;
       }
-      const existing = this.downloads()[applicationId] ?? {};
-      this.downloads.update(downloads => ({
-        ...downloads,
-        [applicationId]: {
-          ...existing,
-          cv: kind === 'CV' ? response.latestFiles : existing.cv,
-          coverLetter: kind === 'COVER_LETTER' ? response.latestFiles : existing.coverLetter,
-        },
-      }));
       this.applications.update(applications => applications.map(item =>
         this.applicationId(item) === applicationId
           ? {
@@ -441,6 +669,172 @@ export class MyApplicationsComponent implements OnInit {
     return this.selectedApplicationId() === this.applicationId(application);
   }
 
+  private loadEditableDocumentOptions(application: TrackedApplication): void {
+    const jobId = application.canonicalJobId ?? application.jobId;
+    this.updateDocumentPanel(application, panel => ({
+      ...panel,
+      loading: true,
+      error: undefined,
+    }));
+    this.documentLifecycle.allFamilies().pipe(
+      map(families => families.filter(family =>
+        Boolean(family.documentFamilyId)
+        && family.jobId === jobId
+        && (family.documentType === 'CV' || family.documentType === 'COVER_LETTER')
+      )),
+      switchMap(families => families.length
+        ? forkJoin(families.map(family => this.documentLifecycle.history(
+          family.documentFamilyId as string,
+        ).pipe(map(history => ({family, history})))))
+        : of([])),
+      map(histories => histories.flatMap(({family, history}) =>
+        (history.versions ?? [])
+          .filter(version => version.lifecycle === 'APPROVED'
+            && version.retention === 'AVAILABLE')
+          .map(version => this.versionChoice(family, version))
+          .filter((version): version is DocumentVersionChoice => Boolean(version))
+      )),
+      map(options => options.sort((left, right) =>
+        Number(right.current) - Number(left.current)
+        || this.time(right.approvedAt ?? right.createdAt)
+          - this.time(left.approvedAt ?? left.createdAt)
+        || right.version - left.version
+      )),
+    ).subscribe({
+      next: options => this.updateDocumentPanel(application, panel => ({
+        ...panel,
+        options,
+        loaded: true,
+        loading: false,
+      })),
+      error: error => {
+        this.updateDocumentPanel(application, panel => ({
+          ...panel,
+          loaded: false,
+          loading: false,
+          error: 'Could not load approved document versions. Please try again.',
+        }));
+        console.error('Application document options load failed:', error);
+      },
+    });
+  }
+
+  private loadFrozenDocumentOptions(application: TrackedApplication): void {
+    const families = (['CV', 'COVER_LETTER'] as const)
+      .map(documentType => ({
+        documentType,
+        documentFamilyId: this.frozenReference(application, documentType)?.documentFamilyId,
+      }))
+      .filter((family): family is {documentType: DocumentSlot; documentFamilyId: string} =>
+        Boolean(family.documentFamilyId)
+      );
+    this.updateDocumentPanel(application, panel => ({
+      ...panel,
+      loading: true,
+      error: undefined,
+    }));
+    const uniqueFamilies = families.filter((family, index) =>
+      families.findIndex(candidate => candidate.documentFamilyId === family.documentFamilyId) === index
+    );
+    (uniqueFamilies.length
+      ? forkJoin(uniqueFamilies.map(family => this.documentLifecycle.history(
+        family.documentFamilyId,
+      ).pipe(map(history => ({family, history})))))
+      : of([])
+    ).pipe(
+      map(histories => histories.flatMap(({family, history}) =>
+        (history.versions ?? [])
+          .map(version => this.versionChoice({
+            documentFamilyId: family.documentFamilyId,
+            documentType: family.documentType,
+          }, version))
+          .filter((version): version is DocumentVersionChoice => Boolean(version))
+      )),
+    ).subscribe({
+      next: options => this.updateDocumentPanel(application, panel => ({
+        ...panel,
+        options,
+        loaded: true,
+        loading: false,
+      })),
+      error: error => {
+        this.updateDocumentPanel(application, panel => ({
+          ...panel,
+          loaded: true,
+          loading: false,
+          error: 'Exact document content is not available right now.',
+        }));
+        console.error('Frozen application document history load failed:', error);
+      },
+    });
+  }
+
+  private versionChoice(
+    family: {
+      documentFamilyId?: string;
+      documentType?: DocumentFamilySummary['documentType'] | DocumentSlot;
+      currentDocumentId?: string;
+    },
+    version: DocumentVersionHistoryItem,
+  ): DocumentVersionChoice | undefined {
+    if (!family.documentFamilyId
+      || (family.documentType !== 'CV' && family.documentType !== 'COVER_LETTER')
+      || !version.documentId
+      || !Number.isSafeInteger(version.version)) return undefined;
+    return {
+      ...version,
+      documentId: version.documentId,
+      documentFamilyId: family.documentFamilyId,
+      documentType: family.documentType,
+      version: version.version as number,
+      current: version.current ?? family.currentDocumentId === version.documentId,
+    };
+  }
+
+  private updateDocumentPanel(
+    application: TrackedApplication,
+    update: (panel: ApplicationDocumentPanel) => ApplicationDocumentPanel,
+  ): void {
+    const applicationId = this.applicationId(application);
+    this.documentPanels.update(panels => ({
+      ...panels,
+      [applicationId]: update(this.documentPanel(application)),
+    }));
+  }
+
+  private applySelectionRecord(
+    application: TrackedApplication,
+    record: ApplicationSelectionRecord,
+  ): void {
+    this.upsert({
+      ...application,
+      ...record,
+      applicationId: record.id,
+    } as unknown as TrackedApplication);
+  }
+
+  private handleSelectionSaveError(
+    application: TrackedApplication,
+    error: unknown,
+  ): void {
+    if (error instanceof ApplicationDocumentSelectionConflict) {
+      this.applySelectionRecord(application, error.currentApplication);
+      this.updateDocumentPanel(application, panel => ({
+        ...panel,
+        cvSelection: error.currentApplication.cvDocumentReference?.documentId ?? '',
+        coverLetterSelection:
+          error.currentApplication.coverLetterDocumentReference?.documentId ?? '',
+        error: 'This application changed elsewhere. The latest selections are shown; review them before saving again.',
+      }));
+      return;
+    }
+    this.updateDocumentPanel(application, panel => ({
+      ...panel,
+      error: 'Could not save document selections. Your choices are retained so you can try again.',
+    }));
+    console.error('Application document selection save failed:', error);
+  }
+
   private withdraw(application: TrackedApplication): void {
     const applicationId = this.applicationId(application);
     this.updatingStatuses.update(updating => ({ ...updating, [applicationId]: 'WITHDRAWN' }));
@@ -479,7 +873,7 @@ export class MyApplicationsComponent implements OnInit {
     ));
   }
 
-  private loadDownloads(
+  private loadUploadHistory(
     applications: TrackedApplication[],
     requestSequence: number,
   ): void {
@@ -487,16 +881,6 @@ export class MyApplicationsComponent implements OnInit {
       const applicationId = this.applicationId(application);
       if (!applicationId) continue;
       if (application.cvDocumentId) {
-        this.documentGenerationService.latestFiles(application.cvDocumentId).subscribe({
-          next: cv => {
-            if (requestSequence !== this.refreshSequence) return;
-            this.downloads.update(downloads => ({
-              ...downloads,
-              [applicationId]: { ...(downloads[applicationId] ?? {}), cv },
-            }));
-          },
-          error: err => console.warn('Could not load CV files for application:', err),
-        });
         this.documentGenerationService.allFileMetadata(application.cvDocumentId).subscribe({
           next: metadata => {
             if (requestSequence === this.refreshSequence) {
@@ -507,16 +891,6 @@ export class MyApplicationsComponent implements OnInit {
         });
       }
       if (application.coverLetterDocumentId) {
-        this.documentGenerationService.latestFiles(application.coverLetterDocumentId).subscribe({
-          next: coverLetter => {
-            if (requestSequence !== this.refreshSequence) return;
-            this.downloads.update(downloads => ({
-              ...downloads,
-              [applicationId]: { ...(downloads[applicationId] ?? {}), coverLetter },
-            }));
-          },
-          error: err => console.warn('Could not load cover letter files for application:', err),
-        });
         this.documentGenerationService.allFileMetadata(application.coverLetterDocumentId).subscribe({
           next: metadata => {
             if (requestSequence === this.refreshSequence) {
