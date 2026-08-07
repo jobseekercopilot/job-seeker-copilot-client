@@ -1,6 +1,6 @@
 import {HttpClient} from '@angular/common/http';
 import {TestBed} from '@angular/core/testing';
-import {firstValueFrom, of, Subject, throwError} from 'rxjs';
+import {firstValueFrom, NEVER, of, Subject, throwError} from 'rxjs';
 import {
   DocumentEvidenceSelectionPurposeEnum,
   DocumentEvidenceSelectionSectionOrderEnum,
@@ -260,6 +260,108 @@ describe('DocumentGenerationService', () => {
     expect(approveOperation).toHaveBeenCalledOnce();
   });
 
+  it('replays a fresh replay-safe downstream failure once with the same durable request', async () => {
+    vi.useFakeTimers();
+    startOperation
+      .mockImplementationOnce(() => of({
+        operationId,
+        state: 'CREATED',
+      }))
+      .mockImplementationOnce(() => of({
+        operationId,
+        state: 'CREDIT_COMMITTED',
+        replaySafe: true,
+        failureCode: 'DOWNSTREAM_RETRYABLE',
+      }));
+    getOperation
+      .mockImplementationOnce(() => of({
+        operationId,
+        state: 'CREDIT_COMMITTED',
+        replaySafe: true,
+        failureCode: 'DOWNSTREAM_RETRYABLE',
+      }))
+      .mockImplementationOnce(() => of({
+        operationId,
+        state: 'AWAITING_APPROVAL',
+        replaySafe: true,
+        cvDocumentId,
+        coverLetterDocumentId,
+      }));
+
+    const result = firstValueFrom(
+      TestBed.inject(DocumentGenerationService).generate(job, evidence),
+    );
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    await expect(result).resolves.toMatchObject({applicationId});
+    expect(startOperation).toHaveBeenCalledTimes(2);
+    expect(startOperation.mock.calls[1]).toEqual(startOperation.mock.calls[0]);
+    expect(getOperation).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails promptly and retains recovery evidence when replay remains downstream retryable', async () => {
+    vi.useFakeTimers();
+    startOperation
+      .mockImplementationOnce(() => of({
+        operationId,
+        state: 'CREATED',
+      }))
+      .mockImplementationOnce(() => of({
+        operationId,
+        state: 'CREDIT_COMMITTED',
+        replaySafe: true,
+        failureCode: 'DOWNSTREAM_RETRYABLE',
+      }));
+    getOperation.mockReturnValue(of({
+      operationId,
+      state: 'CREDIT_COMMITTED',
+      replaySafe: true,
+      failureCode: 'DOWNSTREAM_RETRYABLE',
+    }));
+    const service = TestBed.inject(DocumentGenerationService);
+    const errors: unknown[] = [];
+
+    service.generate(job, evidence).subscribe({error: error => errors.push(error)});
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    expect(errors).toEqual([
+      expect.objectContaining({
+        code: 'FAILED',
+        message: expect.stringContaining('resume the same operation safely'),
+      }),
+    ]);
+    expect(startOperation).toHaveBeenCalledTimes(2);
+    expect(getOperation).toHaveBeenCalledTimes(2);
+    expect(service.pendingGenerations()).toEqual([
+      expect.objectContaining({
+        canonicalJobId,
+        operationId,
+        evidence,
+      }),
+    ]);
+  });
+
+  it('bounds a stuck operation-status request and retains the resumable attempt', async () => {
+    vi.useFakeTimers();
+    getOperation.mockReturnValue(NEVER);
+    const service = TestBed.inject(DocumentGenerationService);
+    const errors: unknown[] = [];
+
+    service.generate(job, evidence).subscribe({error: error => errors.push(error)});
+    await vi.advanceTimersByTimeAsync(75_000);
+
+    expect(errors).toEqual([
+      expect.objectContaining({
+        code: 'TIMEOUT',
+        message: expect.stringContaining('Check your connection'),
+      }),
+    ]);
+    expect(getOperation).toHaveBeenCalledOnce();
+    expect(service.pendingGenerations()).toEqual([
+      expect.objectContaining({canonicalJobId, operationId}),
+    ]);
+  });
+
   it('coalesces repeated generate activations into one write workflow', async () => {
     const service = TestBed.inject(DocumentGenerationService);
     const first = service.generate(job, evidence);
@@ -297,6 +399,164 @@ describe('DocumentGenerationService', () => {
       false,
       {transferCache: false},
     );
+  });
+
+  it('explicitly replays an expired retryable checkpoint and adopts its renewed deadline', async () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    writeAttempt({
+      operationId,
+      startedAt: now - (11 * 60 * 1000),
+    });
+    getOperation
+      .mockImplementationOnce(() => of({
+        operationId,
+        state: 'CREDIT_COMMITTED',
+        replaySafe: true,
+        failureCode: 'DOWNSTREAM_RETRYABLE',
+        deadlineAt: new Date(now - 60_000).toISOString(),
+      }))
+      .mockImplementationOnce(() => of({
+        operationId,
+        state: 'AWAITING_APPROVAL',
+        replaySafe: true,
+        cvDocumentId,
+        coverLetterDocumentId,
+      }));
+    startOperation.mockReturnValue(of({
+      operationId,
+      state: 'CREDIT_COMMITTED',
+      replaySafe: true,
+      failureCode: 'DOWNSTREAM_RETRYABLE',
+      deadlineAt: new Date(now + (10 * 60 * 1000)).toISOString(),
+    }));
+    const service = TestBed.inject(DocumentGenerationService);
+
+    expect(service.pendingGenerations()).toEqual([]);
+    const result = firstValueFrom(service.generate(job, evidence));
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    await expect(result).resolves.toMatchObject({applicationId});
+    expect(save).not.toHaveBeenCalled();
+    expect(startOperation).toHaveBeenCalledOnce();
+    expect(startOperation).toHaveBeenCalledWith(
+      savedJobId,
+      'browser-stable-key',
+      expect.objectContaining({documents: expect.any(Array)}),
+      'body',
+      false,
+      {transferCache: false},
+    );
+    expect(getOperation).toHaveBeenCalledTimes(2);
+  });
+
+  it('replays terminal deadline recovery with the exact retained request and renewed deadline', async () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    writeAttempt({
+      operationId,
+      startedAt: now - (11 * 60 * 1000),
+    });
+    const changedEvidence: GenerationEvidenceSelection = {
+      cv: {
+        entryIds: ['70000000-0000-4000-8000-000000000099'],
+        sectionOrder: [DocumentEvidenceSelectionSectionOrderEnum.Project],
+      },
+      coverLetter: {
+        entryIds: ['70000000-0000-4000-8000-000000000098'],
+        sectionOrder: [DocumentEvidenceSelectionSectionOrderEnum.Education],
+      },
+    };
+    getOperation
+      .mockImplementationOnce(() => of({
+        operationId,
+        state: GenerationOperationResponseStateEnum.RecoveryRequired,
+        replaySafe: false,
+        failureCode: 'OPERATION_DEADLINE_RECOVERY_REQUIRED',
+        deadlineAt: new Date(now - 60_000).toISOString(),
+      }))
+      .mockImplementationOnce(() => of({
+        operationId,
+        state: GenerationOperationResponseStateEnum.AwaitingApproval,
+        replaySafe: true,
+        cvDocumentId,
+        coverLetterDocumentId,
+      }));
+    startOperation.mockReturnValue(of({
+      operationId,
+      state: GenerationOperationResponseStateEnum.RecoveryRequired,
+      replaySafe: false,
+      failureCode: 'OPERATION_DEADLINE_RECOVERY_REQUIRED',
+      deadlineAt: new Date(now + (10 * 60 * 1000)).toISOString(),
+    }));
+    const service = TestBed.inject(DocumentGenerationService);
+
+    const result = firstValueFrom(service.generate(job, changedEvidence));
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    await expect(result).resolves.toMatchObject({applicationId});
+    expect(save).not.toHaveBeenCalled();
+    expect(startOperation).toHaveBeenCalledOnce();
+    expect(startOperation).toHaveBeenCalledWith(
+      savedJobId,
+      'browser-stable-key',
+      {
+        documents: [
+          {
+            purpose: DocumentEvidenceSelectionPurposeEnum.Cv,
+            entryIds: evidence.cv.entryIds,
+            sectionOrder: evidence.cv.sectionOrder,
+          },
+          {
+            purpose: DocumentEvidenceSelectionPurposeEnum.CoverLetter,
+            entryIds: evidence.coverLetter.entryIds,
+            sectionOrder: evidence.coverLetter.sectionOrder,
+          },
+        ],
+      },
+      'body',
+      false,
+      {transferCache: false},
+    );
+    expect(getOperation).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails persistent terminal deadline recovery once and retains the original attempt', async () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    writeAttempt({operationId});
+    getOperation.mockReturnValue(of({
+      operationId,
+      state: GenerationOperationResponseStateEnum.RecoveryRequired,
+      replaySafe: false,
+      failureCode: 'OPERATION_DEADLINE_RECOVERY_REQUIRED',
+    }));
+    startOperation.mockReturnValue(of({
+      operationId,
+      state: GenerationOperationResponseStateEnum.RecoveryRequired,
+      replaySafe: false,
+      failureCode: 'OPERATION_DEADLINE_RECOVERY_REQUIRED',
+      deadlineAt: new Date(now + (10 * 60 * 1000)).toISOString(),
+    }));
+    const service = TestBed.inject(DocumentGenerationService);
+    const errors: unknown[] = [];
+
+    service.generate(job, evidence).subscribe({error: error => errors.push(error)});
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    expect(errors).toEqual([
+      expect.objectContaining({
+        code: 'OUTCOME_UNKNOWN',
+        message: expect.stringContaining('still requires recovery'),
+      }),
+    ]);
+    expect(save).not.toHaveBeenCalled();
+    expect(startOperation).toHaveBeenCalledOnce();
+    expect(getOperation).toHaveBeenCalledTimes(2);
+    expect(service.pendingGenerations()).toEqual([
+      expect.objectContaining({canonicalJobId, operationId, evidence}),
+    ]);
+    expect(localStorage.getItem(`jsc-document-generation-v1:${ownerId}`)).not.toBeNull();
   });
 
   it('reuses the original request when a start response was ambiguous before an operation id', async () => {
@@ -347,6 +607,7 @@ describe('DocumentGenerationService', () => {
     });
     expect(startOperation).not.toHaveBeenCalled();
     expect(approveOperation).not.toHaveBeenCalled();
+    expect(TestBed.inject(DocumentGenerationService).pendingGenerations()).toHaveLength(1);
   });
 
   it('cancels by operation id and retains no resumable operation', async () => {
@@ -425,6 +686,18 @@ describe('DocumentGenerationService', () => {
     expect(service.pendingGenerations()).toHaveLength(1);
   });
 
+  it('hides expired persisted attempts without deleting their explicit-retry evidence', () => {
+    writeAttempt({
+      operationId,
+      startedAt: Date.now() - (11 * 60 * 1000),
+    });
+    const service = TestBed.inject(DocumentGenerationService);
+
+    expect(service.pendingGenerations()).toEqual([]);
+    expect(localStorage.getItem(`jsc-document-generation-v1:${ownerId}`)).not.toBeNull();
+    expect(getOperation).not.toHaveBeenCalled();
+  });
+
   it('reports HTTP 202 replacement as processing instead of optimistic success', async () => {
     httpPost.mockReturnValue(of({
       status: 202,
@@ -459,14 +732,17 @@ describe('DocumentGenerationService', () => {
     };
   }
 
-  function writeAttempt(overrides: {operationId?: string}): void {
+  function writeAttempt(overrides: {
+    operationId?: string;
+    startedAt?: number;
+  }): void {
     localStorage.setItem(`jsc-document-generation-v1:${ownerId}`, JSON.stringify([{
       version: 1,
       canonicalJobId,
       savedJobId,
       operationId: overrides.operationId,
       idempotencyKey: 'browser-stable-key',
-      startedAt: Date.now(),
+      startedAt: overrides.startedAt ?? Date.now(),
       evidence,
     }]));
   }
