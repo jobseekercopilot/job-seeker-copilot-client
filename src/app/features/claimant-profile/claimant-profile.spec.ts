@@ -94,12 +94,40 @@ describe('ClaimantProfileComponent progressive profile', () => {
     expect(invalidateCsrf).toHaveBeenCalledOnce();
   });
 
+  it('preserves cancel and save behaviour for reusable skills', async () => {
+    const fixture = TestBed.createComponent(ClaimantProfileComponent);
+    fixture.componentRef.setInput('profile', {
+      revision: 3,
+      skills: ['Java'],
+      qualifications: [],
+      roles: [],
+    } satisfies UserProfile);
+    fixture.detectChanges();
+    const component = fixture.componentInstance;
+
+    component.startEditing('skills');
+    component.localSkills.set(['Java', 'Angular']);
+    component.cancelEditing();
+    expect(component.localSkills()).toEqual(['Java']);
+    expect(component.editingSection()).toBeNull();
+    expect(updatePreferences).not.toHaveBeenCalled();
+
+    component.startEditing('skills');
+    component.localSkills.set(['Java', 'Angular']);
+    await component.saveSection();
+
+    expect(updatePreferences).toHaveBeenCalledWith(
+      expect.objectContaining({skills: ['Java', 'Angular']}),
+      '"3"',
+    );
+  });
+
   it('keeps profile areas optional and reports journey-specific readiness', () => {
     const fixture = TestBed.createComponent(ClaimantProfileComponent);
     fixture.componentRef.setInput('profile', {skills: [], qualifications: [], roles: []});
     fixture.detectChanges();
 
-    expect(fixture.componentInstance.profileProgress()).toBe(0);
+    expect(fixture.componentInstance.jobSearchPreferencesProgress()).toBe(0);
     expect(fixture.componentInstance.searchReady()).toBe(false);
     expect(fixture.nativeElement.textContent).not.toContain('Add a target role or skill');
     expect(fixture.nativeElement.textContent).not.toContain('Documents need confirmed evidence');
@@ -147,26 +175,47 @@ describe('ClaimantProfileComponent progressive profile', () => {
     expect(handleAuthenticatedError).toHaveBeenCalledWith(expect.objectContaining({status: 409}));
   });
 
-  it('uses professional section labels with unique accessible Edit controls', async () => {
+  it('groups job-search preferences separately from reusable career details', async () => {
     const fixture = TestBed.createComponent(ClaimantProfileComponent);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
 
-    const text = fixture.nativeElement.textContent;
+    const preferences = fixture.nativeElement.querySelector(
+      '[data-testid="job-search-preferences"]',
+    ) as HTMLElement;
+    const careerDetails = fixture.nativeElement.querySelector(
+      '[data-testid="profile-evidence-summary"]',
+    ) as HTMLElement;
+
+    expect(preferences.textContent).toContain('Job search preferences');
+    expect(preferences.textContent).toContain('What I am looking for');
     for (const label of [
       'Target roles',
-      'Key skills',
       'Location and commute',
       'Working preferences',
       'Availability',
     ]) {
-      expect(text).toContain(label);
-      expect(fixture.nativeElement.querySelector(`[aria-label="Edit ${label}"]`)).not.toBeNull();
+      expect(preferences.textContent).toContain(label);
+      expect(preferences.querySelector(`[aria-label="Edit ${label}"]`)).not.toBeNull();
     }
-    expect(text).not.toContain('What jobs are you looking for?');
-    expect(text).not.toContain('Which skills should stand out?');
-    expect(text).not.toContain('When can you start?');
+    expect(preferences.textContent).not.toContain('Skills & expertise');
+
+    expect(careerDetails.textContent).toContain('Reusable career details');
+    expect(careerDetails.textContent).toContain('What I can offer');
+    expect(careerDetails.textContent).toContain('Skills & expertise');
+    const skillsEdit = careerDetails.querySelector(
+      'button[aria-controls="profile-skills-expertise-editor"]',
+    ) as HTMLButtonElement;
+    expect(skillsEdit).not.toBeNull();
+    expect(skillsEdit.getAttribute('aria-label')).toBe('Edit Skills & expertise');
+    expect((careerDetails.textContent ?? '').indexOf('Skills & expertise'))
+      .toBeLessThan((careerDetails.textContent ?? '').indexOf('Work experience'));
+
+    skillsEdit.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.editingSection()).toBe('skills');
+    expect(careerDetails.querySelector('#profile-skills-expertise-editor')).not.toBeNull();
   });
 
   it('shows a compact three-row active evidence summary and opens the manager', async () => {
@@ -218,6 +267,9 @@ describe('ClaimantProfileComponent progressive profile', () => {
     fixture.detectChanges();
     await expectNoAxeViolations(fixture.nativeElement);
     fixture.componentInstance.startEditing('patterns');
+    fixture.detectChanges();
+    await expectNoAxeViolations(fixture.nativeElement);
+    fixture.componentInstance.startEditing('skills');
     fixture.detectChanges();
     await expectNoAxeViolations(fixture.nativeElement);
   });

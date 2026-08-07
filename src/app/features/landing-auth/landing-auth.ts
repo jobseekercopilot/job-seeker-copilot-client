@@ -63,18 +63,17 @@ export class LandingAuthComponent implements OnInit {
   readonly formPassword = signal('');
   readonly loginEmail = signal('');
   readonly loginPassword = signal('');
-  readonly setupStep = signal<1 | 2 | 3 | 4 | null>(null);
+  readonly setupStep = signal<1 | 2 | 3 | null>(null);
   readonly setupTargetRoles = signal('');
   readonly setupPostcode = signal('');
   readonly setupWorkplaceArrangements = signal<string[]>([]);
-  readonly setupSkills = signal('');
   readonly setupAccount = signal<{
     profile: UserProfile;
     id?: string;
     name: string;
     email: string;
   } | null>(null);
-  readonly setupProgress = computed(() => `${this.setupStep() ?? 1} of 4`);
+  readonly setupProgress = computed(() => `${this.setupStep() ?? 1} of 3`);
 
   readonly workplaceOptions = [
     ['ONSITE', 'On-site'],
@@ -187,7 +186,7 @@ export class LandingAuthComponent implements OnInit {
       : loginPasswordError(this.loginPassword());
   }
 
-  goToSetupStep(step: 1 | 2 | 3 | 4): void {
+  goToSetupStep(step: 1 | 2 | 3): void {
     if (this.isLoading()) return;
     this.errorMessage.set(null);
     this.setupStep.set(step);
@@ -218,8 +217,6 @@ export class LandingAuthComponent implements OnInit {
         this.showError('Choose at least one workplace arrangement before continuing.');
         return;
       }
-      this.setupStep.set(4);
-    } else if (step === 4) {
       void this.finishSetup();
     }
   }
@@ -249,7 +246,6 @@ export class LandingAuthComponent implements OnInit {
     const workplaceArrangements = this.setupWorkplaceArrangements() as unknown as
       Set<WorkPreferencesWorkplaceArrangementsEnum>;
     const update: ProfilePreferencesUpdate = {
-      skills: this.tags(this.setupSkills()),
       aspirations: {targetRoles: this.tags(this.setupTargetRoles())},
       workPreferences: {
         ...(this.setupPostcode().trim() ? {
