@@ -10,6 +10,7 @@ const CSRF_TOKEN = 'csrf-token-123';
 const DOCUMENT_ID = '3b0f6a57-389d-4e20-a007-199afca04b20';
 const COVER_DOCUMENT_ID = '3b0f6a57-389d-4e20-a007-199afca04b21';
 const FILE_ID = '9f40a536-4167-4b5c-9295-c41b6e127f84';
+const ARTIFACT_ID = '7a7ca550-1a54-4ad2-956f-40d600b741ca';
 const OPERATION_ID = '69e794d1-f0aa-4ed5-9779-a5f3e98610cb';
 const APPLICATION_ID = 'c17442dd-c24f-48a2-86e5-b0ec7f38f8cb';
 const SECOND_APPLICATION_ID = 'c17442dd-c24f-48a2-86e5-b0ec7f38f8cc';
@@ -879,5 +880,164 @@ describe('Document generation session boundary', () => {
     });
     expect(downstreamBody).toHaveBeenCalledOnce();
     expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  it('downloads one exact retained artifact and preserves the complete security policy', async () => {
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+    const upstream = vi.fn<FetchLike>(async () =>
+      new Response(bytes, {
+        headers: {
+          'Cache-Control': 'private, no-store, max-age=0',
+          'Content-Disposition': 'attachment; filename="Tailored CV.docx"',
+          'Content-Length': String(bytes.byteLength),
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          Pragma: 'no-cache',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      }));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/documents/${DOCUMENT_ID.toUpperCase()}/artifacts/${ARTIFACT_ID.toUpperCase()}/download`,
+      {
+        headers: {
+          ...sessionHeaders(false),
+          Authorization: 'Bearer browser-controlled',
+          'X-User-Id': 'another-user',
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('content-disposition')).toBe('attachment; filename="Tailored CV.docx"');
+    expect(response.headers.get('content-length')).toBe(String(bytes.byteLength));
+    expect(response.headers.get('content-type')).toBe(
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    );
+    expect(response.headers.get('pragma')).toBe('no-cache');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+    expect(upstream).toHaveBeenCalledWith(
+      `https://documents.example.test/api/v1/document-generation/documents/${DOCUMENT_ID}/artifacts/${ARTIFACT_ID}/download`,
+      expect.objectContaining({
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${ACCESS_TOKEN}`,
+        },
+      }),
+    );
+  });
+
+  it.each([
+    [`not-${DOCUMENT_ID}`, ARTIFACT_ID],
+    [DOCUMENT_ID, `not-${ARTIFACT_ID}`],
+  ])('rejects malformed exact artifact boundaries before calling the gateway', async (
+    documentId,
+    artifactId,
+  ) => {
+    const upstream = vi.fn<FetchLike>();
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/documents/${documentId}/artifacts/${artifactId}/download`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'INVALID_DOCUMENT_ARTIFACT_ID',
+      message: 'Valid document and artifact identifiers are required',
+    });
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('does not allow an extra path segment to escape the exact artifact boundary', async () => {
+    const upstream = vi.fn<FetchLike>();
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/documents/${DOCUMENT_ID}/artifacts/${ARTIFACT_ID}/download/extra`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('preserves a non-enumerating mismatch denial without reflecting downstream details', async () => {
+    const upstream = vi.fn<FetchLike>(async () => Response.json({
+      message: 'artifact belongs to another owner',
+      objectUrl: 'https://internal-store.example.test/private-object',
+    }, {status: 404}));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/documents/${DOCUMENT_ID}/artifacts/${ARTIFACT_ID}/download`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(404);
+    const body = await response.text();
+    expect(JSON.parse(body)).toEqual({
+      error: 'DOCUMENT_ARTIFACT_DOWNLOAD_FAILED',
+      message: 'The document artifact could not be downloaded',
+    });
+    expect(body).not.toContain('another owner');
+    expect(body).not.toContain('internal-store');
+  });
+
+  it('fails closed before buffering when exact artifact security headers are incomplete', async () => {
+    const downstreamResponse = new Response(null, {
+      status: 200,
+      headers: {
+        'Cache-Control': 'private, no-store, max-age=0',
+        'Content-Disposition': 'attachment; filename="Tailored CV.pdf"',
+        'Content-Length': '4',
+        'Content-Type': 'application/pdf',
+        Pragma: 'no-cache',
+      },
+    });
+    const downstreamBody = vi.spyOn(downstreamResponse, 'arrayBuffer');
+    const upstream = vi.fn<FetchLike>(async () => downstreamResponse);
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/documents/${DOCUMENT_ID}/artifacts/${ARTIFACT_ID}/download`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: 'INVALID_DOWNSTREAM_RESPONSE',
+      message: 'The document service returned an invalid file',
+    });
+    expect(downstreamBody).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when exact artifact bytes do not match the declared length', async () => {
+    const upstream = vi.fn<FetchLike>(async () => new Response(
+      new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      {
+        headers: {
+          'Cache-Control': 'private, no-store, max-age=0',
+          'Content-Disposition': 'attachment; filename="Tailored CV.pdf"',
+          'Content-Length': '5',
+          'Content-Type': 'application/pdf',
+          Pragma: 'no-cache',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      },
+    ));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/documents/${DOCUMENT_ID}/artifacts/${ARTIFACT_ID}/download`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get('content-disposition')).toBeNull();
   });
 });
