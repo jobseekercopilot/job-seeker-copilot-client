@@ -1,10 +1,16 @@
 import {inject, Injectable} from '@angular/core';
-import {Observable, switchMap} from 'rxjs';
+import {EMPTY, expand, Observable, reduce, switchMap} from 'rxjs';
 import {
   DocumentApplicationAssociation,
   DocumentApplicationAssociationsResponse,
+  DocumentFamilyCurrentResponse,
+  DocumentFamilyHistoryControllerService,
+  DocumentFamilyHistoryResponse,
+  DocumentFamilyPageResponse,
+  DocumentFamilySummary,
   DocumentLifecycleControllerService,
   DocumentVersionLifecycleResponse,
+  SelectFamilyCurrentRequestExpectedCurrentStateEnum,
 } from '../api/document-generation-gateway';
 import {BrowserSessionService} from './browser-session.service';
 
@@ -48,7 +54,66 @@ export function associatedDocumentCopy(
 @Injectable({providedIn: 'root'})
 export class DocumentLifecycleService {
   private readonly api = inject(DocumentLifecycleControllerService);
+  private readonly familiesApi = inject(DocumentFamilyHistoryControllerService);
   private readonly browserSession = inject(BrowserSessionService);
+
+  families(page = 0, size = 100): Observable<DocumentFamilyPageResponse> {
+    return this.familiesApi.list(
+      page,
+      size,
+      'body',
+      false,
+      {transferCache: false},
+    );
+  }
+
+  allFamilies(size = 100): Observable<DocumentFamilySummary[]> {
+    return this.families(0, size).pipe(
+      expand((page, index) => {
+        const nextPage = index + 1;
+        const totalPages = Math.min(page.totalPages ?? 0, 1_000);
+        return nextPage < totalPages
+          ? this.families(nextPage, size)
+          : EMPTY;
+      }),
+      reduce(
+        (families, page) => [...families, ...(page.items ?? [])],
+        [] as DocumentFamilySummary[],
+      ),
+    );
+  }
+
+  history(documentFamilyId: string): Observable<DocumentFamilyHistoryResponse> {
+    return this.familiesApi.history(
+      documentFamilyId,
+      'body',
+      false,
+      {transferCache: false},
+    );
+  }
+
+  makeCurrent(
+    documentFamilyId: string,
+    documentId: string,
+    expectedCurrentDocumentId?: string,
+  ): Observable<DocumentFamilyCurrentResponse> {
+    return this.browserSession.ensureCsrf().pipe(
+      switchMap(() => this.familiesApi.selectCurrent(
+        documentFamilyId,
+        `browser-${crypto.randomUUID()}`,
+        {
+          documentId,
+          expectedCurrentState: expectedCurrentDocumentId
+            ? SelectFamilyCurrentRequestExpectedCurrentStateEnum.Selected
+            : SelectFamilyCurrentRequestExpectedCurrentStateEnum.None,
+          ...(expectedCurrentDocumentId ? {expectedCurrentDocumentId} : {}),
+        },
+        'body',
+        false,
+        {transferCache: false},
+      )),
+    );
+  }
 
   associations(documentId: string): Observable<DocumentApplicationAssociationsResponse> {
     return this.api.associations(

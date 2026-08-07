@@ -1,6 +1,7 @@
 import {TestBed} from '@angular/core/testing';
 import {firstValueFrom, of} from 'rxjs';
 import {
+  DocumentFamilyHistoryControllerService,
   DocumentLifecycleControllerService,
   DocumentVersionLifecycleResponse,
 } from '../api/document-generation-gateway';
@@ -46,6 +47,7 @@ describe('document lifecycle policy copy', () => {
 describe('DocumentLifecycleService', () => {
   const lifecycle = {
     id: '3b0f6a57-389d-4e20-a007-199afca04b20',
+    documentFamilyId: '3b0f6a57-389d-4e20-a007-199afca04b21',
     retentionState: 'ARCHIVED',
   } satisfies DocumentVersionLifecycleResponse;
   const api = {
@@ -53,6 +55,15 @@ describe('DocumentLifecycleService', () => {
     archive: vi.fn(() => of(lifecycle)),
     restore: vi.fn(() => of({...lifecycle, retentionState: 'AVAILABLE'})),
     _delete: vi.fn(() => of({...lifecycle, retentionState: 'DELETED'})),
+  };
+  const familiesApi = {
+    list: vi.fn(() => of({items: [], page: 0, size: 100, totalElements: 0, totalPages: 1})),
+    history: vi.fn(() => of({documentFamilyId: lifecycle.documentFamilyId, versions: []})),
+    selectCurrent: vi.fn(() => of({
+      documentFamilyId: lifecycle.documentFamilyId,
+      currentDocumentId: lifecycle.id,
+      currentVersion: 1,
+    })),
   };
   const browserSession = {
     ensureCsrf: vi.fn(() => of({name: 'X-CSRF-Token', value: 'safe'})),
@@ -64,9 +75,57 @@ describe('DocumentLifecycleService', () => {
       providers: [
         DocumentLifecycleService,
         {provide: DocumentLifecycleControllerService, useValue: api},
+        {provide: DocumentFamilyHistoryControllerService, useValue: familiesApi},
         {provide: BrowserSessionService, useValue: browserSession},
       ],
     });
+  });
+
+  it('pages owner-scoped family summaries and reads exact history without CSRF', async () => {
+    const service = TestBed.inject(DocumentLifecycleService);
+
+    await firstValueFrom(service.allFamilies());
+    await firstValueFrom(service.history(lifecycle.documentFamilyId as string));
+
+    expect(familiesApi.list).toHaveBeenCalledWith(
+      0,
+      100,
+      'body',
+      false,
+      {transferCache: false},
+    );
+    expect(familiesApi.history).toHaveBeenCalledWith(
+      lifecycle.documentFamilyId,
+      'body',
+      false,
+      {transferCache: false},
+    );
+    expect(browserSession.ensureCsrf).not.toHaveBeenCalled();
+  });
+
+  it('uses an expected current identity and CSRF for make-current', async () => {
+    const service = TestBed.inject(DocumentLifecycleService);
+    const previous = '44444444-4444-4444-8444-444444444444';
+
+    await firstValueFrom(service.makeCurrent(
+      lifecycle.documentFamilyId as string,
+      lifecycle.id as string,
+      previous,
+    ));
+
+    expect(browserSession.ensureCsrf).toHaveBeenCalledOnce();
+    expect(familiesApi.selectCurrent).toHaveBeenCalledWith(
+      lifecycle.documentFamilyId,
+      expect.stringMatching(/^browser-/),
+      {
+        documentId: lifecycle.id,
+        expectedCurrentState: 'SELECTED',
+        expectedCurrentDocumentId: previous,
+      },
+      'body',
+      false,
+      {transferCache: false},
+    );
   });
 
   it('reads owner-scoped associations without requiring a write token', async () => {

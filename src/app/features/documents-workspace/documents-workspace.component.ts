@@ -1,41 +1,60 @@
-import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inject, input, output, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { MatIconModule } from '@angular/material/icon';
-import { forkJoin, of } from 'rxjs';
-import { catchError, map } from 'rxjs/operators';
-import { ApplicationTrackerService, TrackedApplication } from '../../services/application-tracker.service';
+import {CommonModule} from '@angular/common';
 import {
-  DocumentFileMetadata,
+  ChangeDetectionStrategy,
+  Component,
+  HostListener,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
+import {FormsModule} from '@angular/forms';
+import {MatIconModule} from '@angular/material/icon';
+import {forkJoin, of} from 'rxjs';
+import {catchError} from 'rxjs/operators';
+import {
+  DocumentApplicationAssociation,
+  DocumentArtifactManifestItem as ApiDocumentArtifact,
+  DocumentFamilyHistoryResponse,
+  DocumentFamilySummary,
+  DocumentVersionHistoryItem,
+} from '../../api/document-generation-gateway';
+import {
+  ApplicationTrackerService,
+  TrackedApplication,
+} from '../../services/application-tracker.service';
+import {
+  DocumentArtifactManifestItem,
   DocumentGenerationService,
   DocumentKind,
+  documentArtifactDownloadLabel,
 } from '../../services/document-generation.service';
 import {
-  DocumentDownloadsResponse,
-  DownloadFileResponse,
-} from '../../api/document-generation-gateway';
+  DOCUMENT_LIFECYCLE_COPY,
+  DocumentLifecycleService,
+  associatedDocumentCopy,
+  deletedDocumentCopy,
+} from '../../services/document-lifecycle.service';
 
 type DocumentFilter = 'ALL' | 'CV' | 'COVER_LETTER';
-type DocumentSort = 'NEWEST' | 'OLDEST' | 'JOB_TITLE' | 'COMPANY' | 'STATUS';
+type DocumentSort = 'NEWEST' | 'OLDEST' | 'JOB_TITLE' | 'STATUS';
 
-interface ApplicationDocument {
-  documentId: string;
-  applicationId: string;
-  canonicalJobId?: string;
-  jobTitle?: string;
-  companyName?: string;
+interface DocumentFamilyView {
+  documentFamilyId: string;
+  jobId: string;
   documentType: DocumentKind;
-  documentTitle: string;
+  latestDocumentId: string;
+  latestVersion: number;
+  latestSource: string;
+  latestLifecycle: string;
+  latestRetention: string;
+  currentDocumentId?: string;
+  currentVersion?: number;
+  versionCount: number;
   createdAt?: string;
   updatedAt?: string;
-  version: number;
-  status?: string;
-  appliedAt?: string;
-  interviewAt?: string;
-  fileSize?: number;
-  downloads?: DocumentDownloadsResponse;
-  metadata: DocumentFileMetadata[];
-  application: TrackedApplication;
 }
 
 @Component({
@@ -44,7 +63,7 @@ interface ApplicationDocument {
   imports: [CommonModule, FormsModule, MatIconModule],
   host: {
     'data-demo-focus': 'app-documents-workspace',
-    'data-demo-focus-id': 'documents-workspace'
+    'data-demo-focus-id': 'documents-workspace',
   },
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './documents-workspace.component.html',
@@ -52,61 +71,61 @@ interface ApplicationDocument {
 })
 export class DocumentsWorkspaceComponent {
   private readonly applicationTracker = inject(ApplicationTrackerService);
-  private readonly documentGenerationService = inject(DocumentGenerationService);
+  private readonly documentGeneration = inject(DocumentGenerationService);
+  private readonly documentLifecycle = inject(DocumentLifecycleService);
 
   enabled = input(false);
   selectedApplicationId = input<string | null>(null);
-  notify = output<{ message: string; type: 'success' | 'info' | 'error' }>();
+  notify = output<{message: string; type: 'success' | 'info' | 'error'}>();
   applicationChanged = output<void>();
   openApplication = output<string>();
 
-  documents = signal<ApplicationDocument[]>([]);
-  selectedDocumentId = signal<string | null>(null);
+  families = signal<DocumentFamilyView[]>([]);
+  applications = signal<TrackedApplication[]>([]);
+  histories = signal<Record<string, DocumentFamilyHistoryResponse>>({});
+  historyErrors = signal<Record<string, string>>({});
+  historyLoadingId = signal<string | null>(null);
+  selectedFamilyId = signal<string | null>(null);
   selectedFilter = signal<DocumentFilter>('ALL');
   selectedSort = signal<DocumentSort>('NEWEST');
   searchTerm = signal('');
   loading = signal(false);
   error = signal<string | null>(null);
-  replacingDocumentId = signal<string | null>(null);
-  deletingDocumentId = signal<string | null>(null);
+  actingDocumentId = signal<string | null>(null);
+  readonly lifecycleCopy = DOCUMENT_LIFECYCLE_COPY;
   private lastLoadKey = '';
   private refreshSequence = 0;
 
-  readonly filterOptions: { key: DocumentFilter; label: string }[] = [
-    { key: 'ALL', label: 'All Documents' },
-    { key: 'CV', label: 'CVs' },
-    { key: 'COVER_LETTER', label: 'Cover Letters' },
+  readonly filterOptions: {key: DocumentFilter; label: string}[] = [
+    {key: 'ALL', label: 'All document families'},
+    {key: 'CV', label: 'CVs'},
+    {key: 'COVER_LETTER', label: 'Cover letters'},
   ];
 
-  readonly sortOptions: { key: DocumentSort; label: string }[] = [
-    { key: 'NEWEST', label: 'Newest first' },
-    { key: 'OLDEST', label: 'Oldest first' },
-    { key: 'JOB_TITLE', label: 'Job Title' },
-    { key: 'COMPANY', label: 'Company' },
-    { key: 'STATUS', label: 'Status' },
+  readonly sortOptions: {key: DocumentSort; label: string}[] = [
+    {key: 'NEWEST', label: 'Recently updated'},
+    {key: 'OLDEST', label: 'Oldest updated'},
+    {key: 'JOB_TITLE', label: 'Job title'},
+    {key: 'STATUS', label: 'Lifecycle state'},
   ];
 
-  filteredDocuments = computed(() => {
+  filteredFamilies = computed(() => {
     const filter = this.selectedFilter();
     const query = this.searchTerm().trim().toLowerCase();
-    const filtered = this.documents().filter(document => {
-      const matchesFilter = filter === 'ALL' || document.documentType === filter;
-      const haystack = [
-        document.jobTitle,
-        document.companyName,
-        this.documentTypeLabel(document.documentType),
-        document.documentTitle,
-      ].join(' ').toLowerCase();
-      return matchesFilter && (!query || haystack.includes(query));
-    });
-
-    return [...filtered].sort((left, right) => this.compareDocuments(left, right));
-  });
-
-  selectedDocument = computed(() => {
-    const selectedId = this.selectedDocumentId();
-    if (!selectedId) return null;
-    return this.filteredDocuments().find(document => document.documentId === selectedId) ?? null;
+    return this.families()
+      .filter(family => {
+        const job = this.jobDetails(family);
+        const haystack = [
+          family.jobId,
+          job?.jobTitle,
+          job?.companyName,
+          this.documentTypeLabel(family.documentType),
+          this.sourceLabel(family.latestSource),
+        ].join(' ').toLowerCase();
+        return (filter === 'ALL' || family.documentType === filter)
+          && (!query || haystack.includes(query));
+      })
+      .sort((left, right) => this.compareFamilies(left, right));
   });
 
   constructor() {
@@ -119,35 +138,53 @@ export class DocumentsWorkspaceComponent {
 
     effect(() => {
       const applicationId = this.selectedApplicationId();
-      if (!applicationId) return;
-      const document = this.documents().find(item => item.applicationId === applicationId);
-      if (document) {
-        this.selectedDocumentId.set(document.documentId);
+      const application = this.applications().find(candidate =>
+        (candidate.applicationId ?? candidate.id) === applicationId);
+      const familyId = application?.cvDocumentReference?.documentFamilyId
+        ?? application?.coverLetterDocumentReference?.documentFamilyId
+        ?? application?.applicationUsedCvDocumentReference?.documentFamilyId
+        ?? application?.applicationUsedCoverLetterDocumentReference?.documentFamilyId;
+      if (familyId && this.families().some(family => family.documentFamilyId === familyId)) {
+        this.selectedFamilyId.set(familyId);
+        this.loadHistory(familyId);
       }
     });
   }
 
   refresh(): void {
-    const requestSequence = ++this.refreshSequence;
+    const sequence = ++this.refreshSequence;
     if (!this.enabled()) {
-      this.documents.set([]);
+      this.families.set([]);
+      this.applications.set([]);
       this.loading.set(false);
       return;
     }
-
     this.loading.set(true);
     this.error.set(null);
-    this.applicationTracker.listApplications().subscribe({
-      next: applications => {
-        if (requestSequence === this.refreshSequence) {
-          this.loadDocuments(applications, requestSequence);
+    forkJoin({
+      families: this.documentLifecycle.allFamilies(),
+      applications: this.applicationTracker.listApplications().pipe(catchError(() => of([]))),
+    }).subscribe({
+      next: ({families, applications}) => {
+        if (sequence !== this.refreshSequence) return;
+        this.families.set(families.flatMap(family => {
+          const safe = this.familyView(family);
+          return safe ? [safe] : [];
+        }));
+        this.applications.set(applications);
+        const selected = this.selectedFamilyId();
+        if (selected && !this.families().some(family => family.documentFamilyId === selected)) {
+          this.selectedFamilyId.set(null);
+        } else if (selected) {
+          this.loadHistory(selected, true);
         }
+        this.loading.set(false);
       },
       error: err => {
-        if (requestSequence !== this.refreshSequence) return;
+        if (sequence !== this.refreshSequence) return;
         this.loading.set(false);
-        this.error.set('Could not load documents. Please try again.');
-        console.error('Documents workspace load failed:', err);
+        this.error.set('Could not load your document families. Please try again.');
+        console.error('Document family workspace load failed:', err);
       },
     });
   }
@@ -160,76 +197,188 @@ export class DocumentsWorkspaceComponent {
     this.searchTerm.set(value);
   }
 
-  toggleDocument(document: ApplicationDocument): void {
-    this.selectedDocumentId.update(selectedId => selectedId === document.documentId ? null : document.documentId);
+  toggleFamily(family: DocumentFamilyView): void {
+    if (this.selectedFamilyId() === family.documentFamilyId) {
+      this.selectedFamilyId.set(null);
+      return;
+    }
+    this.selectedFamilyId.set(family.documentFamilyId);
+    this.loadHistory(family.documentFamilyId);
   }
 
-  collapseDocument(): void {
-    this.selectedDocumentId.set(null);
+  collapseFamily(): void {
+    this.selectedFamilyId.set(null);
   }
 
   @HostListener('document:keydown.escape')
-  collapseDocumentOnEscape(): void {
-    if (this.selectedDocumentId()) {
-      this.collapseDocument();
-    }
+  collapseFamilyOnEscape(): void {
+    if (this.selectedFamilyId()) this.collapseFamily();
   }
 
-  isExpanded(document: ApplicationDocument): boolean {
-    return this.selectedDocumentId() === document.documentId;
+  isExpanded(family: DocumentFamilyView): boolean {
+    return this.selectedFamilyId() === family.documentFamilyId;
   }
 
-  documentFocusId(document: ApplicationDocument): string {
-    return `document-${this.slug(document.documentId || `${document.documentTitle}-${document.companyName ?? 'company'}`)}`;
+  history(family: DocumentFamilyView): DocumentFamilyHistoryResponse | undefined {
+    return this.histories()[family.documentFamilyId];
   }
 
-  documentFocusGroup(document: ApplicationDocument): string {
-    return this.documentFocusId(document);
+  retryHistory(family: DocumentFamilyView): void {
+    this.loadHistory(family.documentFamilyId, true);
+  }
+
+  versions(family: DocumentFamilyView): DocumentVersionHistoryItem[] {
+    return [...(this.history(family)?.versions ?? [])]
+      .sort((left, right) => (right.version ?? 0) - (left.version ?? 0));
   }
 
   countFor(filter: DocumentFilter): number {
-    return this.documents().filter(document => filter === 'ALL' || document.documentType === filter).length;
+    return this.families().filter(family =>
+      filter === 'ALL' || family.documentType === filter).length;
+  }
+
+  associationCount(family: DocumentFamilyView, state: string): number {
+    const ids = this.versions(family).flatMap(version =>
+      (version.applicationAssociations ?? [])
+        .filter(association => association.associationState === state)
+        .flatMap(association => association.applicationId ? [association.applicationId] : []));
+    return new Set(ids).size;
+  }
+
+  jobDetails(family: DocumentFamilyView): TrackedApplication | undefined {
+    return this.applications().find(application =>
+      application.canonicalJobId === family.jobId || application.jobId === family.jobId);
+  }
+
+  openAssociation(association: DocumentApplicationAssociation): void {
+    if (association.applicationId) this.openApplication.emit(association.applicationId);
   }
 
   documentTypeLabel(type: DocumentKind): string {
-    return type === 'CV' ? 'CV' : 'Cover Letter';
+    return type === 'CV' ? 'CV' : 'Cover letter';
   }
 
-  statusLabel(status: string | undefined | null): string {
-    return status || 'UNKNOWN';
+  sourceLabel(source: string | undefined): string {
+    if (source === 'GENERATED') return 'AI-tailored';
+    if (source === 'UPLOADED') return 'Uploaded';
+    return 'Unknown source';
+  }
+
+  stateLabel(version: DocumentVersionHistoryItem): string {
+    if (version.retention === 'PURGED') return 'Content no longer available';
+    if (version.retention === 'DELETED') return 'Deleted';
+    if (version.retention === 'ARCHIVED') return 'Archived';
+    if (version.current) return 'Current';
+    if (version.lifecycle === 'DRAFT') return 'Draft';
+    return 'Historic';
   }
 
   statusClass(status: string | undefined | null): string {
     return `status-${(status ?? 'unknown').toLowerCase().replaceAll('_', '-')}`;
   }
 
-  canReplace(document: ApplicationDocument): boolean {
+  artifactLabel(artifact: ApiDocumentArtifact): string | undefined {
+    const safe = this.downloadableArtifact(artifact);
+    return safe ? documentArtifactDownloadLabel(safe) : undefined;
+  }
+
+  downloadArtifact(version: DocumentVersionHistoryItem, artifact: ApiDocumentArtifact): void {
+    const safe = this.downloadableArtifact(artifact);
+    if (!version.documentId || !safe) return;
+    this.documentGeneration.downloadArtifact(version.documentId, safe).catch(err => {
+      this.notify.emit({message: 'Download failed. Please try again.', type: 'error'});
+      console.error('Exact document artifact download failed:', err);
+    });
+  }
+
+  canMakeCurrent(version: DocumentVersionHistoryItem): boolean {
     return Boolean(
-      document.applicationId
-      && document.documentId
-      && document.status === 'DOCUMENTS_GENERATED'
+      version.documentId
+      && version.lifecycle === 'APPROVED'
+      && version.retention === 'AVAILABLE'
+      && !version.current,
     );
   }
 
-  canDelete(document: ApplicationDocument): boolean {
-    return Boolean(
-      document.applicationId
-      && document.status === 'DOCUMENTS_GENERATED'
+  makeCurrent(family: DocumentFamilyView, version: DocumentVersionHistoryItem): void {
+    if (!version.documentId || !this.canMakeCurrent(version) || this.actingDocumentId()) return;
+    this.actingDocumentId.set(version.documentId);
+    this.documentLifecycle.makeCurrent(
+      family.documentFamilyId,
+      version.documentId,
+      this.history(family)?.currentDocumentId,
+    ).subscribe({
+      next: () => {
+        this.notify.emit({message: `Version ${version.version} is now current.`, type: 'success'});
+        this.reloadAfterAction(family.documentFamilyId);
+      },
+      error: err => {
+        const conflict = (err as {status?: number})?.status === 409;
+        this.notify.emit({
+          message: conflict
+            ? 'The current version changed elsewhere. The latest history has been loaded; review it before retrying.'
+            : 'The current version could not be changed. Please try again.',
+          type: conflict ? 'info' : 'error',
+        });
+        this.loadHistory(family.documentFamilyId, true);
+        this.actingDocumentId.set(null);
+      },
+    });
+  }
+
+  archiveVersion(family: DocumentFamilyView, version: DocumentVersionHistoryItem): void {
+    if (!version.documentId || version.retention !== 'AVAILABLE' || this.actingDocumentId()) return;
+    const warning = associatedDocumentCopy(version.applicationAssociations ?? []);
+    if (!window.confirm([this.lifecycleCopy.archive, warning].filter(Boolean).join('\n\n'))) return;
+    this.runLifecycleAction(
+      family,
+      version,
+      this.documentLifecycle.archive(version.documentId),
+      `Version ${version.version} archived.`,
     );
   }
 
-  latestFileType(document: ApplicationDocument): string {
-    if (document.downloads?.docx) return 'DOCX';
-    if (document.downloads?.pdf) return 'PDF';
-    return 'Unknown';
+  restoreVersion(family: DocumentFamilyView, version: DocumentVersionHistoryItem): void {
+    if (
+      !version.documentId
+      || !['ARCHIVED', 'DELETED'].includes(version.retention ?? '')
+      || this.actingDocumentId()
+    ) return;
+    this.runLifecycleAction(
+      family,
+      version,
+      this.documentLifecycle.restore(version.documentId),
+      `Version ${version.version} restored. It has not been made current.`,
+    );
   }
 
-  fileSize(document: ApplicationDocument): string {
-    const size = document.fileSize;
-    if (!size) return 'Unknown';
-    if (size < 1024) return `${size} B`;
-    if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
-    return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  deleteVersion(family: DocumentFamilyView, version: DocumentVersionHistoryItem): void {
+    if (
+      !version.documentId
+      || !['AVAILABLE', 'ARCHIVED'].includes(version.retention ?? '')
+      || this.actingDocumentId()
+    ) return;
+    const warning = associatedDocumentCopy(version.applicationAssociations ?? []);
+    const prompt = [
+      warning,
+      'Move this document to Deleted? Its files will be unavailable during the 30-day recovery period.',
+      this.lifecycleCopy.irreversibleDeletion,
+    ].filter(Boolean).join('\n\n');
+    if (!window.confirm(prompt)) return;
+    this.actingDocumentId.set(version.documentId);
+    this.documentLifecycle.delete(version.documentId).subscribe({
+      next: () => {
+        this.notify.emit({message: `Version ${version.version} moved to Deleted.`, type: 'success'});
+        this.reloadAfterAction(family.documentFamilyId);
+      },
+      error: err => this.actionFailed(err, family.documentFamilyId),
+    });
+  }
+
+  deletedCopy(version: DocumentVersionHistoryItem): string | undefined {
+    return version.retention === 'DELETED' && version.purgeEligibleAt
+      ? deletedDocumentCopy(this.formatDate(version.purgeEligibleAt, true))
+      : undefined;
   }
 
   formatDate(value: string | undefined | null, includeTime = false): string {
@@ -245,210 +394,153 @@ export class DocumentsWorkspaceComponent {
     });
   }
 
-  download(file: DownloadFileResponse | undefined): void {
-    if (!file) return;
-    this.documentGenerationService.download(file).catch(err => {
-      this.notify.emit({ message: 'Download failed. Please try again.', type: 'error' });
-      console.error('Document download failed:', err);
-    });
+  fileSize(size: number | undefined): string {
+    if (size === undefined) return 'Unknown';
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+    return `${(size / 1024 / 1024).toFixed(1)} MB`;
   }
 
-  onReplacementSelected(document: ApplicationDocument, event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file || !this.canReplace(document)) return;
-    if (!this.documentGenerationService.isDocx(file)) {
-      this.notify.emit({ message: 'Please upload a Microsoft Word .docx file.', type: 'error' });
-      return;
-    }
-
-    this.replacingDocumentId.set(document.documentId);
-    this.documentGenerationService.uploadReplacement(
-      document.applicationId,
-      file,
-      document.documentType,
-    ).then(response => {
-      if (!response.processing) {
-        this.documents.update(documents => documents.map(candidate =>
-          candidate.documentId === document.documentId
-            ? {
-                ...candidate,
-                downloads: response.latestFiles ?? candidate.downloads,
-                version: response.version ?? candidate.version,
-                updatedAt: new Date().toISOString(),
-              }
-            : candidate
-        ));
-      }
-      this.notify.emit({
-        message: response.processing
-          ? response.retryable
-            ? `${this.documentTypeLabel(document.documentType)} replacement was not completed. The current document has been kept; try again.`
-            : (response.message || `${this.documentTypeLabel(document.documentType)} replacement needs recovery. The current document has been kept.`)
-          : `${this.documentTypeLabel(document.documentType)} replaced successfully. PDF version has been updated.`,
-        type: response.processing ? 'info' : 'success',
-      });
-      this.applicationChanged.emit();
-    }).catch(err => {
-      const message = err instanceof Error ? err.message : 'Replacement upload failed.';
-      this.notify.emit({ message, type: 'error' });
-      console.error('Document replacement failed:', err);
-    }).finally(() => this.replacingDocumentId.set(null));
+  familyFocusId(family: DocumentFamilyView): string {
+    return `document-family-${family.documentFamilyId}`;
   }
 
-  deleteDocument(document: ApplicationDocument): void {
-    if (!this.canDelete(document) || this.deletingDocumentId()) return;
-    if (!window.confirm(`Delete generated documents for ${document.jobTitle || 'this application'}? This is only allowed before the application is applied.`)) return;
-
-    this.deletingDocumentId.set(document.documentId);
-    this.documentGenerationService.withdrawGeneratedApplication(document.applicationId).then(outcome => {
-      if (outcome.processing) {
-        this.notify.emit({
-          message: outcome.retryable
-            ? 'Document withdrawal was not completed. Current documents remain available; try again.'
-            : (outcome.message || 'Document withdrawal needs recovery. Current documents remain available.'),
-          type: 'info',
-        });
-        this.applicationChanged.emit();
-        return;
-      }
-      this.notify.emit({ message: 'Generated documents deleted.', type: 'success' });
-      this.documents.update(documents => documents.filter(item => item.applicationId !== document.applicationId));
-      if (this.selectedDocumentId() && !this.documents().some(item => item.documentId === this.selectedDocumentId())) {
-        this.selectedDocumentId.set(null);
-      }
-      this.applicationChanged.emit();
-    }).catch(err => {
-      const message = err instanceof Error ? err.message : 'Documents could not be deleted. They may already be part of the application history.';
-      this.notify.emit({ message, type: 'error' });
-      console.error('Document delete failed:', err);
-    }).finally(() => this.deletingDocumentId.set(null));
-  }
-
-  openLinkedApplication(document: ApplicationDocument): void {
-    this.openApplication.emit(document.applicationId);
-  }
-
-  private loadDocuments(
-    applications: TrackedApplication[],
-    requestSequence: number,
-  ): void {
-    if (requestSequence !== this.refreshSequence) return;
-    const baseDocuments = applications.flatMap(application => this.documentsForApplication(application));
-    if (baseDocuments.length === 0) {
-      this.documents.set([]);
-      this.selectedDocumentId.set(null);
-      this.loading.set(false);
-      return;
-    }
-
-    forkJoin(baseDocuments.map(document => this.hydrateDocument(document))).subscribe({
-      next: documents => {
-        if (requestSequence !== this.refreshSequence) return;
-        this.documents.set(documents);
-        if (this.selectedDocumentId() && !documents.some(document => document.documentId === this.selectedDocumentId())) {
-          this.selectedDocumentId.set(null);
+  private loadHistory(documentFamilyId: string, force = false): void {
+    if (!force && this.histories()[documentFamilyId]) return;
+    this.historyLoadingId.set(documentFamilyId);
+    this.historyErrors.update(errors => ({...errors, [documentFamilyId]: ''}));
+    this.documentLifecycle.history(documentFamilyId).subscribe({
+      next: history => {
+        if (history.documentFamilyId !== documentFamilyId) {
+          this.historyErrors.update(errors => ({
+            ...errors,
+            [documentFamilyId]: 'The document service returned mismatched history.',
+          }));
+        } else {
+          this.histories.update(histories => ({...histories, [documentFamilyId]: history}));
         }
-        this.loading.set(false);
+        if (this.historyLoadingId() === documentFamilyId) this.historyLoadingId.set(null);
       },
       error: err => {
-        if (requestSequence !== this.refreshSequence) return;
-        this.documents.set(baseDocuments);
-        this.loading.set(false);
-        console.warn('Some document metadata could not be loaded:', err);
+        this.historyErrors.update(errors => ({
+          ...errors,
+          [documentFamilyId]: 'Could not load this version history. Please try again.',
+        }));
+        if (this.historyLoadingId() === documentFamilyId) this.historyLoadingId.set(null);
+        console.error('Document family history load failed:', err);
       },
     });
   }
 
-  private documentsForApplication(application: TrackedApplication): ApplicationDocument[] {
-    const applicationId = application.applicationId ?? application.id ?? '';
-    const shared = {
-      applicationId,
-      canonicalJobId: application.canonicalJobId ?? application.jobId,
-      jobTitle: application.jobTitle,
-      companyName: application.companyName,
-      createdAt: application.createdAt,
-      updatedAt: application.updatedAt,
-      status: application.status,
-      appliedAt: application.appliedAt,
-      interviewAt: application.interviewAt,
-      application,
-      version: 1,
-      metadata: [],
+  private runLifecycleAction(
+    family: DocumentFamilyView,
+    version: DocumentVersionHistoryItem,
+    action: ReturnType<DocumentLifecycleService['archive']>,
+    message: string,
+  ): void {
+    this.actingDocumentId.set(version.documentId ?? null);
+    action.subscribe({
+      next: () => {
+        this.notify.emit({message, type: 'success'});
+        this.reloadAfterAction(family.documentFamilyId);
+      },
+      error: err => this.actionFailed(err, family.documentFamilyId),
+    });
+  }
+
+  private actionFailed(error: unknown, documentFamilyId: string): void {
+    const conflict = (error as {status?: number})?.status === 409;
+    this.notify.emit({
+      message: conflict
+        ? 'This document changed elsewhere. The latest history has been loaded.'
+        : 'The document could not be updated. Please try again.',
+      type: conflict ? 'info' : 'error',
+    });
+    this.loadHistory(documentFamilyId, true);
+    this.actingDocumentId.set(null);
+  }
+
+  private reloadAfterAction(documentFamilyId: string): void {
+    this.actingDocumentId.set(null);
+    this.loadHistory(documentFamilyId, true);
+    this.documentLifecycle.allFamilies().subscribe(families => {
+      this.families.set(families.flatMap(family => {
+        const safe = this.familyView(family);
+        return safe ? [safe] : [];
+      }));
+    });
+    this.applicationChanged.emit();
+  }
+
+  private downloadableArtifact(
+    artifact: ApiDocumentArtifact,
+  ): DocumentArtifactManifestItem | undefined {
+    if (
+      !artifact.artifactId
+      || !['ORIGINAL', 'DERIVED'].includes(artifact.role ?? '')
+      || !['DOCX', 'PDF'].includes(artifact.format ?? '')
+      || !['AVAILABLE', 'UNAVAILABLE'].includes(artifact.availability ?? '')
+      || typeof artifact.size !== 'number'
+    ) return undefined;
+    return {
+      artifactId: artifact.artifactId,
+      role: artifact.role as DocumentArtifactManifestItem['role'],
+      format: artifact.format as DocumentArtifactManifestItem['format'],
+      source: artifact.source ?? 'UNKNOWN',
+      availability: artifact.availability as DocumentArtifactManifestItem['availability'],
+      size: artifact.size,
+      storedAt: artifact.storedAt,
+      createdAt: artifact.createdAt,
+      updatedAt: artifact.updatedAt,
     };
-
-    const documents: ApplicationDocument[] = [];
-    if (application.cvDocumentId) {
-      documents.push({
-        ...shared,
-        documentId: application.cvDocumentId,
-        documentType: 'CV',
-        documentTitle: `CV - ${application.jobTitle || 'Application'}`,
-      });
-    }
-    if (application.coverLetterDocumentId) {
-      documents.push({
-        ...shared,
-        documentId: application.coverLetterDocumentId,
-        documentType: 'COVER_LETTER',
-        documentTitle: `Cover Letter - ${application.jobTitle || 'Application'}`,
-      });
-    }
-    return documents;
   }
 
-  private hydrateDocument(document: ApplicationDocument) {
-    return forkJoin({
-      downloads: this.documentGenerationService.latestFiles(document.documentId).pipe(catchError(() => of(undefined))),
-      latestMetadata: this.documentGenerationService.latestFileMetadata(document.documentId).pipe(catchError(() => of([]))),
-      allMetadata: this.documentGenerationService.allFileMetadata(document.documentId).pipe(catchError(() => of([]))),
-    }).pipe(
-      catchError(() => of({ downloads: undefined, latestMetadata: [], allMetadata: [] })),
-      map(({ downloads, latestMetadata, allMetadata }) => {
-        const metadata = allMetadata.length > 0 ? allMetadata : latestMetadata;
-        const latestUpdated = metadata
-          .map(file => file.updatedAt ?? file.createdAt)
-          .filter(Boolean)
-          .sort((left, right) => Date.parse(String(right)) - Date.parse(String(left)))[0];
-        const fileSize = metadata
-          .map(file => file.sizeBytes ?? file.fileSize)
-          .find(size => typeof size === 'number' && size > 0);
-        return {
-          ...document,
-          downloads,
-          metadata,
-          updatedAt: latestUpdated ?? document.updatedAt,
-          version: Math.max(1, metadata.length ? Math.ceil(metadata.length / 2) : 1),
-          fileSize,
-        };
-      })
-    );
+  private familyView(family: DocumentFamilySummary): DocumentFamilyView | undefined {
+    if (
+      !family.documentFamilyId
+      || !family.jobId
+      || !family.documentType
+      || !family.latestDocumentId
+      || !family.latestVersion
+      || !family.latestSource
+      || !family.latestLifecycle
+      || !family.latestRetention
+      || !family.versionCount
+    ) return undefined;
+    return {
+      documentFamilyId: family.documentFamilyId,
+      jobId: family.jobId,
+      documentType: family.documentType,
+      latestDocumentId: family.latestDocumentId,
+      latestVersion: family.latestVersion,
+      latestSource: family.latestSource,
+      latestLifecycle: family.latestLifecycle,
+      latestRetention: family.latestRetention,
+      currentDocumentId: family.currentDocumentId,
+      currentVersion: family.currentVersion,
+      versionCount: family.versionCount,
+      createdAt: family.createdAt,
+      updatedAt: family.updatedAt,
+    };
   }
 
-  private compareDocuments(left: ApplicationDocument, right: ApplicationDocument): number {
+  private compareFamilies(left: DocumentFamilyView, right: DocumentFamilyView): number {
     switch (this.selectedSort()) {
       case 'OLDEST':
-        return this.time(left.createdAt) - this.time(right.createdAt);
+        return this.time(left.updatedAt) - this.time(right.updatedAt);
       case 'JOB_TITLE':
-        return (left.jobTitle || '').localeCompare(right.jobTitle || '');
-      case 'COMPANY':
-        return (left.companyName || '').localeCompare(right.companyName || '');
+        return (this.jobDetails(left)?.jobTitle ?? left.jobId)
+          .localeCompare(this.jobDetails(right)?.jobTitle ?? right.jobId);
       case 'STATUS':
-        return (left.status || '').localeCompare(right.status || '');
+        return left.latestRetention.localeCompare(right.latestRetention);
       case 'NEWEST':
       default:
-        return this.time(right.createdAt) - this.time(left.createdAt);
+        return this.time(right.updatedAt) - this.time(left.updatedAt);
     }
   }
 
-  private time(value: string | undefined | null): number {
-    if (!value) return 0;
-    const parsed = Date.parse(value);
+  private time(value: string | undefined): number {
+    const parsed = value ? Date.parse(value) : 0;
     return Number.isNaN(parsed) ? 0 : parsed;
-  }
-
-  private slug(value: string): string {
-    return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'item';
   }
 }
