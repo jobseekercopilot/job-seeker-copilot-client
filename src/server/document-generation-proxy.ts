@@ -70,6 +70,15 @@ interface ProxyPayload {
   status: number;
 }
 
+interface DownloadHeaders {
+  cacheControl: string;
+  contentDisposition: string;
+  contentLength: number;
+  contentType: string;
+  pragma: string;
+  xContentTypeOptions: string;
+}
+
 type JsonMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT';
 
 function validUuid(value: string): boolean {
@@ -741,6 +750,128 @@ function downloadMetadata(value: unknown): {
     downloadUrl: `/api/v1/document-generation/files/${file.id.toLowerCase()}/download`,
     fileName: safeFileName(file.fileName),
   };
+}
+
+function approvedDownloadHeaders(headers: Headers): DownloadHeaders | undefined {
+  const contentType = headers
+    .get('content-type')
+    ?.split(';', 1)[0]
+    .trim()
+    .toLowerCase();
+  const contentDisposition = headers.get('content-disposition')?.trim();
+  const contentLengthValue = headers.get('content-length')?.trim();
+  const xContentTypeOptions = headers.get('x-content-type-options')?.trim();
+  const cacheControl = headers.get('cache-control')?.trim();
+  const pragma = headers.get('pragma')?.trim();
+  const cacheDirectives = new Set(
+    cacheControl?.split(',').map(value => value.trim().toLowerCase()),
+  );
+
+  if (
+    !contentType
+    || !SAFE_DOWNLOAD_TYPES.has(contentType)
+    || !contentDisposition
+    || contentDisposition.length > 512
+    || !/^attachment(?:;|$)/i.test(contentDisposition)
+    || /[\r\n]/.test(contentDisposition)
+    || !contentLengthValue
+    || !/^\d+$/.test(contentLengthValue)
+    || !Number.isSafeInteger(Number(contentLengthValue))
+    || Number(contentLengthValue) < 0
+    || xContentTypeOptions?.toLowerCase() !== 'nosniff'
+    || !cacheControl
+    || !cacheDirectives.has('private')
+    || !cacheDirectives.has('no-store')
+    || !cacheDirectives.has('max-age=0')
+    || pragma?.toLowerCase() !== 'no-cache'
+  ) {
+    return undefined;
+  }
+
+  return {
+    cacheControl,
+    contentDisposition,
+    contentLength: Number(contentLengthValue),
+    contentType,
+    pragma,
+    xContentTypeOptions,
+  };
+}
+
+async function proxyExactArtifactDownload(
+  request: Request,
+  response: Response,
+  config: DocumentGenerationProxyConfig,
+  documentId: string,
+  artifactId: string,
+  fetchImplementation: typeof fetch,
+): Promise<void> {
+  const credentials = jobFinderCredentials(request.headers, config, false, false);
+  if ('status' in credentials) {
+    sendFailure(response, credentials.status, credentials.error, credentials.message);
+    return;
+  }
+
+  try {
+    const {body, response: upstream} = await fetchAndConsumeWithTimeout(
+      `${config.origin}/api/v1/document-generation/documents/${documentId}/artifacts/${artifactId}/download`,
+      {method: 'GET', headers: credentials.headers},
+      config.timeoutMs,
+      async downstream => {
+        const headers = downstream.ok
+          ? approvedDownloadHeaders(downstream.headers)
+          : undefined;
+        return {
+          body: headers ? await downstream.arrayBuffer() : undefined,
+          response: downstream,
+        };
+      },
+      fetchImplementation,
+    );
+
+    if (!upstream.ok) {
+      sendFailure(
+        response,
+        upstream.status,
+        'DOCUMENT_ARTIFACT_DOWNLOAD_FAILED',
+        'The document artifact could not be downloaded',
+      );
+      return;
+    }
+
+    const headers = approvedDownloadHeaders(upstream.headers);
+    if (!headers || !body || body.byteLength !== headers.contentLength) {
+      sendFailure(
+        response,
+        502,
+        'INVALID_DOWNSTREAM_RESPONSE',
+        'The document service returned an invalid file',
+      );
+      return;
+    }
+
+    response.setHeader('Cache-Control', headers.cacheControl);
+    response.setHeader('Content-Disposition', headers.contentDisposition);
+    response.setHeader('Content-Length', String(headers.contentLength));
+    response.setHeader('Content-Type', headers.contentType);
+    response.setHeader('Pragma', headers.pragma);
+    response.setHeader('X-Content-Type-Options', headers.xContentTypeOptions);
+    response.status(200).send(Buffer.from(body));
+  } catch (error: unknown) {
+    const category = downstreamFailureCategory(error);
+    console.error('BFF downstream request failed', {
+      category,
+      service: 'document-artifact-download',
+    });
+    sendFailure(
+      response,
+      category === 'timeout' ? 504 : 503,
+      category === 'timeout' ? 'DOWNSTREAM_TIMEOUT' : 'SERVICE_UNAVAILABLE',
+      category === 'timeout'
+        ? 'Document artifact download timed out'
+        : 'Document artifact download is currently unavailable',
+    );
+  }
 }
 
 export function registerDocumentGenerationRoutes(
@@ -1415,6 +1546,31 @@ export function registerDocumentGenerationRoutes(
       );
     }
   });
+
+  app.get(
+    '/api/v1/document-generation/documents/:documentId/artifacts/:artifactId/download',
+    async (request, response) => {
+      const documentId = request.params['documentId'];
+      const artifactId = request.params['artifactId'];
+      if (!validUuid(documentId) || !validUuid(artifactId)) {
+        sendFailure(
+          response,
+          400,
+          'INVALID_DOCUMENT_ARTIFACT_ID',
+          'Valid document and artifact identifiers are required',
+        );
+        return;
+      }
+      await proxyExactArtifactDownload(
+        request,
+        response,
+        config,
+        documentId.toLowerCase(),
+        artifactId.toLowerCase(),
+        fetchImplementation,
+      );
+    },
+  );
 
   app.get('/api/v1/document-generation/documents/:generatedDocumentId/files/latest', async (request, response) => {
     const documentId = request.params['generatedDocumentId'];

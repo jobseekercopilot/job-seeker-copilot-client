@@ -68,9 +68,9 @@
       "id": "document-generation-gateway",
       "version": "2.4.0",
       "sourceRepository": "jobseekercopilot/document-generation-gateway",
-      "sourceCommit": "08e0464eea3020c8a6365ecfb2a8526ba84c8643",
+      "sourceCommit": "5be87568e0fa358fac85a6cd74a32209fc432dc8",
       "path": "contracts/document-generation-gateway/2.4.0/openapi.json",
-      "sha256": "39fc510ed05924fb4391ca856be9d60c597d59e4f1724351817ecaa23af9972f",
+      "sha256": "9b29a7a18fd03f2b73643ac685c64667fb840b449a06d8919b510255a4301db7",
       "output": "src/app/api/document-generation-gateway",
       "requiredPaths": [
         "/api/v1/document-generation/saved-jobs/{savedJobId}/operations",

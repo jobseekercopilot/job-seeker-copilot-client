@@ -12,8 +12,10 @@ import {SavedJobsService} from '../api/job-finder';
 import {Job} from '../models/job-search.model';
 import {BrowserSessionService} from './browser-session.service';
 import {
+  DocumentArtifactManifestItem,
   DocumentGenerationService,
   GenerationEvidenceSelection,
+  documentArtifactDownloadLabel,
 } from './document-generation.service';
 
 describe('DocumentGenerationService', () => {
@@ -115,7 +117,95 @@ describe('DocumentGenerationService', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     localStorage.clear();
+  });
+
+  it('derives safe download labels only from available artifact manifest metadata', () => {
+    const artifact = {
+      artifactId: '70000000-0000-4000-8000-000000000003',
+      role: 'ORIGINAL',
+      format: 'DOCX',
+      source: 'USER_UPLOADED',
+      availability: 'AVAILABLE',
+      size: 4,
+    } satisfies DocumentArtifactManifestItem;
+
+    expect(documentArtifactDownloadLabel(artifact)).toBe('Download original');
+    expect(documentArtifactDownloadLabel({
+      ...artifact,
+      role: 'DERIVED',
+    })).toBe('Download DOCX');
+    expect(documentArtifactDownloadLabel({
+      ...artifact,
+      role: 'DERIVED',
+      format: 'PDF',
+    })).toBe('Download PDF');
+    expect(documentArtifactDownloadLabel({
+      ...artifact,
+      availability: 'UNAVAILABLE',
+    })).toBeUndefined();
+  });
+
+  it('downloads an exact available artifact only through the same-origin BFF route', async () => {
+    const artifact = {
+      artifactId: '7A7CA550-1A54-4AD2-956F-40D600B741CA',
+      role: 'DERIVED',
+      format: 'PDF',
+      source: 'SYSTEM_GENERATED',
+      availability: 'AVAILABLE',
+      size: 4,
+    } satisfies DocumentArtifactManifestItem;
+    const fetchRequest = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      {
+        headers: {
+          'Content-Disposition': 'attachment; filename="Tailored CV.pdf"',
+          'Content-Type': 'application/pdf',
+        },
+      },
+    ));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:safe-download');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    await TestBed.inject(DocumentGenerationService).downloadArtifact(
+      cvDocumentId.toUpperCase(),
+      artifact,
+    );
+
+    expect(fetchRequest).toHaveBeenCalledWith(
+      `/api/v1/document-generation/documents/${cvDocumentId}/artifacts/${artifact.artifactId.toLowerCase()}/download`,
+      {method: 'GET'},
+    );
+    expect(fetchRequest.mock.calls[0][0]).not.toContain('http');
+    expect(click).toHaveBeenCalledOnce();
+    expect(revoke).toHaveBeenCalledWith('blob:safe-download');
+  });
+
+  it.each([
+    ['invalid-document', '70000000-0000-4000-8000-000000000003', 'AVAILABLE'],
+    [cvDocumentId, 'invalid-artifact', 'AVAILABLE'],
+    [cvDocumentId, '70000000-0000-4000-8000-000000000003', 'UNAVAILABLE'],
+  ])('rejects unsafe artifact download metadata before any network request', async (
+    documentId,
+    artifactId,
+    availability,
+  ) => {
+    const fetchRequest = vi.spyOn(globalThis, 'fetch');
+    const artifact = {
+      artifactId,
+      role: 'DERIVED',
+      format: 'DOCX',
+      source: 'SYSTEM_GENERATED',
+      availability,
+      size: 4,
+    } as DocumentArtifactManifestItem;
+
+    await expect(
+      TestBed.inject(DocumentGenerationService).downloadArtifact(documentId, artifact),
+    ).rejects.toThrow('A safe available document artifact is required.');
+    expect(fetchRequest).not.toHaveBeenCalled();
   });
 
   it('uses one durable operation and waits for its authoritative completed state', async () => {
