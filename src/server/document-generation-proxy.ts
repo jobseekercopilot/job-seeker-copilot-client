@@ -132,6 +132,10 @@ const DOCUMENT_ASSOCIATION_STATES = new Set([
   'DRAFT_SELECTED',
   'FROZEN_USED',
 ]);
+const DOCUMENT_SOURCES = new Set(['GENERATED', 'UPLOADED']);
+const ARTIFACT_ROLES = new Set(['ORIGINAL', 'DERIVED']);
+const ARTIFACT_FORMATS = new Set(['DOCX', 'PDF']);
+const ARTIFACT_AVAILABILITY = new Set(['AVAILABLE', 'UNAVAILABLE']);
 const UNAVAILABLE_REASON = /^[A-Z][A-Z0-9_]{0,63}$/;
 
 function exactObjectKeys(
@@ -266,12 +270,13 @@ async function callJson(
   requiresCsrf: boolean,
   fetchImplementation: typeof fetch,
   additionalHeaders: Record<string, string> = {},
+  forwardJsonBody = ['POST', 'PUT'].includes(method),
 ): Promise<ProxyPayload | undefined> {
   const credentials = jobFinderCredentials(
     request.headers,
     config,
     requiresCsrf,
-    ['POST', 'PUT'].includes(method),
+    forwardJsonBody,
   );
   if ('status' in credentials) return {
     body: JSON.stringify({
@@ -287,7 +292,7 @@ async function callJson(
     {
       method,
       headers: {...credentials.headers, ...additionalHeaders},
-      body: ['POST', 'PUT'].includes(method)
+      body: forwardJsonBody
         ? JSON.stringify(request.body)
         : undefined,
     },
@@ -422,6 +427,279 @@ function safeDocumentLifecyclePayload(
     safe['unavailableReason'] = unavailableReason;
   }
   return safe;
+}
+
+function safeDocumentArtifact(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  if (
+    typeof source['artifactId'] !== 'string'
+    || !validUuid(source['artifactId'])
+    || typeof source['role'] !== 'string'
+    || !ARTIFACT_ROLES.has(source['role'])
+    || typeof source['format'] !== 'string'
+    || !ARTIFACT_FORMATS.has(source['format'])
+    || typeof source['source'] !== 'string'
+    || !['GENERATED', 'USER_UPLOADED'].includes(source['source'])
+    || typeof source['availability'] !== 'string'
+    || !ARTIFACT_AVAILABILITY.has(source['availability'])
+    || typeof source['size'] !== 'number'
+    || !Number.isSafeInteger(source['size'])
+    || source['size'] < 0
+  ) {
+    return undefined;
+  }
+  const safe: Record<string, unknown> = {
+    artifactId: source['artifactId'].toLowerCase(),
+    role: source['role'],
+    format: source['format'],
+    source: source['source'],
+    availability: source['availability'],
+    size: source['size'],
+  };
+  for (const field of ['storedAt', 'createdAt', 'updatedAt']) {
+    const timestamp = safeTimestamp(source[field]);
+    if (timestamp) safe[field] = timestamp;
+  }
+  return safe;
+}
+
+function safeDocumentVersionHistoryItem(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  if (
+    typeof source['documentId'] !== 'string'
+    || !validUuid(source['documentId'])
+    || typeof source['version'] !== 'number'
+    || !Number.isSafeInteger(source['version'])
+    || source['version'] < 1
+    || typeof source['source'] !== 'string'
+    || !DOCUMENT_SOURCES.has(source['source'])
+    || typeof source['lifecycle'] !== 'string'
+    || !DOCUMENT_LIFECYCLE_STATES.has(source['lifecycle'])
+    || typeof source['retention'] !== 'string'
+    || !DOCUMENT_RETENTION_STATES.has(source['retention'])
+    || typeof source['current'] !== 'boolean'
+    || !Array.isArray(source['applicationAssociations'])
+    || source['applicationAssociations'].length > 1_000
+    || !Array.isArray(source['artifacts'])
+    || source['artifacts'].length > 20
+  ) {
+    return undefined;
+  }
+  const associations = source['applicationAssociations'].map(safeDocumentAssociation);
+  const artifacts = source['artifacts'].map(safeDocumentArtifact);
+  if (associations.some(item => !item) || artifacts.some(item => !item)) return undefined;
+
+  const safe: Record<string, unknown> = {
+    documentId: source['documentId'].toLowerCase(),
+    version: source['version'],
+    source: source['source'],
+    lifecycle: source['lifecycle'],
+    retention: source['retention'],
+    current: source['current'],
+    applicationAssociations: associations,
+    artifacts,
+  };
+  if (typeof source['title'] === 'string' && source['title'].length <= 300) {
+    safe['title'] = source['title'];
+  }
+  for (const field of [
+    'approvedAt',
+    'archivedAt',
+    'deletedAt',
+    'purgeEligibleAt',
+    'purgedAt',
+    'createdAt',
+    'updatedAt',
+  ]) {
+    const timestamp = safeTimestamp(source[field]);
+    if (timestamp) safe[field] = timestamp;
+  }
+  const unavailableReason = source['unavailableReason'];
+  if (typeof unavailableReason === 'string' && UNAVAILABLE_REASON.test(unavailableReason)) {
+    safe['unavailableReason'] = unavailableReason;
+  }
+  return safe;
+}
+
+function safeDocumentFamilySummary(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  if (
+    typeof source['documentFamilyId'] !== 'string'
+    || !validUuid(source['documentFamilyId'])
+    || typeof source['jobId'] !== 'string'
+    || source['jobId'].length < 1
+    || source['jobId'].length > 2_048
+    || typeof source['documentType'] !== 'string'
+    || !DOCUMENT_TYPES.has(source['documentType'])
+    || typeof source['latestDocumentId'] !== 'string'
+    || !validUuid(source['latestDocumentId'])
+    || typeof source['latestVersion'] !== 'number'
+    || !Number.isSafeInteger(source['latestVersion'])
+    || source['latestVersion'] < 1
+    || typeof source['latestSource'] !== 'string'
+    || !DOCUMENT_SOURCES.has(source['latestSource'])
+    || typeof source['latestLifecycle'] !== 'string'
+    || !DOCUMENT_LIFECYCLE_STATES.has(source['latestLifecycle'])
+    || typeof source['latestRetention'] !== 'string'
+    || !DOCUMENT_RETENTION_STATES.has(source['latestRetention'])
+    || typeof source['versionCount'] !== 'number'
+    || !Number.isSafeInteger(source['versionCount'])
+    || source['versionCount'] < 1
+  ) {
+    return undefined;
+  }
+  const safe: Record<string, unknown> = {
+    documentFamilyId: source['documentFamilyId'].toLowerCase(),
+    jobId: source['jobId'],
+    documentType: source['documentType'],
+    latestDocumentId: source['latestDocumentId'].toLowerCase(),
+    latestVersion: source['latestVersion'],
+    latestSource: source['latestSource'],
+    latestLifecycle: source['latestLifecycle'],
+    latestRetention: source['latestRetention'],
+    versionCount: source['versionCount'],
+  };
+  const currentDocumentId = source['currentDocumentId'];
+  const currentVersion = source['currentVersion'];
+  if (currentDocumentId !== undefined || currentVersion !== undefined) {
+    if (
+      typeof currentDocumentId !== 'string'
+      || !validUuid(currentDocumentId)
+      || typeof currentVersion !== 'number'
+      || !Number.isSafeInteger(currentVersion)
+      || currentVersion < 1
+    ) {
+      return undefined;
+    }
+    safe['currentDocumentId'] = currentDocumentId.toLowerCase();
+    safe['currentVersion'] = currentVersion;
+  }
+  for (const field of ['createdAt', 'updatedAt']) {
+    const timestamp = safeTimestamp(source[field]);
+    if (timestamp) safe[field] = timestamp;
+  }
+  return safe;
+}
+
+function safeDocumentFamilyPage(body: string): Record<string, unknown> | undefined {
+  const source = parsedJson(body);
+  if (
+    !source
+    || !Array.isArray(source['items'])
+    || source['items'].length > 100
+    || !['page', 'size', 'totalElements', 'totalPages'].every(field =>
+      typeof source[field] === 'number'
+      && Number.isSafeInteger(source[field])
+      && Number(source[field]) >= 0)
+  ) {
+    return undefined;
+  }
+  const items = source['items'].map(safeDocumentFamilySummary);
+  if (items.some(item => !item)) return undefined;
+  return {
+    items,
+    page: source['page'],
+    size: source['size'],
+    totalElements: source['totalElements'],
+    totalPages: source['totalPages'],
+  };
+}
+
+function safeDocumentFamilyHistory(body: string): Record<string, unknown> | undefined {
+  const source = parsedJson(body);
+  if (
+    !source
+    || typeof source['documentFamilyId'] !== 'string'
+    || !validUuid(source['documentFamilyId'])
+    || typeof source['jobId'] !== 'string'
+    || source['jobId'].length < 1
+    || source['jobId'].length > 2_048
+    || typeof source['documentType'] !== 'string'
+    || !DOCUMENT_TYPES.has(source['documentType'])
+    || !Array.isArray(source['versions'])
+    || source['versions'].length > 1_000
+  ) {
+    return undefined;
+  }
+  const versions = source['versions'].map(safeDocumentVersionHistoryItem);
+  if (versions.some(item => !item)) return undefined;
+  const safe: Record<string, unknown> = {
+    documentFamilyId: source['documentFamilyId'].toLowerCase(),
+    jobId: source['jobId'],
+    documentType: source['documentType'],
+    versions,
+  };
+  const currentDocumentId = source['currentDocumentId'];
+  const currentVersion = source['currentVersion'];
+  if (currentDocumentId !== undefined || currentVersion !== undefined) {
+    if (
+      typeof currentDocumentId !== 'string'
+      || !validUuid(currentDocumentId)
+      || typeof currentVersion !== 'number'
+      || !Number.isSafeInteger(currentVersion)
+      || currentVersion < 1
+    ) return undefined;
+    safe['currentDocumentId'] = currentDocumentId.toLowerCase();
+    safe['currentVersion'] = currentVersion;
+  }
+  return safe;
+}
+
+function selectFamilyCurrentBody(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  const state = source['expectedCurrentState'];
+  const expectedKeys = state === 'SELECTED'
+    ? ['documentId', 'expectedCurrentState', 'expectedCurrentDocumentId']
+    : ['documentId', 'expectedCurrentState'];
+  if (
+    !exactObjectKeys(value, expectedKeys)
+    || typeof source['documentId'] !== 'string'
+    || !validUuid(source['documentId'])
+    || !['NONE', 'SELECTED'].includes(String(state))
+  ) return undefined;
+  const safe: Record<string, unknown> = {
+    documentId: source['documentId'].toLowerCase(),
+    expectedCurrentState: state,
+  };
+  if (state === 'SELECTED') {
+    const expected = source['expectedCurrentDocumentId'];
+    if (typeof expected !== 'string' || !validUuid(expected)) return undefined;
+    safe['expectedCurrentDocumentId'] = expected.toLowerCase();
+  }
+  return safe;
+}
+
+function safeDocumentFamilyCurrent(body: string): Record<string, unknown> | undefined {
+  const source = parsedJson(body);
+  if (
+    !source
+    || typeof source['commandId'] !== 'string'
+    || !validUuid(source['commandId'])
+    || typeof source['documentFamilyId'] !== 'string'
+    || !validUuid(source['documentFamilyId'])
+    || typeof source['currentDocumentId'] !== 'string'
+    || !validUuid(source['currentDocumentId'])
+    || typeof source['currentVersion'] !== 'number'
+    || !Number.isSafeInteger(source['currentVersion'])
+    || source['currentVersion'] < 1
+  ) return undefined;
+  const changedAt = safeTimestamp(source['changedAt']);
+  if (!changedAt) return undefined;
+  return {
+    commandId: source['commandId'].toLowerCase(),
+    documentFamilyId: source['documentFamilyId'].toLowerCase(),
+    currentDocumentId: source['currentDocumentId'].toLowerCase(),
+    currentVersion: source['currentVersion'],
+    changedAt,
+  };
 }
 
 function safeApplicationSelectionRecord(
@@ -1165,6 +1443,175 @@ export function registerDocumentGenerationRoutes(
       );
     }
   };
+
+  const proxyDocumentFamilyRead = async (
+    request: Request,
+    response: Response,
+    path: string,
+    kind: 'history' | 'page',
+  ): Promise<void> => {
+    const correlationId = requestCorrelationId(request);
+    response.setHeader('X-Correlation-ID', correlationId);
+    response.setHeader('Cache-Control', 'private, no-store');
+    try {
+      const payload = await callJson(
+        config,
+        config.origin,
+        path,
+        request,
+        'GET',
+        false,
+        fetchImplementation,
+        {'X-Correlation-ID': correlationId},
+      );
+      if (!payload) {
+        sendFailure(response, 502, 'INVALID_DOWNSTREAM_RESPONSE', 'The document service returned an invalid response');
+        return;
+      }
+      if (payload.status < 200 || payload.status >= 300) {
+        sendFailure(
+          response,
+          payload.status,
+          payload.status === 401 || payload.status === 403
+            ? 'DOCUMENT_HISTORY_AUTH_REQUIRED'
+            : payload.status === 404
+              ? 'DOCUMENT_FAMILY_NOT_FOUND'
+              : 'DOCUMENT_HISTORY_REJECTED',
+          payload.status === 404
+            ? 'The document family was not found for this session'
+            : 'Document history is currently unavailable',
+        );
+        return;
+      }
+      const safe = kind === 'page'
+        ? safeDocumentFamilyPage(payload.body)
+        : safeDocumentFamilyHistory(payload.body);
+      if (!safe) {
+        sendFailure(response, 502, 'INVALID_DOWNSTREAM_RESPONSE', 'The document service returned invalid document history');
+        return;
+      }
+      response.status(payload.status).json(safe);
+    } catch (error: unknown) {
+      const category = downstreamFailureCategory(error);
+      console.error('BFF downstream request failed', {
+        category,
+        correlationId,
+        service: 'document-family-history',
+      });
+      sendFailure(
+        response,
+        category === 'timeout' ? 504 : 503,
+        category === 'timeout' ? 'DOWNSTREAM_TIMEOUT' : 'SERVICE_UNAVAILABLE',
+        category === 'timeout'
+          ? 'Document history timed out'
+          : 'Document history is currently unavailable',
+      );
+    }
+  };
+
+  app.get('/api/v1/document-generation/document-families', async (request, response) => {
+    const page = request.query['page'] === undefined ? 0 : Number(request.query['page']);
+    const size = request.query['size'] === undefined ? 20 : Number(request.query['size']);
+    if (
+      !Number.isSafeInteger(page)
+      || page < 0
+      || !Number.isSafeInteger(size)
+      || size < 1
+      || size > 100
+    ) {
+      sendFailure(response, 400, 'INVALID_DOCUMENT_PAGE', 'Document page and size are invalid');
+      return;
+    }
+    await proxyDocumentFamilyRead(
+      request,
+      response,
+      `/api/v1/document-generation/document-families?page=${page}&size=${size}`,
+      'page',
+    );
+  });
+
+  app.get('/api/v1/document-generation/document-families/:documentFamilyId', async (request, response) => {
+    const familyId = request.params['documentFamilyId'];
+    if (!validUuid(familyId)) {
+      sendFailure(response, 400, 'INVALID_DOCUMENT_FAMILY_ID', 'The document family identifier is invalid');
+      return;
+    }
+    await proxyDocumentFamilyRead(
+      request,
+      response,
+      `/api/v1/document-generation/document-families/${familyId.toLowerCase()}`,
+      'history',
+    );
+  });
+
+  app.patch('/api/v1/document-generation/document-families/:documentFamilyId/current', async (request, response) => {
+    const familyId = request.params['documentFamilyId'];
+    const idempotencyKey = request.get('Idempotency-Key')?.trim();
+    const body = selectFamilyCurrentBody(request.body);
+    if (!validUuid(familyId)) {
+      sendFailure(response, 400, 'INVALID_DOCUMENT_FAMILY_ID', 'The document family identifier is invalid');
+      return;
+    }
+    if (!idempotencyKey || !IDEMPOTENCY_KEY.test(idempotencyKey)) {
+      sendFailure(response, 400, 'INVALID_IDEMPOTENCY_KEY', 'A valid idempotency key is required');
+      return;
+    }
+    if (!body) {
+      sendFailure(response, 400, 'INVALID_CURRENT_SELECTION', 'The current document selection is invalid');
+      return;
+    }
+    request.body = body;
+    const correlationId = requestCorrelationId(request);
+    response.setHeader('X-Correlation-ID', correlationId);
+    response.setHeader('Cache-Control', 'private, no-store');
+    try {
+      const payload = await callJson(
+        config,
+        config.origin,
+        `/api/v1/document-generation/document-families/${familyId.toLowerCase()}/current`,
+        request,
+        'PATCH',
+        true,
+        fetchImplementation,
+        {'Idempotency-Key': idempotencyKey, 'X-Correlation-ID': correlationId},
+        true,
+      );
+      if (!payload) {
+        sendFailure(response, 502, 'INVALID_DOWNSTREAM_RESPONSE', 'The document service returned an invalid response');
+        return;
+      }
+      if (payload.status < 200 || payload.status >= 300) {
+        sendFailure(
+          response,
+          payload.status,
+          payload.status === 409 ? 'DOCUMENT_CURRENT_CONFLICT' : 'DOCUMENT_CURRENT_REJECTED',
+          payload.status === 409
+            ? 'The current document changed; refresh and review before retrying'
+            : 'The current document could not be changed',
+        );
+        return;
+      }
+      const safe = safeDocumentFamilyCurrent(payload.body);
+      if (!safe) {
+        sendFailure(response, 502, 'INVALID_DOWNSTREAM_RESPONSE', 'The document service returned an invalid current selection');
+        return;
+      }
+      response.status(payload.status).json(safe);
+    } catch (error: unknown) {
+      const category = downstreamFailureCategory(error);
+      console.error('BFF downstream request failed', {
+        category,
+        correlationId,
+        service: 'document-family-current',
+      });
+      sendFailure(
+        response,
+        category === 'timeout' ? 504 : 503,
+        category === 'timeout' ? 'DOWNSTREAM_TIMEOUT' : 'SERVICE_UNAVAILABLE',
+        'The current document could not be changed; refresh before retrying',
+      );
+    }
+  });
 
   app.get('/api/v1/document-generation/document-versions/:documentId/application-associations', async (request, response) => {
     const documentId = request.params['documentId'];

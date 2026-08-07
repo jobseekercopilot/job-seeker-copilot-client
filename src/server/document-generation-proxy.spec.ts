@@ -101,6 +101,202 @@ describe('Document generation session boundary', () => {
     updatedAt: '2026-08-07T09:30:00Z',
   };
 
+  it('returns only safe owner-scoped document-family summaries', async () => {
+    const upstream = vi.fn<FetchLike>(async () => Response.json({
+      items: [{
+        documentFamilyId: DOCUMENT_FAMILY_ID,
+        jobId: 'job-1',
+        documentType: 'CV',
+        latestDocumentId: DOCUMENT_ID,
+        latestVersion: 4,
+        latestSource: 'GENERATED',
+        latestLifecycle: 'APPROVED',
+        latestRetention: 'AVAILABLE',
+        currentDocumentId: DOCUMENT_ID,
+        currentVersion: 4,
+        versionCount: 4,
+        createdAt: '2026-07-01T09:30:00Z',
+        updatedAt: '2026-08-07T09:30:00Z',
+        extractedText: 'must-not-reach-browser',
+      }],
+      page: 0,
+      size: 100,
+      totalElements: 1,
+      totalPages: 1,
+      ownerEmail: 'must-not-reach-browser@example.test',
+    }));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/document-families?page=0&size=100`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    const body = await response.json();
+    expect(body).toEqual({
+      items: [{
+        documentFamilyId: DOCUMENT_FAMILY_ID,
+        jobId: 'job-1',
+        documentType: 'CV',
+        latestDocumentId: DOCUMENT_ID,
+        latestVersion: 4,
+        latestSource: 'GENERATED',
+        latestLifecycle: 'APPROVED',
+        latestRetention: 'AVAILABLE',
+        currentDocumentId: DOCUMENT_ID,
+        currentVersion: 4,
+        versionCount: 4,
+        createdAt: '2026-07-01T09:30:00Z',
+        updatedAt: '2026-08-07T09:30:00Z',
+      }],
+      page: 0,
+      size: 100,
+      totalElements: 1,
+      totalPages: 1,
+    });
+    expect(JSON.stringify(body)).not.toContain('must-not-reach-browser');
+    expect(upstream).toHaveBeenCalledWith(
+      'https://documents.example.test/api/v1/document-generation/document-families?page=0&size=100',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({Authorization: `Bearer ${ACCESS_TOKEN}`}),
+      }),
+    );
+  });
+
+  it('returns content-free exact family history with manifests and associations', async () => {
+    const upstream = vi.fn<FetchLike>(async () => Response.json({
+      documentFamilyId: DOCUMENT_FAMILY_ID,
+      jobId: 'job-1',
+      documentType: 'CV',
+      currentDocumentId: DOCUMENT_ID,
+      currentVersion: 4,
+      versions: [{
+        documentId: DOCUMENT_ID,
+        version: 4,
+        title: 'Platform CV',
+        source: 'UPLOADED',
+        lifecycle: 'APPROVED',
+        retention: 'ARCHIVED',
+        current: false,
+        createdAt: '2026-08-07T09:30:00Z',
+        applicationAssociations: [{
+          applicationId: APPLICATION_ID,
+          documentType: 'CV',
+          associationState: 'FROZEN_USED',
+          applicationStatus: 'APPLIED',
+          frozenAt: '2026-08-07T10:00:00Z',
+          notes: 'must-not-reach-browser',
+        }],
+        artifacts: [{
+          artifactId: ARTIFACT_ID,
+          role: 'ORIGINAL',
+          format: 'DOCX',
+          source: 'USER_UPLOADED',
+          availability: 'AVAILABLE',
+          size: 2048,
+          storedAt: '2026-08-07T09:30:00Z',
+          objectKey: 'must-not-reach-browser',
+        }],
+        content: 'must-not-reach-browser',
+      }],
+    }));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/document-families/${DOCUMENT_FAMILY_ID.toUpperCase()}`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.versions[0]).toMatchObject({
+      documentId: DOCUMENT_ID,
+      version: 4,
+      source: 'UPLOADED',
+      retention: 'ARCHIVED',
+      applicationAssociations: [{
+        applicationId: APPLICATION_ID,
+        associationState: 'FROZEN_USED',
+      }],
+      artifacts: [{
+        artifactId: ARTIFACT_ID,
+        role: 'ORIGINAL',
+        availability: 'AVAILABLE',
+      }],
+    });
+    expect(JSON.stringify(body)).not.toContain('must-not-reach-browser');
+  });
+
+  it('validates and forwards an expected-version current selection with CSRF', async () => {
+    const upstream = vi.fn<FetchLike>(async () => Response.json({
+      commandId: OPERATION_ID,
+      documentFamilyId: DOCUMENT_FAMILY_ID,
+      currentDocumentId: COVER_DOCUMENT_ID,
+      currentVersion: 3,
+      changedAt: '2026-08-07T10:00:00Z',
+      internalOwner: 'must-not-reach-browser',
+    }));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/document-families/${DOCUMENT_FAMILY_ID}/current`,
+      {
+        method: 'PATCH',
+        headers: {
+          ...sessionHeaders(),
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'browser-current-1',
+        },
+        body: JSON.stringify({
+          documentId: COVER_DOCUMENT_ID.toUpperCase(),
+          expectedCurrentState: 'SELECTED',
+          expectedCurrentDocumentId: DOCUMENT_ID.toUpperCase(),
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      commandId: OPERATION_ID,
+      documentFamilyId: DOCUMENT_FAMILY_ID,
+      currentDocumentId: COVER_DOCUMENT_ID,
+      currentVersion: 3,
+      changedAt: '2026-08-07T10:00:00Z',
+    });
+    expect(upstream).toHaveBeenCalledWith(
+      `https://documents.example.test/api/v1/document-generation/document-families/${DOCUMENT_FAMILY_ID}/current`,
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${ACCESS_TOKEN}`,
+          'Idempotency-Key': 'browser-current-1',
+        }),
+        body: JSON.stringify({
+          documentId: COVER_DOCUMENT_ID,
+          expectedCurrentState: 'SELECTED',
+          expectedCurrentDocumentId: DOCUMENT_ID,
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    '/api/v1/document-generation/document-families?page=-1&size=20',
+    '/api/v1/document-generation/document-families?page=0&size=101',
+    '/api/v1/document-generation/document-families/not-a-uuid',
+  ])('rejects an invalid document-family boundary before upstream (%s)', async path => {
+    const upstream = vi.fn<FetchLike>();
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(`${origin}${path}`, {headers: sessionHeaders(false)});
+
+    expect(response.status).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
   it('returns only content-free exact-version associations', async () => {
     const upstream = vi.fn<FetchLike>(async () => Response.json({
       documentId: DOCUMENT_ID,
