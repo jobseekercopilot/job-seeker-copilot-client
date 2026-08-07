@@ -455,7 +455,7 @@ test('rejects incomplete or unbounded role-scoped Job Finder paging', async (con
   }
 });
 
-test('pins the durable generation and atomic document-selection contract', async () => {
+test('pins durable generation, atomic selection and exact lifecycle contracts', async () => {
   const lock = await verifyContractManifest(rootDir);
   const gateway = lock.contracts.find(({id}) => id === 'document-generation-gateway');
   const contract = JSON.parse(await readFile(resolve(rootDir, gateway.path), 'utf8'));
@@ -469,15 +469,28 @@ test('pins the durable generation and atomic document-selection contract', async
     '/api/v1/document-generation/applications/{applicationId}/document-selections'
   ].put;
 
-  assert.equal(gateway.version, '2.2.0');
+  const associations = contract.paths[
+    '/api/v1/document-generation/document-versions/{documentId}/application-associations'
+  ].get;
+  const archive = contract.paths[
+    '/api/v1/document-generation/document-versions/{documentId}/archive'
+  ].patch;
+  const restore = contract.paths[
+    '/api/v1/document-generation/document-versions/{documentId}/restore'
+  ].patch;
+  const recoverableDelete = contract.paths[
+    '/api/v1/document-generation/document-versions/{documentId}'
+  ].delete;
+
+  assert.equal(gateway.version, '2.4.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/document-generation-gateway');
-  assert.equal(gateway.sourceCommit, 'a168b03df2f6bdd80d06143e4184ed59f0b82e84');
+  assert.equal(gateway.sourceCommit, '08e0464eea3020c8a6365ecfb2a8526ba84c8643');
   assert.equal(
     gateway.sha256,
-    '2e989545c52dee0cf5fa7582c08fb0f2475b53a3af003650b81ac45325c28d1a',
+    '39fc510ed05924fb4391ca856be9d60c597d59e4f1724351817ecaa23af9972f',
   );
   assert.equal(gateway.output, 'src/app/api/document-generation-gateway');
-  assert.equal(contract.info.version, '2.2.0');
+  assert.equal(contract.info.version, '2.4.0');
   assert.equal(start.operationId, 'startOperation');
   assert.equal(start.requestBody.required, true);
   assert.equal(
@@ -555,6 +568,27 @@ test('pins the durable generation and atomic document-selection contract', async
     contract.components.schemas.ApplicationSelectionConflictResponse
       .properties.currentApplication.$ref,
     '#/components/schemas/ApplicationDocumentSelectionsResponse',
+  );
+  assert.equal(associations.operationId, 'associations');
+  assert.equal(archive.operationId, 'archive');
+  assert.equal(restore.operationId, 'restore');
+  assert.equal(recoverableDelete.operationId, 'delete');
+  assert.ok(recoverableDelete.responses['204']);
+  assert.equal(
+    archive.responses['200'].content['*/*'].schema.$ref,
+    '#/components/schemas/DocumentVersionLifecycleResponse',
+  );
+  assert.equal(
+    associations.responses['200'].content['*/*'].schema.$ref,
+    '#/components/schemas/DocumentApplicationAssociationsResponse',
+  );
+  const versionHistory = contract.components.schemas.DocumentVersionHistoryItem
+    .properties;
+  assert.ok(versionHistory.purgedAt);
+  assert.ok(versionHistory.unavailableReason);
+  assert.equal(
+    versionHistory.applicationAssociations.items.$ref,
+    '#/components/schemas/DocumentApplicationAssociation',
   );
 });
 

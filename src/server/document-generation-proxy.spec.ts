@@ -9,6 +9,7 @@ const ACCESS_TOKEN = 'a.a.a';
 const CSRF_TOKEN = 'csrf-token-123';
 const DOCUMENT_ID = '3b0f6a57-389d-4e20-a007-199afca04b20';
 const COVER_DOCUMENT_ID = '3b0f6a57-389d-4e20-a007-199afca04b21';
+const DOCUMENT_FAMILY_ID = '3b0f6a57-389d-4e20-a007-199afca04b22';
 const FILE_ID = '9f40a536-4167-4b5c-9295-c41b6e127f84';
 const OPERATION_ID = '69e794d1-f0aa-4ed5-9779-a5f3e98610cb';
 const APPLICATION_ID = 'c17442dd-c24f-48a2-86e5-b0ec7f38f8cb';
@@ -98,6 +99,175 @@ describe('Document generation session boundary', () => {
     version: 8,
     updatedAt: '2026-08-07T09:30:00Z',
   };
+
+  it('returns only content-free exact-version associations', async () => {
+    const upstream = vi.fn<FetchLike>(async () => Response.json({
+      documentId: DOCUMENT_ID,
+      associationCount: 99,
+      associations: [
+        {
+          applicationId: APPLICATION_ID,
+          documentType: 'CV',
+          associationState: 'DRAFT_SELECTED',
+          applicationStatus: 'DOCUMENTS_GENERATED',
+          privateNotes: 'must-not-reach-browser',
+        },
+        {
+          applicationId: SECOND_APPLICATION_ID,
+          documentType: 'CV',
+          associationState: 'FROZEN_USED',
+          applicationStatus: 'APPLIED',
+          frozenAt: '2026-08-07T09:30:00Z',
+          contentSha256: 'must-not-reach-browser',
+        },
+        {
+          applicationId: 'c17442dd-c24f-48a2-86e5-b0ec7f38f8cd',
+          documentType: 'CV',
+          associationState: 'FROZEN_USED',
+          applicationStatus: 'APPLIED',
+        },
+      ],
+      fileName: 'must-not-reach-browser.docx',
+    }));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/document-versions/${DOCUMENT_ID.toUpperCase()}/application-associations`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    const body = await response.json();
+    expect(body).toEqual({
+      documentId: DOCUMENT_ID,
+      associationCount: 3,
+      associations: [
+        {
+          applicationId: APPLICATION_ID,
+          documentType: 'CV',
+          associationState: 'DRAFT_SELECTED',
+          applicationStatus: 'DOCUMENTS_GENERATED',
+        },
+        {
+          applicationId: SECOND_APPLICATION_ID,
+          documentType: 'CV',
+          associationState: 'FROZEN_USED',
+          applicationStatus: 'APPLIED',
+          frozenAt: '2026-08-07T09:30:00Z',
+        },
+        {
+          applicationId: 'c17442dd-c24f-48a2-86e5-b0ec7f38f8cd',
+          documentType: 'CV',
+          associationState: 'FROZEN_USED',
+          applicationStatus: 'APPLIED',
+        },
+      ],
+    });
+    expect(JSON.stringify(body)).not.toContain('must-not-reach-browser');
+    expect(upstream).toHaveBeenCalledWith(
+      `https://documents.example.test/api/v1/document-generation/document-versions/${DOCUMENT_ID}/application-associations`,
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${ACCESS_TOKEN}`,
+          'X-Correlation-ID': expect.stringMatching(UUID_PATTERN),
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    ['PATCH', 'archive', 'ARCHIVED', 'archivedAt'],
+    ['PATCH', 'restore', 'AVAILABLE', undefined],
+  ])('proxies %s lifecycle action %s through CSRF and sanitizes the result', async (
+    method,
+    action,
+    retentionState,
+    lifecycleTimestamp,
+  ) => {
+    const timestamp = '2026-08-07T09:30:00Z';
+    const upstream = vi.fn<FetchLike>(async () => Response.json({
+      id: DOCUMENT_ID,
+      documentFamilyId: DOCUMENT_FAMILY_ID,
+      documentType: 'CV',
+      version: 4,
+      lifecycleState: 'APPROVED',
+      retentionState,
+      current: false,
+      ...(lifecycleTimestamp ? {[lifecycleTimestamp]: timestamp} : {}),
+      purgeEligibleAt: retentionState === 'DELETED' ? '2026-09-06T09:30:00Z' : undefined,
+      unavailableReason: retentionState === 'DELETED' ? 'RECOVERABLY_DELETED' : undefined,
+      title: 'must-not-reach-browser',
+      content: 'must-not-reach-browser',
+    }));
+    const origin = await start(upstream as typeof fetch);
+    const suffix = action ? `/${action}` : '';
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/document-versions/${DOCUMENT_ID}${suffix}`,
+      {method, headers: sessionHeaders()},
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual(expect.objectContaining({
+      id: DOCUMENT_ID,
+      documentFamilyId: DOCUMENT_FAMILY_ID,
+      documentType: 'CV',
+      version: 4,
+      lifecycleState: 'APPROVED',
+      retentionState,
+      current: false,
+    }));
+    expect(JSON.stringify(body)).not.toContain('must-not-reach-browser');
+    const [, init] = upstream.mock.calls[0];
+    expect(init).toEqual(expect.objectContaining({
+      method,
+      headers: expect.objectContaining({
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
+        'X-Correlation-ID': expect.stringMatching(UUID_PATTERN),
+      }),
+    }));
+    expect(JSON.stringify(init)).not.toContain('browser-controlled');
+  });
+
+  it('proxies recoverable deletion through CSRF without inventing lifecycle state', async () => {
+    const upstream = vi.fn<FetchLike>(async () => new Response(null, {status: 204}));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/document-versions/${DOCUMENT_ID}`,
+      {method: 'DELETE', headers: sessionHeaders()},
+    );
+
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
+    const [url, init] = upstream.mock.calls[0];
+    expect(url).toBe(
+      `https://documents.example.test/api/v1/document-generation/document-versions/${DOCUMENT_ID}`,
+    );
+    expect(init).toEqual(expect.objectContaining({
+      method: 'DELETE',
+      headers: expect.objectContaining({
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
+        'X-Correlation-ID': expect.stringMatching(UUID_PATTERN),
+      }),
+    }));
+  });
+
+  it('rejects lifecycle writes without CSRF before calling the gateway', async () => {
+    const upstream = vi.fn<FetchLike>();
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/document-versions/${DOCUMENT_ID}/archive`,
+      {method: 'PATCH', headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(403);
+    expect(upstream).not.toHaveBeenCalled();
+  });
 
   it.each([
     ['none', {state: 'OMITTED'}, {state: 'OMITTED'}],
