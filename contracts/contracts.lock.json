@@ -66,16 +66,17 @@
     },
     {
       "id": "document-generation-gateway",
-      "version": "2.0.0",
+      "version": "2.2.0",
       "sourceRepository": "jobseekercopilot/document-generation-gateway",
-      "sourceCommit": "1a965519dde9dbea54e43a41e7fb449fd785c932",
-      "path": "contracts/document-generation-gateway/2.0.0/openapi.json",
-      "sha256": "2e92aba9472e72ee542b5f228a04cf14f680003b6c551a90ef9a294538392d31",
+      "sourceCommit": "a168b03df2f6bdd80d06143e4184ed59f0b82e84",
+      "path": "contracts/document-generation-gateway/2.2.0/openapi.json",
+      "sha256": "2e989545c52dee0cf5fa7582c08fb0f2475b53a3af003650b81ac45325c28d1a",
       "output": "src/app/api/document-generation-gateway",
       "requiredPaths": [
         "/api/v1/document-generation/saved-jobs/{savedJobId}/operations",
         "/api/v1/document-generation/operations/{operationId}",
         "/api/v1/document-generation/operations/{operationId}/approve",
+        "/api/v1/document-generation/applications/{applicationId}/document-selections",
         "/api/v1/document-generation/files/{fileId}/download"
       ]
     },

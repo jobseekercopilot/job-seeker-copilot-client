@@ -13,6 +13,7 @@ const FILE_ID = '9f40a536-4167-4b5c-9295-c41b6e127f84';
 const ARTIFACT_ID = '7a7ca550-1a54-4ad2-956f-40d600b741ca';
 const OPERATION_ID = '69e794d1-f0aa-4ed5-9779-a5f3e98610cb';
 const APPLICATION_ID = 'c17442dd-c24f-48a2-86e5-b0ec7f38f8cb';
+const SECOND_APPLICATION_ID = 'c17442dd-c24f-48a2-86e5-b0ec7f38f8cc';
 const MULTIPART_TYPE = 'multipart/form-data; boundary=test-boundary';
 const MULTIPART_BODY = '--test-boundary\r\nContent-Disposition: form-data; name="file"; filename="Updated CV.docx"\r\nContent-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document\r\n\r\nsafe-docx-test\r\n--test-boundary--\r\n';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -81,6 +82,193 @@ describe('Document generation session boundary', () => {
       ...(includeCsrf ? {'X-CSRF-Token': CSRF_TOKEN} : {}),
     };
   }
+
+  const applicationRecord = {
+    id: APPLICATION_ID,
+    userId: 'owner-from-session',
+    jobId: 'job-1',
+    canonicalJobId: 'canonical-job-1',
+    provider: 'REED',
+    externalJobId: 'reed-1',
+    provenance: 'GENERATED',
+    jobTitle: 'Platform Engineer',
+    companyName: 'Example Ltd',
+    status: 'DOCUMENTS_GENERATED',
+    cvDocumentId: DOCUMENT_ID,
+    coverLetterDocumentId: COVER_DOCUMENT_ID,
+    version: 8,
+    updatedAt: '2026-08-07T09:30:00Z',
+  };
+
+  it.each([
+    ['none', {state: 'OMITTED'}, {state: 'OMITTED'}],
+    ['CV only', {state: 'SELECTED', documentId: DOCUMENT_ID}, {state: 'OMITTED'}],
+    ['cover letter only', {state: 'OMITTED'}, {state: 'SELECTED', documentId: COVER_DOCUMENT_ID}],
+    ['both', {state: 'SELECTED', documentId: DOCUMENT_ID}, {state: 'SELECTED', documentId: COVER_DOCUMENT_ID}],
+  ])('saves %s as one explicit owner-scoped selection request', async (
+    _label,
+    cvSelection,
+    coverLetterSelection,
+  ) => {
+    const upstream = vi.fn<FetchLike>(async () => Response.json(applicationRecord));
+    const origin = await start(upstream as typeof fetch);
+    const requestBody = {cvSelection, coverLetterSelection, expectedVersion: 7};
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/applications/${APPLICATION_ID.toUpperCase()}/document-selections`,
+      {
+        method: 'PUT',
+        headers: {
+          ...sessionHeaders(),
+          Authorization: 'Bearer browser-controlled',
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'selection-command-1',
+          'X-User-Id': 'browser-controlled-owner',
+        },
+        body: JSON.stringify(requestBody),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(await response.json()).toEqual({
+      id: APPLICATION_ID,
+      status: 'DOCUMENTS_GENERATED',
+      cvDocumentId: DOCUMENT_ID,
+      coverLetterDocumentId: COVER_DOCUMENT_ID,
+      version: 8,
+    });
+    expect(upstream).toHaveBeenCalledOnce();
+    const [url, init] = upstream.mock.calls[0];
+    expect(url).toBe(
+      `https://documents.example.test/api/v1/document-generation/applications/${APPLICATION_ID}/document-selections`,
+    );
+    expect(init).toEqual(expect.objectContaining({
+      method: 'PUT',
+      headers: expect.objectContaining({
+        Accept: 'application/json',
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'selection-command-1',
+        'X-Correlation-ID': expect.stringMatching(UUID_PATTERN),
+      }),
+    }));
+    expect(JSON.stringify(init)).not.toContain('browser-controlled');
+    expect(JSON.parse(String(init?.body))).toEqual(requestBody);
+  });
+
+  it.each([
+    [{cvSelection: {state: 'OMITTED'}, coverLetterSelection: {state: 'OMITTED'}}],
+    [{cvSelection: {state: 'SELECTED'}, coverLetterSelection: {state: 'OMITTED'}, expectedVersion: 0}],
+    [{cvSelection: {state: 'SELECTED', documentId: 'not-a-uuid'}, coverLetterSelection: {state: 'OMITTED'}, expectedVersion: 0}],
+    [{cvSelection: {state: 'OMITTED', documentId: DOCUMENT_ID}, coverLetterSelection: {state: 'OMITTED'}, expectedVersion: 0}],
+    [{cvSelection: {state: 'OMITTED'}, coverLetterSelection: {state: 'OMITTED'}, expectedVersion: -1}],
+    [{cvSelection: {state: 'OMITTED'}, coverLetterSelection: {state: 'OMITTED'}, expectedVersion: 1.5}],
+    [{cvSelection: {state: 'OMITTED'}, coverLetterSelection: {state: 'OMITTED'}, expectedVersion: 0, ownerId: 'unsafe'}],
+  ])('rejects an invalid complete-selection body before calling the gateway', async body => {
+    const upstream = vi.fn<FetchLike>();
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/applications/${APPLICATION_ID}/document-selections`,
+      {
+        method: 'PUT',
+        headers: {
+          ...sessionHeaders(),
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'selection-command-1',
+        },
+        body: JSON.stringify(body),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'INVALID_DOCUMENT_SELECTIONS',
+      message: 'Both document slots and a non-negative expected version are required',
+    });
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('requires valid application, idempotency and CSRF inputs before selection writes', async () => {
+    const upstream = vi.fn<FetchLike>();
+    const origin = await start(upstream as typeof fetch);
+    const body = JSON.stringify({
+      cvSelection: {state: 'OMITTED'},
+      coverLetterSelection: {state: 'OMITTED'},
+      expectedVersion: 0,
+    });
+
+    const invalidId = await fetch(
+      `${origin}/api/v1/document-generation/applications/not-a-uuid/document-selections`,
+      {method: 'PUT', headers: {...sessionHeaders(), 'Content-Type': 'application/json'}, body},
+    );
+    const invalidKey = await fetch(
+      `${origin}/api/v1/document-generation/applications/${APPLICATION_ID}/document-selections`,
+      {method: 'PUT', headers: {...sessionHeaders(), 'Content-Type': 'application/json', 'Idempotency-Key': 'unsafe key'}, body},
+    );
+    const missingCsrf = await fetch(
+      `${origin}/api/v1/document-generation/applications/${APPLICATION_ID}/document-selections`,
+      {
+        method: 'PUT',
+        headers: {...sessionHeaders(false), 'Content-Type': 'application/json', 'Idempotency-Key': 'selection-command-1'},
+        body,
+      },
+    );
+
+    expect(invalidId.status).toBe(400);
+    expect(invalidKey.status).toBe(400);
+    expect(missingCsrf.status).toBe(403);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('preserves only authoritative application state on a stale selection conflict', async () => {
+    const upstream = vi.fn<FetchLike>(async () => Response.json({
+      status: 409,
+      message: 'internal persistence detail',
+      timestamp: '2026-08-07T09:30:00Z',
+      currentApplication: {
+        ...applicationRecord,
+        id: SECOND_APPLICATION_ID,
+        cvDocumentId: undefined,
+        version: 9,
+        internalOwnerEmail: 'must-not-reach-browser@example.test',
+      },
+      internalTrace: 'must-not-reach-browser',
+    }, {status: 409}));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/applications/${APPLICATION_ID}/document-selections`,
+      {
+        method: 'PUT',
+        headers: {
+          ...sessionHeaders(),
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'stale-command',
+        },
+        body: JSON.stringify({
+          cvSelection: {state: 'OMITTED'},
+          coverLetterSelection: {state: 'SELECTED', documentId: COVER_DOCUMENT_ID},
+          expectedVersion: 7,
+        }),
+      },
+    );
+
+    expect(response.status).toBe(409);
+    const conflict = await response.json();
+    expect(conflict).toEqual({
+      status: 409,
+      message: 'The application changed; review the current selections before saving again',
+      currentApplication: expect.objectContaining({
+        id: SECOND_APPLICATION_ID,
+        coverLetterDocumentId: COVER_DOCUMENT_ID,
+        version: 9,
+      }),
+    });
+    expect(JSON.stringify(conflict)).not.toContain('internal');
+    expect(JSON.stringify(conflict)).not.toContain('must-not-reach-browser');
+  });
 
   it('starts durable generation with cookie-derived identity and a validated idempotency key', async () => {
     const upstream = vi.fn<FetchLike>(async () =>

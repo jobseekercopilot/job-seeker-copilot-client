@@ -455,7 +455,7 @@ test('rejects incomplete or unbounded role-scoped Job Finder paging', async (con
   }
 });
 
-test('pins the durable document-generation contract without browser job input', async () => {
+test('pins the durable generation and atomic document-selection contract', async () => {
   const lock = await verifyContractManifest(rootDir);
   const gateway = lock.contracts.find(({id}) => id === 'document-generation-gateway');
   const contract = JSON.parse(await readFile(resolve(rootDir, gateway.path), 'utf8'));
@@ -465,12 +465,19 @@ test('pins the durable document-generation contract without browser job input', 
   const approve = contract.paths[
     '/api/v1/document-generation/operations/{operationId}/approve'
   ].post;
+  const saveSelections = contract.paths[
+    '/api/v1/document-generation/applications/{applicationId}/document-selections'
+  ].put;
 
-  assert.equal(gateway.version, '2.0.0');
+  assert.equal(gateway.version, '2.2.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/document-generation-gateway');
-  assert.equal(gateway.sourceCommit, '1a965519dde9dbea54e43a41e7fb449fd785c932');
+  assert.equal(gateway.sourceCommit, 'a168b03df2f6bdd80d06143e4184ed59f0b82e84');
+  assert.equal(
+    gateway.sha256,
+    '2e989545c52dee0cf5fa7582c08fb0f2475b53a3af003650b81ac45325c28d1a',
+  );
   assert.equal(gateway.output, 'src/app/api/document-generation-gateway');
-  assert.equal(contract.info.version, '2.0.0');
+  assert.equal(contract.info.version, '2.2.0');
   assert.equal(start.operationId, 'startOperation');
   assert.equal(start.requestBody.required, true);
   assert.equal(
@@ -512,6 +519,42 @@ test('pins the durable document-generation contract without browser job input', 
   assert.ok(
     contract.components.schemas.GenerationOperationResponse.properties.state.enum
       .includes('GENERATION_OUTCOME_UNKNOWN'),
+  );
+  assert.equal(saveSelections.operationId, 'save');
+  assert.equal(saveSelections.requestBody.required, true);
+  assert.deepEqual(
+    saveSelections.parameters.map(({name, in: location, required}) => ({
+      name,
+      location,
+      required,
+    })),
+    [
+      {name: 'applicationId', location: 'path', required: true},
+      {name: 'Idempotency-Key', location: 'header', required: true},
+    ],
+  );
+  assert.deepEqual(saveSelections.parameters[1].schema, {
+    maxLength: 128,
+    pattern: '[A-Za-z0-9][A-Za-z0-9._:-]{0,127}',
+    type: 'string',
+  });
+  assert.deepEqual(
+    contract.components.schemas.SaveApplicationDocumentSelectionsRequest.required,
+    ['coverLetterSelection', 'cvSelection', 'expectedVersion'],
+  );
+  assert.deepEqual(
+    contract.components.schemas.ApplicationDocumentSelectionSlotRequest
+      .properties.state.enum,
+    ['SELECTED', 'OMITTED'],
+  );
+  assert.equal(
+    saveSelections.responses['409'].content['*/*'].schema.$ref,
+    '#/components/schemas/ApplicationSelectionConflictResponse',
+  );
+  assert.equal(
+    contract.components.schemas.ApplicationSelectionConflictResponse
+      .properties.currentApplication.$ref,
+    '#/components/schemas/ApplicationDocumentSelectionsResponse',
   );
 });
 
