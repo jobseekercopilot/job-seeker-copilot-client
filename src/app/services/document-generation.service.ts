@@ -161,6 +161,7 @@ interface StoredGenerationAttempt {
   savedJobId?: string;
   operationId?: string;
   approvalRequested?: boolean;
+  explicitRetryRequired?: boolean;
   startedAt: number;
   evidence: GenerationEvidenceSelection;
 }
@@ -197,7 +198,15 @@ export class DocumentGenerationService {
     const active = this.activeGenerations.get(canonicalJobId);
     if (active) return active;
 
-    const attempt = this.readAttempt(canonicalJobId) ?? {
+    let attempt = this.readAttempt(canonicalJobId);
+    if (attempt?.explicitRetryRequired) {
+      // Only a new button press reaches generate(). Automatic restoration uses
+      // resume(), so replacing this retained terminal attempt is an explicit
+      // user-authorised retry with a fresh idempotency key.
+      this.clearAttempt(canonicalJobId);
+      attempt = undefined;
+    }
+    attempt ??= {
       version: 1,
       canonicalJobId,
       idempotencyKey: `browser-${crypto.randomUUID()}`,
@@ -530,7 +539,10 @@ export class DocumentGenerationService {
       take(1),
       map(operation => {
         if (operation.state !== GenerationOperationResponseStateEnum.Completed) {
-          if (!this.shouldRetainAttempt(operation)) {
+          if (this.shouldRetainAttempt(operation)) {
+            attempt.explicitRetryRequired = true;
+            this.writeAttempt(attempt);
+          } else {
             this.clearAttempt(attempt.canonicalJobId);
           }
           throw this.operationError(operation);
@@ -984,6 +996,10 @@ export class DocumentGenerationService {
       && (
         attempt.approvalRequested === undefined
         || typeof attempt.approvalRequested === 'boolean'
+      )
+      && (
+        attempt.explicitRetryRequired === undefined
+        || typeof attempt.explicitRetryRequired === 'boolean'
       );
   }
 
@@ -1072,7 +1088,7 @@ export class DocumentGenerationService {
     ) {
       return new DocumentGenerationError(
         'OUTCOME_UNKNOWN',
-        'The provider outcome is unknown. No automatic retry was made; refresh before trying again.',
+        'The provider outcome is unknown. No automatic retry was made; press Generate again to start a new request.',
       );
     }
     if (operation.state === GenerationOperationResponseStateEnum.Cancelled) {
@@ -1181,7 +1197,7 @@ export class DocumentGenerationService {
     if (upstreamCode.includes('OUTCOME_UNKNOWN')) {
       return new DocumentGenerationError(
         'OUTCOME_UNKNOWN',
-        'The provider outcome is unknown. No automatic retry was made; refresh before trying again.',
+        'The provider outcome is unknown. No automatic retry was made; press Generate again to start a new request.',
       );
     }
     if (status === 504 || upstreamCode.includes('TIMEOUT')) {

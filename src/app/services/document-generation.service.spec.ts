@@ -700,6 +700,88 @@ describe('DocumentGenerationService', () => {
     expect(TestBed.inject(DocumentGenerationService).pendingGenerations()).toHaveLength(1);
   });
 
+  it('starts a fresh operation only after the user explicitly retries an unknown outcome', async () => {
+    const replacementOperationId = '40000000-0000-4000-8000-000000000099';
+    writeAttempt({operationId});
+    getOperation.mockReturnValueOnce(of({
+      operationId,
+      state: 'GENERATION_OUTCOME_UNKNOWN',
+      failureCode: 'GENERATION_OUTCOME_UNKNOWN',
+    }));
+    const service = TestBed.inject(DocumentGenerationService);
+
+    await expect(firstValueFrom(service.resume(canonicalJobId))).rejects.toMatchObject({
+      code: 'OUTCOME_UNKNOWN',
+    });
+
+    startOperation.mockReturnValueOnce(of({
+      operationId: replacementOperationId,
+      state: 'CREATED',
+    }));
+    getOperation.mockReturnValueOnce(of({
+      operationId: replacementOperationId,
+      state: 'AWAITING_APPROVAL',
+      cvDocumentId,
+      coverLetterDocumentId,
+    }));
+    approveOperation.mockReturnValueOnce(of({
+      ...completedOperation(),
+      operationId: replacementOperationId,
+    }));
+
+    await expect(firstValueFrom(service.generate(job, evidence))).resolves.toMatchObject({
+      applicationId,
+      cvDocumentId,
+      coverLetterDocumentId,
+    });
+
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(startOperation).toHaveBeenCalledTimes(1);
+    expect(startOperation.mock.calls[0]?.[1]).not.toBe('browser-stable-key');
+    expect(service.pendingGenerations()).toEqual([]);
+  });
+
+  it('does not let a legacy unknown attempt trap a later explicit retry', async () => {
+    const replacementOperationId = '40000000-0000-4000-8000-000000000098';
+    writeAttempt({
+      operationId,
+      startedAt: Date.now() - (12 * 60 * 1000),
+    });
+    getOperation.mockReturnValueOnce(of({
+      operationId,
+      state: 'GENERATION_OUTCOME_UNKNOWN',
+      failureCode: 'GENERATION_OUTCOME_UNKNOWN',
+    }));
+    const service = TestBed.inject(DocumentGenerationService);
+
+    await expect(firstValueFrom(service.generate(job, evidence))).rejects.toMatchObject({
+      code: 'OUTCOME_UNKNOWN',
+    });
+    expect(save).not.toHaveBeenCalled();
+    expect(startOperation).not.toHaveBeenCalled();
+
+    startOperation.mockReturnValueOnce(of({
+      operationId: replacementOperationId,
+      state: 'CREATED',
+    }));
+    getOperation.mockReturnValueOnce(of({
+      operationId: replacementOperationId,
+      state: 'AWAITING_APPROVAL',
+      cvDocumentId,
+      coverLetterDocumentId,
+    }));
+    approveOperation.mockReturnValueOnce(of({
+      ...completedOperation(),
+      operationId: replacementOperationId,
+    }));
+
+    await firstValueFrom(service.generate(job, evidence));
+
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(startOperation).toHaveBeenCalledTimes(1);
+    expect(getOperation).toHaveBeenCalledTimes(2);
+  });
+
   it('cancels by operation id and retains no resumable operation', async () => {
     writeAttempt({operationId});
     const service = TestBed.inject(DocumentGenerationService);
@@ -825,12 +907,14 @@ describe('DocumentGenerationService', () => {
   function writeAttempt(overrides: {
     operationId?: string;
     startedAt?: number;
+    explicitRetryRequired?: boolean;
   }): void {
     localStorage.setItem(`jsc-document-generation-v1:${ownerId}`, JSON.stringify([{
       version: 1,
       canonicalJobId,
       savedJobId,
       operationId: overrides.operationId,
+      explicitRetryRequired: overrides.explicitRetryRequired,
       idempotencyKey: 'browser-stable-key',
       startedAt: overrides.startedAt ?? Date.now(),
       evidence,
