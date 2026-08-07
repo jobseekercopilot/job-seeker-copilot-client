@@ -70,7 +70,7 @@ interface ProxyPayload {
   status: number;
 }
 
-type JsonMethod = 'DELETE' | 'GET' | 'POST';
+type JsonMethod = 'DELETE' | 'GET' | 'POST' | 'PUT';
 
 function validUuid(value: string): boolean {
   return UUID.test(value);
@@ -90,6 +90,28 @@ interface ApproveGenerationBody {
   cvDocumentId: string;
   coverLetterDocumentId: string;
 }
+
+type DocumentSelection =
+  | {state: 'SELECTED'; documentId: string}
+  | {state: 'OMITTED'};
+
+interface SaveDocumentSelectionsBody {
+  cvSelection: DocumentSelection;
+  coverLetterSelection: DocumentSelection;
+  expectedVersion: number;
+}
+
+const APPLICATION_STATES = new Set([
+  'SAVED',
+  'DOCUMENTS_GENERATED',
+  'APPLIED',
+  'INTERVIEW',
+  'UNSUCCESSFUL',
+  'OFFER',
+  'ACCEPTED',
+  'REJECTED_BY_USER',
+  'WITHDRAWN',
+]);
 
 function exactObjectKeys(
   value: unknown,
@@ -163,6 +185,45 @@ function approveGenerationBody(value: unknown): ApproveGenerationBody | undefine
   };
 }
 
+function documentSelection(value: unknown): DocumentSelection | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const state = (value as Record<string, unknown>)['state'];
+  if (state === 'OMITTED' && exactObjectKeys(value, ['state'])) {
+    return {state};
+  }
+  if (!exactObjectKeys(value, ['state', 'documentId']) || state !== 'SELECTED') {
+    return undefined;
+  }
+  const documentId = value['documentId'];
+  return typeof documentId === 'string' && validUuid(documentId)
+    ? {state, documentId: documentId.toLowerCase()}
+    : undefined;
+}
+
+function saveDocumentSelectionsBody(
+  value: unknown,
+): SaveDocumentSelectionsBody | undefined {
+  if (!exactObjectKeys(
+    value,
+    ['cvSelection', 'coverLetterSelection', 'expectedVersion'],
+  )) {
+    return undefined;
+  }
+  const cvSelection = documentSelection(value['cvSelection']);
+  const coverLetterSelection = documentSelection(value['coverLetterSelection']);
+  const expectedVersion = value['expectedVersion'];
+  if (
+    !cvSelection
+    || !coverLetterSelection
+    || typeof expectedVersion !== 'number'
+    || !Number.isSafeInteger(expectedVersion)
+    || expectedVersion < 0
+  ) {
+    return undefined;
+  }
+  return {cvSelection, coverLetterSelection, expectedVersion};
+}
+
 function sendFailure(
   response: Response,
   status: number,
@@ -189,7 +250,7 @@ async function callJson(
     request.headers,
     config,
     requiresCsrf,
-    method === 'POST',
+    ['POST', 'PUT'].includes(method),
   );
   if ('status' in credentials) return {
     body: JSON.stringify({
@@ -205,7 +266,9 @@ async function callJson(
     {
       method,
       headers: {...credentials.headers, ...additionalHeaders},
-      body: method === 'POST' ? JSON.stringify(request.body) : undefined,
+      body: ['POST', 'PUT'].includes(method)
+        ? JSON.stringify(request.body)
+        : undefined,
     },
     config.timeoutMs,
     fetchImplementation,
@@ -238,6 +301,101 @@ function safeTimestamp(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length > 64) return undefined;
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? undefined : value;
+}
+
+function safeApplicationSelectionRecord(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  if (
+    typeof source['id'] !== 'string'
+    || !validUuid(source['id'])
+    || typeof source['status'] !== 'string'
+    || !APPLICATION_STATES.has(source['status'])
+    || typeof source['version'] !== 'number'
+    || !Number.isSafeInteger(source['version'])
+    || source['version'] < 0
+  ) {
+    return undefined;
+  }
+
+  const safe: Record<string, unknown> = {
+    id: source['id'].toLowerCase(),
+    status: source['status'],
+    version: source['version'],
+  };
+  for (const key of ['cvDocumentId', 'coverLetterDocumentId']) {
+    const candidate = source[key];
+    if (typeof candidate === 'string' && validUuid(candidate)) {
+      safe[key] = candidate.toLowerCase();
+    }
+  }
+  for (const key of ['cvDocumentReference', 'coverLetterDocumentReference']) {
+    const candidate = safeApplicationDocumentReference(source[key]);
+    if (candidate) safe[key] = candidate;
+  }
+  return safe;
+}
+
+function safeApplicationDocumentReference(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  if (
+    typeof source['documentId'] !== 'string'
+    || !validUuid(source['documentId'])
+    || typeof source['documentFamilyId'] !== 'string'
+    || !validUuid(source['documentFamilyId'])
+    || typeof source['documentType'] !== 'string'
+    || !DOCUMENT_TYPES.has(source['documentType'])
+    || typeof source['version'] !== 'number'
+    || !Number.isSafeInteger(source['version'])
+    || source['version'] < 1
+  ) {
+    return undefined;
+  }
+  const safe: Record<string, unknown> = {
+    documentId: source['documentId'].toLowerCase(),
+    documentFamilyId: source['documentFamilyId'].toLowerCase(),
+    documentType: source['documentType'],
+    version: source['version'],
+  };
+  if (typeof source['jobId'] === 'string' && source['jobId'].length <= 2_048) {
+    safe['jobId'] = source['jobId'];
+  }
+  if (
+    typeof source['groundingState'] === 'string'
+    && source['groundingState'].length <= 128
+  ) {
+    safe['groundingState'] = source['groundingState'];
+  }
+  if (
+    typeof source['parentDocumentId'] === 'string'
+    && validUuid(source['parentDocumentId'])
+  ) {
+    safe['parentDocumentId'] = source['parentDocumentId'].toLowerCase();
+  }
+  if (
+    typeof source['parentDocumentVersion'] === 'number'
+    && Number.isSafeInteger(source['parentDocumentVersion'])
+    && source['parentDocumentVersion'] > 0
+  ) {
+    safe['parentDocumentVersion'] = source['parentDocumentVersion'];
+  }
+  return safe;
+}
+
+function parsedJson(body: string): Record<string, unknown> | undefined {
+  try {
+    const value = JSON.parse(body) as unknown;
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function safeOperationDownloads(value: unknown): Record<string, object> | undefined {
@@ -585,6 +743,142 @@ export function registerDocumentGenerationRoutes(
       );
     }
   };
+
+  const proxyApplicationSelections = async (
+    request: Request,
+    response: Response,
+    path: string,
+    idempotencyKey: string,
+  ): Promise<void> => {
+    const correlationId = requestCorrelationId(request);
+    response.setHeader('X-Correlation-ID', correlationId);
+    response.setHeader('Cache-Control', 'private, no-store');
+    try {
+      const payload = await callJson(
+        config,
+        config.origin,
+        path,
+        request,
+        'PUT',
+        true,
+        fetchImplementation,
+        {
+          'Idempotency-Key': idempotencyKey,
+          'X-Correlation-ID': correlationId,
+        },
+      );
+      if (!payload) {
+        sendFailure(
+          response,
+          502,
+          'INVALID_DOWNSTREAM_RESPONSE',
+          'The document service returned an invalid response',
+        );
+        return;
+      }
+
+      const source = parsedJson(payload.body);
+      if (payload.status === 409 && source) {
+        const currentApplication = safeApplicationSelectionRecord(
+          source['currentApplication'],
+        );
+        if (currentApplication) {
+          response.status(409).json({
+            status: 409,
+            message: 'The application changed; review the current selections before saving again',
+            currentApplication,
+          });
+          return;
+        }
+      }
+
+      if (payload.status < 200 || payload.status >= 300) {
+        const error = payload.status === 401 || payload.status === 403
+          ? 'DOCUMENT_SELECTION_AUTH_REQUIRED'
+          : payload.status === 404
+            ? 'APPLICATION_NOT_FOUND'
+            : payload.status === 409
+              ? 'DOCUMENT_SELECTION_CONFLICT'
+              : 'DOCUMENT_SELECTION_REJECTED';
+        const message = payload.status === 401 || payload.status === 403
+          ? 'Your session is not authorised to change this application'
+          : payload.status === 404
+            ? 'The application was not found for this session'
+            : payload.status === 409
+              ? 'The selection request conflicts with an earlier request'
+              : 'The document selections could not be saved';
+        sendFailure(response, payload.status, error, message);
+        return;
+      }
+
+      const application = safeApplicationSelectionRecord(source);
+      if (!application) {
+        sendFailure(
+          response,
+          502,
+          'INVALID_DOWNSTREAM_RESPONSE',
+          'The document service returned an invalid application record',
+        );
+        return;
+      }
+      response.status(payload.status).json(application);
+    } catch (error: unknown) {
+      const category = downstreamFailureCategory(error);
+      console.error('BFF downstream request failed', {
+        category,
+        correlationId,
+        service: 'application-document-selections',
+      });
+      sendFailure(
+        response,
+        category === 'timeout' ? 504 : 503,
+        category === 'timeout' ? 'DOWNSTREAM_TIMEOUT' : 'SERVICE_UNAVAILABLE',
+        category === 'timeout'
+          ? 'Saving document selections timed out; review the application before retrying'
+          : 'Document selections are currently unavailable',
+      );
+    }
+  };
+
+  app.put('/api/v1/document-generation/applications/:applicationId/document-selections', async (request, response) => {
+    const applicationId = request.params['applicationId'];
+    const idempotencyKey = request.get('Idempotency-Key')?.trim();
+    if (!validUuid(applicationId)) {
+      sendFailure(
+        response,
+        400,
+        'INVALID_APPLICATION_ID',
+        'The application identifier is invalid',
+      );
+      return;
+    }
+    if (!idempotencyKey || !IDEMPOTENCY_KEY.test(idempotencyKey)) {
+      sendFailure(
+        response,
+        400,
+        'INVALID_IDEMPOTENCY_KEY',
+        'A valid idempotency key is required',
+      );
+      return;
+    }
+    const body = saveDocumentSelectionsBody(request.body);
+    if (!body) {
+      sendFailure(
+        response,
+        400,
+        'INVALID_DOCUMENT_SELECTIONS',
+        'Both document slots and a non-negative expected version are required',
+      );
+      return;
+    }
+    request.body = body;
+    await proxyApplicationSelections(
+      request,
+      response,
+      `/api/v1/document-generation/applications/${applicationId.toLowerCase()}/document-selections`,
+      idempotencyKey,
+    );
+  });
 
   app.post('/api/v1/document-generation/saved-jobs/:savedJobId/operations', async (request, response) => {
     const savedJobId = request.params['savedJobId'];
