@@ -110,9 +110,8 @@ export class ClaimantProfileComponent implements OnInit {
       && arrangements.length > 0
       && (!needsLocation || Boolean(this.localPostcode().trim()));
   });
-  readonly profileProgress = computed(() => [
+  readonly jobSearchPreferencesProgress = computed(() => [
     this.localTargetRoles().length > 0,
-    this.localSkills().length > 0,
     Boolean(this.localPostcode()),
     this.localWorkingPatterns().length > 0
       || this.localEmploymentTypes().length > 0

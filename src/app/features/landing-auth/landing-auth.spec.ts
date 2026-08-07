@@ -147,12 +147,10 @@ describe('LandingAuthComponent credential-only registration', () => {
     component.continueSetup();
     component.toggleWorkplace('REMOTE');
     component.continueSetup();
-    component.setupSkills.set('Customer service');
-    await component.finishSetup();
+    await vi.waitFor(() => expect(updatePreferences).toHaveBeenCalledOnce());
 
     expect(updatePreferences).toHaveBeenCalledWith(
       expect.objectContaining({
-        skills: ['Customer service'],
         aspirations: {targetRoles: ['Support analyst']},
         workPreferences: expect.objectContaining({
           location: {postcode: 'LS1 1AA'},
@@ -164,7 +162,25 @@ describe('LandingAuthComponent credential-only registration', () => {
       false,
       {transferCache: false},
     );
+    expect(updatePreferences.mock.calls[0][0]).not.toHaveProperty('skills');
     expect(onboarded?.profile).toEqual(expect.objectContaining({revision: 2}));
+  });
+
+  it('uses a three-step job-preference setup without asking for skills', () => {
+    const fixture = TestBed.createComponent(LandingAuthComponent);
+    fixture.componentInstance.setupStep.set(1);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.setupProgress()).toBe('1 of 3');
+    expect(fixture.nativeElement.querySelectorAll('.setup-progress span')).toHaveLength(3);
+    expect(fixture.nativeElement.textContent).not.toContain('Which skills should stand out?');
+    expect(fixture.nativeElement.querySelector('#setup-skills')).toBeNull();
+
+    fixture.componentInstance.setupStep.set(3);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#btn-next-step').textContent).toContain(
+      'Finish setup',
+    );
   });
 
   it('does not advance past search location without an explicit postcode', () => {
@@ -260,6 +276,12 @@ describe('LandingAuthComponent credential-only registration', () => {
     fixture.detectChanges();
     expect((await axe.run(fixture.nativeElement)).violations).toEqual([]);
     fixture.componentInstance.setMode('signin');
+    fixture.detectChanges();
+    expect((await axe.run(fixture.nativeElement)).violations).toEqual([]);
+    fixture.componentInstance.setupStep.set(1);
+    fixture.detectChanges();
+    expect((await axe.run(fixture.nativeElement)).violations).toEqual([]);
+    fixture.componentInstance.setupStep.set(3);
     fixture.detectChanges();
     expect((await axe.run(fixture.nativeElement)).violations).toEqual([]);
   });

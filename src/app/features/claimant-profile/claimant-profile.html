@@ -4,7 +4,7 @@
     <h2 class="text-lg font-extrabold text-slate-900">{{ claimantName() || 'Your job search' }}</h2>
     <p class="text-xs text-slate-600">{{ claimantEmail() }}</p>
     <p class="mt-3 text-[11px] font-semibold text-slate-600">
-      {{ profileProgress() }} of 5 profile areas added. You can return to any area later.
+      {{ jobSearchPreferencesProgress() }} of 4 job-search preference areas added. You can return to any area later.
     </p>
   </header>
 
@@ -15,11 +15,23 @@
     </p>
   }
 
-  <div class="p-4 space-y-3">
-    <article class="rounded-xl border border-slate-200 p-4">
+  <div class="p-4 space-y-4">
+    <section class="profile-group" aria-labelledby="job-search-preferences-heading"
+             data-testid="job-search-preferences">
+      <header>
+        <p class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">
+          Job search preferences
+        </p>
+        <h3 id="job-search-preferences-heading" class="font-extrabold text-sm text-slate-900">
+          What I am looking for
+        </h3>
+      </header>
+
+      <div class="profile-group-list mt-3">
+    <article class="profile-group-row">
       <div class="flex justify-between gap-3">
         <div>
-          <h3 class="font-extrabold text-sm text-slate-900">Target roles</h3>
+          <h4 class="font-extrabold text-sm text-slate-900">Target roles</h4>
           <p class="text-xs text-slate-600 mt-1">
             {{ localTargetRoles().length ? localTargetRoles().join(', ') : 'Not provided yet' }}
           </p>
@@ -38,32 +50,10 @@
       }
     </article>
 
-    <article class="rounded-xl border border-slate-200 p-4">
+    <article class="profile-group-row">
       <div class="flex justify-between gap-3">
         <div>
-          <h3 class="font-extrabold text-sm text-slate-900">Key skills</h3>
-          <p class="text-xs text-slate-600 mt-1">
-            {{ localSkills().length ? localSkills().join(', ') : 'Not provided yet' }}
-          </p>
-        </div>
-        <button type="button" class="text-xs font-bold text-indigo-700"
-                aria-label="Edit Key skills"
-                aria-controls="profile-key-skills-editor"
-                [attr.aria-expanded]="editingSection() === 'skills'"
-                (click)="startEditing('skills')">Edit</button>
-      </div>
-      @if (editingSection() === 'skills') {
-        <div id="profile-key-skills-editor" class="mt-4">
-          <app-tag-input label="Skills" placeholder="Type a skill and press Enter"
-                         [(tags)]="localSkills"></app-tag-input>
-        </div>
-      }
-    </article>
-
-    <article class="rounded-xl border border-slate-200 p-4">
-      <div class="flex justify-between gap-3">
-        <div>
-          <h3 class="font-extrabold text-sm text-slate-900">Location and commute</h3>
+          <h4 class="font-extrabold text-sm text-slate-900">Location and commute</h4>
           <p class="text-xs text-slate-600 mt-1">
             {{ localPostcode() || 'Not provided yet' }}
             @if (localCommuteRange() !== undefined) { · within {{ localCommuteRange() }} miles }
@@ -118,10 +108,10 @@
       }
     </article>
 
-    <article class="rounded-xl border border-slate-200 p-4">
+    <article class="profile-group-row">
       <div class="flex justify-between gap-3">
         <div>
-          <h3 class="font-extrabold text-sm text-slate-900">Working preferences</h3>
+          <h4 class="font-extrabold text-sm text-slate-900">Working preferences</h4>
           <p class="text-xs text-slate-600 mt-1">
             {{ localWorkingPatterns().length + localEmploymentTypes().length + localWorkplaceArrangements().length
               ? 'Preferences added' : 'Not provided yet' }}
@@ -175,10 +165,10 @@
       }
     </article>
 
-    <article class="rounded-xl border border-slate-200 p-4">
+    <article class="profile-group-row">
       <div class="flex justify-between gap-3">
         <div>
-          <h3 class="font-extrabold text-sm text-slate-900">Availability</h3>
+          <h4 class="font-extrabold text-sm text-slate-900">Availability</h4>
           <p class="text-xs text-slate-600 mt-1">
             @if (localAvailableFrom()) { From {{ localAvailableFrom() }} }
             @else if (localNoticePeriodDays() !== undefined) { {{ localNoticePeriodDays() }} days' notice }
@@ -209,37 +199,64 @@
         </div>
       }
     </article>
+      </div>
+    </section>
 
-    <section class="evidence-summary rounded-xl border border-slate-200 p-4"
+    <section class="profile-group evidence-summary"
              aria-labelledby="profile-evidence-heading"
              data-testid="profile-evidence-summary">
-      <div>
+      <header>
         <p class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">
           Reusable career details
         </p>
         <h3 id="profile-evidence-heading" class="font-extrabold text-sm text-slate-900">
-          Experience &amp; achievements
+          What I can offer
         </h3>
-      </div>
-      @if (evidenceLoading()) {
-        <p class="mt-3 text-xs text-slate-600" role="status">Loading summary…</p>
-      } @else if (evidenceError()) {
-        <div class="mt-3 flex items-center justify-between gap-2">
-          <p class="text-xs text-rose-700" role="status">{{ evidenceError() }}</p>
-          <button type="button" class="summary-retry" (click)="refreshEvidenceSummary()">
-            Retry
-          </button>
-        </div>
-      } @else {
-        <dl class="evidence-summary-list mt-3">
+      </header>
+
+      <div class="profile-group-list mt-3">
+        <article class="profile-group-row">
+          <div class="flex justify-between gap-3">
+            <div>
+              <h4 class="font-extrabold text-sm text-slate-900">Skills &amp; expertise</h4>
+              <p class="text-xs text-slate-600 mt-1">
+                {{ localSkills().length ? localSkills().join(', ') : 'Not provided yet' }}
+              </p>
+            </div>
+            <button type="button" class="text-xs font-bold text-indigo-700"
+                    aria-label="Edit Skills & expertise"
+                    aria-controls="profile-skills-expertise-editor"
+                    [attr.aria-expanded]="editingSection() === 'skills'"
+                    (click)="startEditing('skills')">Edit</button>
+          </div>
+          @if (editingSection() === 'skills') {
+            <div id="profile-skills-expertise-editor" class="mt-4">
+              <app-tag-input label="Skills & expertise" placeholder="Type a skill and press Enter"
+                             [(tags)]="localSkills"></app-tag-input>
+            </div>
+          }
+        </article>
+
+        @if (evidenceLoading()) {
+          <p class="profile-group-status text-xs text-slate-600" role="status">Loading summary…</p>
+        } @else if (evidenceError()) {
+          <div class="profile-group-status flex items-center justify-between gap-2">
+            <p class="text-xs text-rose-700" role="status">{{ evidenceError() }}</p>
+            <button type="button" class="summary-retry" (click)="refreshEvidenceSummary()">
+              Retry
+            </button>
+          </div>
+        } @else {
+          <dl class="evidence-summary-list">
           @for (row of evidenceSummaryRows; track row.label) {
             <div class="evidence-summary-row">
               <dt>{{ row.label }}</dt>
               <dd>{{ evidenceSummary(row) }}</dd>
             </div>
           }
-        </dl>
-      }
+          </dl>
+        }
+      </div>
       <button id="manage-experience-evidence" type="button" class="manage-evidence-button mt-3"
               (click)="openEvidenceManager()">
         Manage experience &amp; achievements

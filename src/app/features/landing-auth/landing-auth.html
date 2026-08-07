@@ -21,7 +21,7 @@
           <span aria-label="Setup progress">{{ setupProgress() }}</span>
         </div>
         <div class="setup-progress" aria-hidden="true">
-          @for (step of [1, 2, 3, 4]; track step) {
+          @for (step of [1, 2, 3]; track step) {
             <span [class.complete]="step <= (setupStep() ?? 1)"></span>
           }
         </div>
@@ -74,17 +74,6 @@
               </div>
             </fieldset>
           </section>
-        } @else {
-          <section aria-labelledby="setup-skills-title" class="setup-step">
-            <mat-icon>auto_awesome</mat-icon>
-            <h3 id="setup-skills-title">Which skills should stand out?</h3>
-            <p>This is optional. Add skills now or return to your profile later.</p>
-            <label for="setup-skills">Skills <span>(optional)</span></label>
-            <textarea id="setup-skills" rows="3"
-                      placeholder="For example: customer service, Excel, stakeholder management"
-                      [value]="setupSkills()"
-                      (input)="setupSkills.set($any($event.target).value)"></textarea>
-          </section>
         }
 
         <div class="setup-actions">
@@ -95,7 +84,7 @@
           }
           <button id="btn-next-step" type="button" class="setup-next"
                   (click)="continueSetup()" [disabled]="isLoading()">
-            {{ setupStep() === 4 ? (isLoading() ? 'Saving…' : 'Finish setup') : 'Continue' }}
+            {{ setupStep() === 3 ? (isLoading() ? 'Saving…' : 'Finish setup') : 'Continue' }}
           </button>
         </div>
         <button type="button" class="setup-later" (click)="skipSetup()" [disabled]="isLoading()">

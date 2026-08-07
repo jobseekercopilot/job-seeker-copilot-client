@@ -203,16 +203,43 @@
   color: #3730a3;
 }
 
+.profile-group {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  padding: 0.875rem;
+}
+
+.profile-group-list {
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.profile-group-row,
+.profile-group-status {
+  padding: 0.8rem;
+}
+
+.profile-group-row + .profile-group-row,
+.profile-group-status,
+.evidence-summary-list {
+  border-top: 1px solid #e2e8f0;
+}
+
 .evidence-summary-list {
   display: grid;
-  gap: 0.5rem;
 }
 
 .evidence-summary-row {
   display: grid;
   gap: 0.1rem;
+  padding: 0.65rem 0.8rem;
+}
+
+.evidence-summary-row + .evidence-summary-row {
   border-top: 1px solid #e2e8f0;
-  padding-top: 0.5rem;
 }
 
 .evidence-summary-row dt {
