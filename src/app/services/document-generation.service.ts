@@ -414,6 +414,32 @@ export class DocumentGenerationService {
           );
         }
 
+        const deadlineRecoveryRequired = this.isDeadlineRecoveryRequired(operation);
+        if (deadlineRecoveryRequired) {
+          if (replayAcknowledgementPending) {
+            replayAcknowledgementPending = false;
+            return this.pollOperation(attempt, () => observedDeadline);
+          }
+          if (replayAttempted) {
+            return throwError(() => new DocumentGenerationError(
+              'OUTCOME_UNKNOWN',
+              'Document generation still requires recovery after a safe replay. Try again later to resume the same operation; no duplicate AI request will be made.',
+            ));
+          }
+          if (replayAvailable) {
+            replayAvailable = false;
+            replayAttempted = true;
+            replayAcknowledgementPending = true;
+            return this.browserSession.ensureCsrf().pipe(
+              switchMap(() => this.startOperation(attempt)),
+            );
+          }
+          return throwError(() => new DocumentGenerationError(
+            'OUTCOME_UNKNOWN',
+            'Document generation requires recovery, but its original saved request is unavailable. Review your evidence before trying again.',
+          ));
+        }
+
         if (this.isTerminal(operation.state)) return EMPTY;
 
         const downstreamRetryable = this.isDownstreamRetryable(operation);
@@ -474,11 +500,15 @@ export class DocumentGenerationService {
         return this.pollOperation(attempt, () => observedDeadline);
       }),
       tap(operation => this.acceptOperation(attempt, operation)),
-      filter(operation => this.isTerminal(operation.state)),
+      filter(operation =>
+        this.isTerminal(operation.state)
+        && !this.isDeadlineRecoveryRequired(operation)),
       take(1),
       map(operation => {
         if (operation.state !== GenerationOperationResponseStateEnum.Completed) {
-          this.clearAttempt(attempt.canonicalJobId);
+          if (!this.shouldRetainAttempt(operation)) {
+            this.clearAttempt(attempt.canonicalJobId);
+          }
           throw this.operationError(operation);
         }
         const completed = this.completedGeneration(operation);
@@ -578,6 +608,21 @@ export class DocumentGenerationService {
     operation: GenerationOperationResponse,
   ): boolean {
     return operation.failureCode?.trim().toUpperCase() === 'DOWNSTREAM_RETRYABLE';
+  }
+
+  private isDeadlineRecoveryRequired(
+    operation: GenerationOperationResponse,
+  ): boolean {
+    return operation.state === GenerationOperationResponseStateEnum.RecoveryRequired
+      && operation.failureCode?.trim().toUpperCase()
+        === 'OPERATION_DEADLINE_RECOVERY_REQUIRED';
+  }
+
+  private shouldRetainAttempt(
+    operation: GenerationOperationResponse,
+  ): boolean {
+    return operation.state === GenerationOperationResponseStateEnum.GenerationOutcomeUnknown
+      || operation.state === GenerationOperationResponseStateEnum.RecoveryRequired;
   }
 
   private isApprovalRecoveryState(

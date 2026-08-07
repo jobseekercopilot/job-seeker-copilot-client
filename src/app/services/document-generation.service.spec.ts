@@ -450,6 +450,115 @@ describe('DocumentGenerationService', () => {
     expect(getOperation).toHaveBeenCalledTimes(2);
   });
 
+  it('replays terminal deadline recovery with the exact retained request and renewed deadline', async () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    writeAttempt({
+      operationId,
+      startedAt: now - (11 * 60 * 1000),
+    });
+    const changedEvidence: GenerationEvidenceSelection = {
+      cv: {
+        entryIds: ['70000000-0000-4000-8000-000000000099'],
+        sectionOrder: [DocumentEvidenceSelectionSectionOrderEnum.Project],
+      },
+      coverLetter: {
+        entryIds: ['70000000-0000-4000-8000-000000000098'],
+        sectionOrder: [DocumentEvidenceSelectionSectionOrderEnum.Education],
+      },
+    };
+    getOperation
+      .mockImplementationOnce(() => of({
+        operationId,
+        state: GenerationOperationResponseStateEnum.RecoveryRequired,
+        replaySafe: false,
+        failureCode: 'OPERATION_DEADLINE_RECOVERY_REQUIRED',
+        deadlineAt: new Date(now - 60_000).toISOString(),
+      }))
+      .mockImplementationOnce(() => of({
+        operationId,
+        state: GenerationOperationResponseStateEnum.AwaitingApproval,
+        replaySafe: true,
+        cvDocumentId,
+        coverLetterDocumentId,
+      }));
+    startOperation.mockReturnValue(of({
+      operationId,
+      state: GenerationOperationResponseStateEnum.RecoveryRequired,
+      replaySafe: false,
+      failureCode: 'OPERATION_DEADLINE_RECOVERY_REQUIRED',
+      deadlineAt: new Date(now + (10 * 60 * 1000)).toISOString(),
+    }));
+    const service = TestBed.inject(DocumentGenerationService);
+
+    const result = firstValueFrom(service.generate(job, changedEvidence));
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    await expect(result).resolves.toMatchObject({applicationId});
+    expect(save).not.toHaveBeenCalled();
+    expect(startOperation).toHaveBeenCalledOnce();
+    expect(startOperation).toHaveBeenCalledWith(
+      savedJobId,
+      'browser-stable-key',
+      {
+        documents: [
+          {
+            purpose: DocumentEvidenceSelectionPurposeEnum.Cv,
+            entryIds: evidence.cv.entryIds,
+            sectionOrder: evidence.cv.sectionOrder,
+          },
+          {
+            purpose: DocumentEvidenceSelectionPurposeEnum.CoverLetter,
+            entryIds: evidence.coverLetter.entryIds,
+            sectionOrder: evidence.coverLetter.sectionOrder,
+          },
+        ],
+      },
+      'body',
+      false,
+      {transferCache: false},
+    );
+    expect(getOperation).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails persistent terminal deadline recovery once and retains the original attempt', async () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    writeAttempt({operationId});
+    getOperation.mockReturnValue(of({
+      operationId,
+      state: GenerationOperationResponseStateEnum.RecoveryRequired,
+      replaySafe: false,
+      failureCode: 'OPERATION_DEADLINE_RECOVERY_REQUIRED',
+    }));
+    startOperation.mockReturnValue(of({
+      operationId,
+      state: GenerationOperationResponseStateEnum.RecoveryRequired,
+      replaySafe: false,
+      failureCode: 'OPERATION_DEADLINE_RECOVERY_REQUIRED',
+      deadlineAt: new Date(now + (10 * 60 * 1000)).toISOString(),
+    }));
+    const service = TestBed.inject(DocumentGenerationService);
+    const errors: unknown[] = [];
+
+    service.generate(job, evidence).subscribe({error: error => errors.push(error)});
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    expect(errors).toEqual([
+      expect.objectContaining({
+        code: 'OUTCOME_UNKNOWN',
+        message: expect.stringContaining('still requires recovery'),
+      }),
+    ]);
+    expect(save).not.toHaveBeenCalled();
+    expect(startOperation).toHaveBeenCalledOnce();
+    expect(getOperation).toHaveBeenCalledTimes(2);
+    expect(service.pendingGenerations()).toEqual([
+      expect.objectContaining({canonicalJobId, operationId, evidence}),
+    ]);
+    expect(localStorage.getItem(`jsc-document-generation-v1:${ownerId}`)).not.toBeNull();
+  });
+
   it('reuses the original request when a start response was ambiguous before an operation id', async () => {
     writeAttempt({});
     const changedEvidence: GenerationEvidenceSelection = {
@@ -498,6 +607,7 @@ describe('DocumentGenerationService', () => {
     });
     expect(startOperation).not.toHaveBeenCalled();
     expect(approveOperation).not.toHaveBeenCalled();
+    expect(TestBed.inject(DocumentGenerationService).pendingGenerations()).toHaveLength(1);
   });
 
   it('cancels by operation id and retains no resumable operation', async () => {
