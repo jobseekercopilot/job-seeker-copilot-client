@@ -79,7 +79,7 @@ interface DownloadHeaders {
   xContentTypeOptions: string;
 }
 
-type JsonMethod = 'DELETE' | 'GET' | 'POST' | 'PUT';
+type JsonMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT';
 
 function validUuid(value: string): boolean {
   return UUID.test(value);
@@ -121,6 +121,18 @@ const APPLICATION_STATES = new Set([
   'REJECTED_BY_USER',
   'WITHDRAWN',
 ]);
+const DOCUMENT_LIFECYCLE_STATES = new Set(['DRAFT', 'APPROVED']);
+const DOCUMENT_RETENTION_STATES = new Set([
+  'AVAILABLE',
+  'ARCHIVED',
+  'DELETED',
+  'PURGED',
+]);
+const DOCUMENT_ASSOCIATION_STATES = new Set([
+  'DRAFT_SELECTED',
+  'FROZEN_USED',
+]);
+const UNAVAILABLE_REASON = /^[A-Z][A-Z0-9_]{0,63}$/;
 
 function exactObjectKeys(
   value: unknown,
@@ -310,6 +322,106 @@ function safeTimestamp(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length > 64) return undefined;
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? undefined : value;
+}
+
+function safeDocumentAssociation(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  if (
+    typeof source['applicationId'] !== 'string'
+    || !validUuid(source['applicationId'])
+    || typeof source['documentType'] !== 'string'
+    || !DOCUMENT_TYPES.has(source['documentType'])
+    || typeof source['associationState'] !== 'string'
+    || !DOCUMENT_ASSOCIATION_STATES.has(source['associationState'])
+    || typeof source['applicationStatus'] !== 'string'
+    || !APPLICATION_STATES.has(source['applicationStatus'])
+  ) {
+    return undefined;
+  }
+  const frozenAt = safeTimestamp(source['frozenAt']);
+  return {
+    applicationId: source['applicationId'].toLowerCase(),
+    documentType: source['documentType'],
+    associationState: source['associationState'],
+    applicationStatus: source['applicationStatus'],
+    ...(frozenAt ? {frozenAt} : {}),
+  };
+}
+
+function safeDocumentAssociationsPayload(
+  body: string,
+): Record<string, unknown> | undefined {
+  const source = parsedJson(body);
+  if (
+    !source
+    || typeof source['documentId'] !== 'string'
+    || !validUuid(source['documentId'])
+    || !Array.isArray(source['associations'])
+    || source['associations'].length > 1_000
+  ) {
+    return undefined;
+  }
+  const associations = source['associations'].map(safeDocumentAssociation);
+  if (associations.some(association => !association)) return undefined;
+  return {
+    documentId: source['documentId'].toLowerCase(),
+    associationCount: associations.length,
+    associations,
+  };
+}
+
+function safeDocumentLifecyclePayload(
+  body: string,
+): Record<string, unknown> | undefined {
+  const source = parsedJson(body);
+  if (
+    !source
+    || typeof source['id'] !== 'string'
+    || !validUuid(source['id'])
+    || typeof source['documentFamilyId'] !== 'string'
+    || !validUuid(source['documentFamilyId'])
+    || typeof source['documentType'] !== 'string'
+    || !DOCUMENT_TYPES.has(source['documentType'])
+    || typeof source['version'] !== 'number'
+    || !Number.isSafeInteger(source['version'])
+    || source['version'] < 1
+    || typeof source['lifecycleState'] !== 'string'
+    || !DOCUMENT_LIFECYCLE_STATES.has(source['lifecycleState'])
+    || typeof source['retentionState'] !== 'string'
+    || !DOCUMENT_RETENTION_STATES.has(source['retentionState'])
+    || typeof source['current'] !== 'boolean'
+  ) {
+    return undefined;
+  }
+  const safe: Record<string, unknown> = {
+    id: source['id'].toLowerCase(),
+    documentFamilyId: source['documentFamilyId'].toLowerCase(),
+    documentType: source['documentType'],
+    version: source['version'],
+    lifecycleState: source['lifecycleState'],
+    retentionState: source['retentionState'],
+    current: source['current'],
+  };
+  for (const field of [
+    'archivedAt',
+    'deletedAt',
+    'purgeEligibleAt',
+    'purgedAt',
+  ]) {
+    const timestamp = safeTimestamp(source[field]);
+    if (timestamp) safe[field] = timestamp;
+  }
+  const unavailableReason = source['unavailableReason'];
+  if (
+    typeof unavailableReason === 'string'
+    && UNAVAILABLE_REASON.test(unavailableReason)
+  ) {
+    safe['unavailableReason'] = unavailableReason;
+  }
+  return safe;
 }
 
 function safeApplicationSelectionRecord(
@@ -970,6 +1082,148 @@ export function registerDocumentGenerationRoutes(
       );
     }
   };
+
+  const proxyDocumentLifecycle = async (
+    request: Request,
+    response: Response,
+    path: string,
+    method: 'DELETE' | 'GET' | 'PATCH',
+  ): Promise<void> => {
+    const correlationId = requestCorrelationId(request);
+    response.setHeader('X-Correlation-ID', correlationId);
+    response.setHeader('Cache-Control', 'private, no-store');
+    try {
+      const payload = await callJson(
+        config,
+        config.origin,
+        path,
+        request,
+        method,
+        method !== 'GET',
+        fetchImplementation,
+        {'X-Correlation-ID': correlationId},
+      );
+      if (!payload) {
+        sendFailure(
+          response,
+          502,
+          'INVALID_DOWNSTREAM_RESPONSE',
+          'The document service returned an invalid response',
+        );
+        return;
+      }
+      if (payload.status < 200 || payload.status >= 300) {
+        const error = payload.status === 401 || payload.status === 403
+          ? 'DOCUMENT_LIFECYCLE_AUTH_REQUIRED'
+          : payload.status === 404
+            ? 'DOCUMENT_VERSION_NOT_FOUND'
+            : payload.status === 409
+              ? 'DOCUMENT_LIFECYCLE_CONFLICT'
+              : 'DOCUMENT_LIFECYCLE_REJECTED';
+        const message = payload.status === 401 || payload.status === 403
+          ? 'Your session is not authorised to manage this document version'
+          : payload.status === 404
+            ? 'The document version was not found for this session'
+            : payload.status === 409
+              ? 'The document lifecycle changed or could not be coordinated safely'
+              : 'The document lifecycle request could not be completed';
+        sendFailure(response, payload.status, error, message);
+        return;
+      }
+      if (method === 'DELETE' && payload.status === 204) {
+        response.status(204).send();
+        return;
+      }
+
+      const safe = method === 'GET'
+        ? safeDocumentAssociationsPayload(payload.body)
+        : safeDocumentLifecyclePayload(payload.body);
+      if (!safe) {
+        sendFailure(
+          response,
+          502,
+          'INVALID_DOWNSTREAM_RESPONSE',
+          'The document service returned an invalid lifecycle response',
+        );
+        return;
+      }
+      response.status(payload.status).json(safe);
+    } catch (error: unknown) {
+      const category = downstreamFailureCategory(error);
+      console.error('BFF downstream request failed', {
+        category,
+        correlationId,
+        service: 'document-lifecycle',
+      });
+      sendFailure(
+        response,
+        category === 'timeout' ? 504 : 503,
+        category === 'timeout' ? 'DOWNSTREAM_TIMEOUT' : 'SERVICE_UNAVAILABLE',
+        category === 'timeout'
+          ? 'The document lifecycle request timed out; refresh before retrying'
+          : 'Document lifecycle is currently unavailable',
+      );
+    }
+  };
+
+  app.get('/api/v1/document-generation/document-versions/:documentId/application-associations', async (request, response) => {
+    const documentId = request.params['documentId'];
+    if (!validUuid(documentId)) {
+      sendFailure(
+        response,
+        400,
+        'INVALID_DOCUMENT_ID',
+        'The document version identifier is invalid',
+      );
+      return;
+    }
+    await proxyDocumentLifecycle(
+      request,
+      response,
+      `/api/v1/document-generation/document-versions/${documentId.toLowerCase()}/application-associations`,
+      'GET',
+    );
+  });
+
+  for (const action of ['archive', 'restore'] as const) {
+    app.patch(`/api/v1/document-generation/document-versions/:documentId/${action}`, async (request, response) => {
+      const documentId = request.params['documentId'];
+      if (!validUuid(documentId)) {
+        sendFailure(
+          response,
+          400,
+          'INVALID_DOCUMENT_ID',
+          'The document version identifier is invalid',
+        );
+        return;
+      }
+      await proxyDocumentLifecycle(
+        request,
+        response,
+        `/api/v1/document-generation/document-versions/${documentId.toLowerCase()}/${action}`,
+        'PATCH',
+      );
+    });
+  }
+
+  app.delete('/api/v1/document-generation/document-versions/:documentId', async (request, response) => {
+    const documentId = request.params['documentId'];
+    if (!validUuid(documentId)) {
+      sendFailure(
+        response,
+        400,
+        'INVALID_DOCUMENT_ID',
+        'The document version identifier is invalid',
+      );
+      return;
+    }
+    await proxyDocumentLifecycle(
+      request,
+      response,
+      `/api/v1/document-generation/document-versions/${documentId.toLowerCase()}`,
+      'DELETE',
+    );
+  });
 
   app.put('/api/v1/document-generation/applications/:applicationId/document-selections', async (request, response) => {
     const applicationId = request.params['applicationId'];
