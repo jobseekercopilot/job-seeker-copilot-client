@@ -39,6 +39,30 @@ import { BrowserSessionService } from './browser-session.service';
 
 export type DocumentKind = 'CV' | 'COVER_LETTER';
 export type UploadFormat = 'DOCX' | 'PDF';
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export interface DocumentArtifactManifestItem {
+  artifactId: string;
+  role: 'ORIGINAL' | 'DERIVED';
+  format: UploadFormat;
+  source: string;
+  availability: 'AVAILABLE' | 'UNAVAILABLE';
+  size: number;
+  storedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export function documentArtifactDownloadLabel(
+  artifact: DocumentArtifactManifestItem,
+): string | undefined {
+  if (artifact.availability !== 'AVAILABLE') return undefined;
+  if (artifact.role === 'ORIGINAL') return 'Download original';
+  if (artifact.role !== 'DERIVED') return undefined;
+  if (artifact.format === 'DOCX') return 'Download DOCX';
+  if (artifact.format === 'PDF') return 'Download PDF';
+  return undefined;
+}
 
 export interface GenerationEvidenceSelection {
   cv: {
@@ -745,9 +769,34 @@ export class DocumentGenerationService {
       throw new Error('Download file id is missing.');
     }
 
-    const response = await fetch(`/api/v1/document-generation/files/${encodeURIComponent(file.fileId)}/download`, {
-      method: 'GET',
-    });
+    await this.downloadFromSameOrigin(
+      `/api/v1/document-generation/files/${encodeURIComponent(file.fileId)}/download`,
+      file.fileName,
+    );
+  }
+
+  async downloadArtifact(
+    documentId: string,
+    artifact: DocumentArtifactManifestItem,
+  ): Promise<void> {
+    if (
+      !UUID.test(documentId)
+      || !UUID.test(artifact.artifactId)
+      || !documentArtifactDownloadLabel(artifact)
+    ) {
+      throw new Error('A safe available document artifact is required.');
+    }
+
+    await this.downloadFromSameOrigin(
+      `/api/v1/document-generation/documents/${documentId.toLowerCase()}/artifacts/${artifact.artifactId.toLowerCase()}/download`,
+    );
+  }
+
+  private async downloadFromSameOrigin(
+    path: string,
+    fallbackFileName?: string,
+  ): Promise<void> {
+    const response = await fetch(path, {method: 'GET'});
 
     if (!response.ok) {
       throw new Error(`Download failed with status ${response.status}.`);
@@ -757,7 +806,9 @@ export class DocumentGenerationService {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = this.fileNameFromDisposition(response.headers.get('content-disposition')) || file.fileName || 'document';
+    anchor.download = this.fileNameFromDisposition(response.headers.get('content-disposition'))
+      || fallbackFileName
+      || 'document';
     anchor.style.display = 'none';
     document.body.appendChild(anchor);
     anchor.click();
