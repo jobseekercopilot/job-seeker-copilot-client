@@ -611,6 +611,91 @@ describe('DocumentGenerationService', () => {
     expect(getOperation).toHaveBeenCalledTimes(2);
   });
 
+  it('restarts an expired pre-provider operation with its retained request', async () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    writeAttempt({
+      operationId,
+      startedAt: now - (11 * 60 * 1000),
+    });
+    getOperation
+      .mockImplementationOnce(() => of({
+        operationId,
+        state: GenerationOperationResponseStateEnum.Failed,
+        replaySafe: true,
+        failureCode: 'OPERATION_DEADLINE_EXCEEDED',
+        deadlineAt: new Date(now - 60_000).toISOString(),
+      }))
+      .mockImplementationOnce(() => of({
+        operationId,
+        state: GenerationOperationResponseStateEnum.AwaitingApproval,
+        replaySafe: true,
+        cvDocumentId,
+        coverLetterDocumentId,
+      }));
+    startOperation.mockReturnValue(of({
+      operationId,
+      state: GenerationOperationResponseStateEnum.SnapshotsResolved,
+      replaySafe: true,
+      deadlineAt: new Date(now + (10 * 60 * 1000)).toISOString(),
+    }));
+    const service = TestBed.inject(DocumentGenerationService);
+
+    const result = firstValueFrom(service.generate(job, evidence));
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    await expect(result).resolves.toMatchObject({applicationId});
+    expect(save).not.toHaveBeenCalled();
+    expect(startOperation).toHaveBeenCalledOnce();
+    expect(startOperation).toHaveBeenCalledWith(
+      savedJobId,
+      'browser-stable-key',
+      {
+        documents: [
+          {
+            purpose: DocumentEvidenceSelectionPurposeEnum.Cv,
+            entryIds: evidence.cv.entryIds,
+            sectionOrder: evidence.cv.sectionOrder,
+          },
+          {
+            purpose: DocumentEvidenceSelectionPurposeEnum.CoverLetter,
+            entryIds: evidence.coverLetter.entryIds,
+            sectionOrder: evidence.coverLetter.sectionOrder,
+          },
+        ],
+      },
+      'body',
+      false,
+      {transferCache: false},
+    );
+    expect(getOperation).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([false, undefined])(
+    'does not replay an expired operation unless the gateway explicitly marks it safe (%s)',
+    async replaySafe => {
+      writeAttempt({operationId});
+      getOperation.mockReturnValue(of({
+        operationId,
+        state: GenerationOperationResponseStateEnum.Failed,
+        replaySafe,
+        failureCode: 'OPERATION_DEADLINE_EXCEEDED',
+      }));
+      const service = TestBed.inject(DocumentGenerationService);
+
+      await expect(firstValueFrom(service.generate(job, evidence))).rejects.toMatchObject({
+        code: 'TIMEOUT',
+        message: expect.stringContaining('expired before the AI request started'),
+      });
+
+      expect(startOperation).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+      expect(service.pendingGenerations()).toEqual([
+        expect.objectContaining({canonicalJobId, operationId, evidence}),
+      ]);
+    },
+  );
+
   it('fails persistent terminal deadline recovery once and retains the original attempt', async () => {
     vi.useFakeTimers();
     const now = Date.now();
