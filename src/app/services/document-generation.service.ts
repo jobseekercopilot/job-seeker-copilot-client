@@ -19,6 +19,7 @@ import {
   tap,
   throwError,
   timer,
+  timeout,
 } from 'rxjs';
 import { Job } from '../models/job-search.model';
 import {
@@ -146,6 +147,7 @@ export class DocumentGenerationService {
   private static readonly MAXIMUM_OPERATION_AGE_MS = 11 * 60 * 1000;
   private static readonly DEADLINE_TRANSPORT_MARGIN_MS = 15_000;
   private static readonly POLL_INTERVAL_MS = 1_500;
+  private static readonly OPERATION_STATUS_TIMEOUT_MS = 75_000;
   private readonly api = inject(DocumentGenerationControllerService);
   private readonly savedJobs = inject(SavedJobsService);
   private readonly browserSession = inject(BrowserSessionService);
@@ -391,32 +393,57 @@ export class DocumentGenerationService {
     }
 
     let approvalAvailable = true;
-    let replayAvailable = safeStartReplay && Boolean(attempt.savedJobId);
+    let replayAvailable = Boolean(attempt.savedJobId);
+    let replayAttempted = false;
+    let replayAcknowledgementPending = false;
     let observedDeadline = attempt.startedAt
       + DocumentGenerationService.MAXIMUM_OPERATION_AGE_MS;
 
-    return defer(() => this.api.getOperation(
-      attempt.operationId as string,
-      'body',
-      false,
-      {transferCache: false},
-    )).pipe(
+    return this.getOperation(
+      attempt,
+      safeStartReplay ? undefined : () => observedDeadline,
+    ).pipe(
       expand(operation => {
-        observedDeadline = Math.min(
-          observedDeadline,
-          this.operationDeadline(operation) ?? observedDeadline,
-        );
+        const operationDeadline = this.operationDeadline(operation);
+        if (replayAcknowledgementPending && operationDeadline !== undefined) {
+          observedDeadline = operationDeadline;
+        } else {
+          observedDeadline = Math.min(
+            observedDeadline,
+            operationDeadline ?? observedDeadline,
+          );
+        }
 
         if (this.isTerminal(operation.state)) return EMPTY;
+
+        const downstreamRetryable = this.isDownstreamRetryable(operation);
+        if (replayAcknowledgementPending) {
+          replayAcknowledgementPending = false;
+          if (downstreamRetryable) {
+            return this.pollOperation(attempt, () => observedDeadline);
+          }
+        } else if (replayAttempted && downstreamRetryable) {
+          return throwError(() => new DocumentGenerationError(
+            'FAILED',
+            'Document generation could not complete a recovery step. Try again to resume the same operation safely; no duplicate AI request will be made.',
+          ));
+        }
+
         if (
           replayAvailable
           && operation.replaySafe !== false
           && this.isSafePreProviderState(operation.state)
+          && (safeStartReplay || downstreamRetryable)
         ) {
           replayAvailable = false;
+          replayAttempted = true;
+          replayAcknowledgementPending = true;
           return this.browserSession.ensureCsrf().pipe(
             switchMap(() => this.startOperation(attempt)),
           );
+        }
+        if (Date.now() >= observedDeadline) {
+          return this.expireAttempt();
         }
         if (
           approvalAvailable
@@ -444,20 +471,7 @@ export class DocumentGenerationService {
             )),
           );
         }
-        if (Date.now() >= observedDeadline) {
-          return throwError(() => new DocumentGenerationError(
-            'TIMEOUT',
-            'Document generation is still processing. Refresh later; no duplicate request was made.',
-          ));
-        }
-        return timer(DocumentGenerationService.POLL_INTERVAL_MS).pipe(
-          switchMap(() => this.api.getOperation(
-            attempt.operationId as string,
-            'body',
-            false,
-            {transferCache: false},
-          )),
-        );
+        return this.pollOperation(attempt, () => observedDeadline);
       }),
       tap(operation => this.acceptOperation(attempt, operation)),
       filter(operation => this.isTerminal(operation.state)),
@@ -472,6 +486,58 @@ export class DocumentGenerationService {
         return completed;
       }),
     );
+  }
+
+  private pollOperation(
+    attempt: StoredGenerationAttempt,
+    deadline: () => number,
+  ): Observable<GenerationOperationResponse> {
+    const delay = Math.min(
+      DocumentGenerationService.POLL_INTERVAL_MS,
+      Math.max(0, deadline() - Date.now()),
+    );
+    return timer(delay).pipe(
+      switchMap(() => this.getOperation(attempt, deadline)),
+    );
+  }
+
+  private getOperation(
+    attempt: StoredGenerationAttempt,
+    deadline?: () => number,
+  ): Observable<GenerationOperationResponse> {
+    return defer(() => {
+      const remaining = deadline
+        ? deadline() - Date.now()
+        : DocumentGenerationService.OPERATION_STATUS_TIMEOUT_MS;
+      if (remaining <= 0) return this.expireAttempt();
+
+      return this.api.getOperation(
+        attempt.operationId as string,
+        'body',
+        false,
+        {transferCache: false},
+      ).pipe(
+        timeout({
+          first: Math.min(
+            DocumentGenerationService.OPERATION_STATUS_TIMEOUT_MS,
+            remaining,
+          ),
+          with: () => deadline && Date.now() >= deadline()
+            ? this.expireAttempt()
+            : throwError(() => new DocumentGenerationError(
+                'TIMEOUT',
+                'Document generation status could not be refreshed. Check your connection and try again; the same operation can be resumed safely.',
+              )),
+        }),
+      );
+    });
+  }
+
+  private expireAttempt(): Observable<never> {
+    return throwError(() => new DocumentGenerationError(
+      'TIMEOUT',
+      'Document generation did not finish before its deadline. Try again to resume the same operation safely.',
+    ));
   }
 
   private acceptOperation(
@@ -506,6 +572,12 @@ export class DocumentGenerationService {
       GenerationOperationResponseStateEnum.CreditCommitted,
       GenerationOperationResponseStateEnum.DraftsStored,
     ].includes(state as GenerationOperationResponseStateEnum);
+  }
+
+  private isDownstreamRetryable(
+    operation: GenerationOperationResponse,
+  ): boolean {
+    return operation.failureCode?.trim().toUpperCase() === 'DOWNSTREAM_RETRYABLE';
   }
 
   private isApprovalRecoveryState(
@@ -726,7 +798,21 @@ export class DocumentGenerationService {
     for (const [key, attempt] of this.memoryAttempts) {
       if (key.startsWith(ownerPrefix)) attempts.set(attempt.canonicalJobId, attempt);
     }
-    return Array.from(attempts.values());
+    const active: StoredGenerationAttempt[] = [];
+    for (const attempt of attempts.values()) {
+      if (!this.attemptExpired(attempt)) {
+        active.push(attempt);
+      }
+    }
+    return active;
+  }
+
+  private attemptExpired(
+    attempt: StoredGenerationAttempt,
+    now = Date.now(),
+  ): boolean {
+    return attempt.startedAt > now + DocumentGenerationService.DEADLINE_TRANSPORT_MARGIN_MS
+      || now - attempt.startedAt >= DocumentGenerationService.MAXIMUM_OPERATION_AGE_MS;
   }
 
   private writeAttempt(attempt: StoredGenerationAttempt): void {
