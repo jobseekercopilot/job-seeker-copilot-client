@@ -181,19 +181,19 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
   const targetRoleResults =
     contract.components.schemas.TargetRoleJobResults;
 
-  assert.equal(gateway.version, '1.7.0');
+  assert.equal(gateway.version, '1.8.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
   assert.equal(
     gateway.sourceCommit,
-    '590b693f74c4b1ab6813df9a4f627e9958fa70ab',
+    '7f4928157a70c6c26a34a18cab37d480395c5417',
   );
   assert.equal(
     gateway.sha256,
-    '99a98c212e06cdef2701daa7e0f349ddeb9dfead5fcf0ee8f787ea00d4b36a2a',
+    '02e23141e2a0140b4d4fc66595e6a112068a64a8980fb748b99900c6a7b1540f',
   );
   assert.equal(
     gateway.path,
-    'contracts/job-finder-gateway/1.7.0/openapi.json',
+    'contracts/job-finder-gateway/1.8.0/openapi.json',
   );
   assert.equal(gateway.output, 'src/app/api/job-finder');
   assert.deepEqual(gateway.requiredPaths, [
@@ -203,7 +203,7 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
     '/api/jobs/applications',
     '/api/jobs/applications/{applicationId}/status',
   ]);
-  assert.equal(contract.info.version, '1.7.0');
+  assert.equal(contract.info.version, '1.8.0');
   assert.equal(savedJob.savedJobId.format, 'uuid');
   assert.equal(savedJob.snapshotVersion.format, 'int64');
   assert.equal(savedJob.contentSha256.type, 'string');
@@ -234,6 +234,16 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
   assert.ok(
     contract.components.schemas.ApplicationRecordResponse.properties
       .applicationUsedCvDocumentReference,
+  );
+  assert.deepEqual(
+    contract.components.schemas.ApplicationRecordResponse.properties
+      .applicationUsedCvState.enum,
+    ['UNKNOWN', 'SELECTED', 'OMITTED'],
+  );
+  assert.deepEqual(
+    contract.components.schemas.ApplicationRecordResponse.properties
+      .applicationUsedCoverLetterState.enum,
+    ['UNKNOWN', 'SELECTED', 'OMITTED'],
   );
   assert.ok(
     contract.components.schemas.DocumentVersionReference.properties

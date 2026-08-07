@@ -50,11 +50,11 @@
     },
     {
       "id": "job-finder-gateway",
-      "version": "1.7.0",
+      "version": "1.8.0",
       "sourceRepository": "jobseekercopilot/job-finder-gateway",
-      "sourceCommit": "590b693f74c4b1ab6813df9a4f627e9958fa70ab",
-      "path": "contracts/job-finder-gateway/1.7.0/openapi.json",
-      "sha256": "99a98c212e06cdef2701daa7e0f349ddeb9dfead5fcf0ee8f787ea00d4b36a2a",
+      "sourceCommit": "7f4928157a70c6c26a34a18cab37d480395c5417",
+      "path": "contracts/job-finder-gateway/1.8.0/openapi.json",
+      "sha256": "02e23141e2a0140b4d4fc66595e6a112068a64a8980fb748b99900c6a7b1540f",
       "output": "src/app/api/job-finder",
       "requiredPaths": [
         "/api/jobs/search",

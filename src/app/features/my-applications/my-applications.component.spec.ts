@@ -9,6 +9,15 @@ import {
   TrackedApplication,
 } from '../../services/application-tracker.service';
 import { DocumentGenerationService } from '../../services/document-generation.service';
+import {
+  ApplicationDocumentSelectionConflict,
+  ApplicationDocumentSelectionService,
+} from '../../services/application-document-selection.service';
+import {DocumentLifecycleService} from '../../services/document-lifecycle.service';
+import {
+  DocumentArtifactManifestItemFormatEnum,
+  DocumentFamilySummaryDocumentTypeEnum,
+} from '../../api/document-generation-gateway';
 
 describe('MyApplicationsComponent document replacement', () => {
   const component = Object.create(MyApplicationsComponent.prototype) as MyApplicationsComponent;
@@ -83,6 +92,7 @@ describe('MyApplicationsComponent document replacement', () => {
 
   it('shows frozen application-used provenance instead of a later current draft', () => {
     const tracked = {
+      status: 'APPLIED',
       cvDocumentReference: {
         documentId: 'current-cv',
         evidenceProvenance: {
@@ -99,6 +109,8 @@ describe('MyApplicationsComponent document replacement', () => {
           sectionOrder: ['PROJECT'],
         },
       },
+      applicationUsedCvState: 'SELECTED',
+      applicationUsedCoverLetterState: 'OMITTED',
       applicationUsedAt: '2026-07-29T03:00:00Z',
     } as TrackedApplication;
 
@@ -121,6 +133,20 @@ describe('MyApplicationsComponent document replacement', () => {
     expect(component.groundingNeedsReview(reference)).toBe(true);
     expect(component.groundingLabel(reference)).toBe('Review required');
   });
+
+  it('does not fall back to a draft reference when an applied slot was omitted', () => {
+    const tracked = {
+      status: 'APPLIED',
+      cvDocumentReference: {documentId: 'draft-cv'},
+      applicationUsedCvState: 'OMITTED',
+      applicationUsedCoverLetterState: 'UNKNOWN',
+    } as TrackedApplication;
+
+    expect(component.evidenceReferences(tracked)).toEqual([]);
+    expect(component.frozenSlotText(tracked, 'CV')).toBe('No CV used');
+    expect(component.frozenSlotText(tracked, 'COVER_LETTER'))
+      .toContain('unknown for this legacy application');
+  });
 });
 
 describe('MyApplicationsComponent authoritative refreshes', () => {
@@ -140,16 +166,30 @@ describe('MyApplicationsComponent authoritative refreshes', () => {
     uploadReplacement: vi.fn(),
     isDocx: vi.fn(() => true),
     download: vi.fn(),
+    downloadArtifact: vi.fn(() => Promise.resolve()),
+  };
+  const documentSelections = {
+    selected: vi.fn((documentId: string) => ({state: 'SELECTED', documentId})),
+    omitted: vi.fn(() => ({state: 'OMITTED'})),
+    saveSelections: vi.fn(),
+  };
+  const documentLifecycle = {
+    allFamilies: vi.fn<DocumentLifecycleService['allFamilies']>(() => of([])),
+    history: vi.fn<DocumentLifecycleService['history']>(() => of({versions: []})),
   };
 
   beforeEach(async () => {
     applicationResponses = [];
     vi.clearAllMocks();
+    documentLifecycle.allFamilies.mockReturnValue(of([]));
+    documentLifecycle.history.mockReturnValue(of({versions: []}));
     await TestBed.configureTestingModule({
       imports: [MyApplicationsComponent],
       providers: [
         {provide: ApplicationTrackerService, useValue: applicationTracker},
         {provide: DocumentGenerationService, useValue: documentGeneration},
+        {provide: ApplicationDocumentSelectionService, useValue: documentSelections},
+        {provide: DocumentLifecycleService, useValue: documentLifecycle},
       ],
     }).compileComponents();
   });
@@ -211,5 +251,218 @@ describe('MyApplicationsComponent authoritative refreshes', () => {
     expect(fixture.componentInstance.applications()).toEqual([application]);
     expect(notices.at(-1)?.type).toBe('info');
     expect(fixture.componentInstance.isUpdating(application)).toBe(false);
+  });
+
+  it('loads approved versions lazily and recommends current without selecting it', () => {
+    applicationResponses = [new Subject<TrackedApplication[]>()];
+    const cvFamilyId = '11111111-1111-4111-8111-111111111111';
+    const coverFamilyId = '22222222-2222-4222-8222-222222222222';
+    const otherFamilyId = '33333333-3333-4333-8333-333333333333';
+    documentLifecycle.allFamilies.mockReturnValue(of([
+      {documentFamilyId: cvFamilyId, jobId: 'job-1', documentType: DocumentFamilySummaryDocumentTypeEnum.Cv},
+      {documentFamilyId: coverFamilyId, jobId: 'job-1', documentType: DocumentFamilySummaryDocumentTypeEnum.CoverLetter},
+      {documentFamilyId: otherFamilyId, jobId: 'other-job', documentType: DocumentFamilySummaryDocumentTypeEnum.Cv},
+    ]));
+    documentLifecycle.history.mockImplementation((familyId: string) => of({
+      versions: familyId === cvFamilyId ? [
+        {
+          documentId: '44444444-4444-4444-8444-444444444444',
+          version: 1,
+          lifecycle: 'APPROVED',
+          retention: 'AVAILABLE',
+          current: false,
+        },
+        {
+          documentId: '55555555-5555-4555-8555-555555555555',
+          version: 2,
+          lifecycle: 'APPROVED',
+          retention: 'AVAILABLE',
+          current: true,
+        },
+        {
+          documentId: '66666666-6666-4666-8666-666666666666',
+          version: 3,
+          lifecycle: 'APPROVED',
+          retention: 'DELETED',
+        },
+      ] : [],
+    }));
+    const fixture = TestBed.createComponent(MyApplicationsComponent);
+    fixture.detectChanges();
+    const application = {
+      id: '77777777-7777-4777-8777-777777777777',
+      applicationId: '77777777-7777-4777-8777-777777777777',
+      canonicalJobId: 'job-1',
+      status: 'SAVED',
+      version: 1,
+    } as TrackedApplication;
+
+    fixture.componentInstance.documentPanelToggled(
+      application,
+      {currentTarget: {open: true}} as unknown as Event,
+    );
+
+    const panel = fixture.componentInstance.documentPanel(application);
+    expect(documentLifecycle.history).toHaveBeenCalledTimes(2);
+    expect(panel.cvSelection).toBe('');
+    expect(panel.coverLetterSelection).toBe('');
+    expect(fixture.componentInstance.documentOptions(application, 'CV')
+      .map(option => option.documentId)).toEqual([
+      '55555555-5555-4555-8555-555555555555',
+      '44444444-4444-4444-8444-444444444444',
+    ]);
+    expect(documentSelections.saveSelections).not.toHaveBeenCalled();
+  });
+
+  it('saves both slots atomically and reuses the idempotency key for a retry', () => {
+    applicationResponses = [new Subject<TrackedApplication[]>()];
+    const applicationId = '77777777-7777-4777-8777-777777777777';
+    const cvId = '55555555-5555-4555-8555-555555555555';
+    const familyId = '11111111-1111-4111-8111-111111111111';
+    documentLifecycle.allFamilies.mockReturnValue(of([{
+      documentFamilyId: familyId,
+      jobId: 'job-1',
+      documentType: DocumentFamilySummaryDocumentTypeEnum.Cv,
+    }]));
+    documentLifecycle.history.mockReturnValue(of({versions: [{
+      documentId: cvId,
+      version: 2,
+      lifecycle: 'APPROVED',
+      retention: 'AVAILABLE',
+    }]}));
+    documentSelections.saveSelections
+      .mockReturnValueOnce(throwError(() => new Error('network')))
+      .mockReturnValueOnce(of({
+        id: applicationId,
+        status: 'SAVED',
+        version: 5,
+        cvDocumentId: cvId,
+        cvDocumentReference: {documentId: cvId},
+      }));
+    const fixture = TestBed.createComponent(MyApplicationsComponent);
+    fixture.detectChanges();
+    const application = {
+      id: applicationId,
+      applicationId,
+      canonicalJobId: 'job-1',
+      status: 'SAVED',
+      version: 4,
+    } as TrackedApplication;
+    fixture.componentInstance.applications.set([application]);
+    fixture.componentInstance.documentPanelToggled(
+      application,
+      {currentTarget: {open: true}} as unknown as Event,
+    );
+    fixture.componentInstance.selectionChanged(
+      application,
+      'CV',
+      {target: {value: cvId}} as unknown as Event,
+    );
+
+    fixture.componentInstance.saveDocumentSelections(application);
+    fixture.componentInstance.saveDocumentSelections(application);
+
+    const first = documentSelections.saveSelections.mock.calls[0];
+    const second = documentSelections.saveSelections.mock.calls[1];
+    expect(first[1]).toEqual({
+      cvSelection: {state: 'SELECTED', documentId: cvId},
+      coverLetterSelection: {state: 'OMITTED'},
+      expectedVersion: 4,
+    });
+    expect(second[2]).toBe(first[2]);
+    expect(fixture.componentInstance.applications()[0].version).toBe(5);
+    expect(fixture.componentInstance.documentPanel(application).message)
+      .toBe('Exact document selections saved.');
+  });
+
+  it('replaces stale local selections with the authoritative conflict record', () => {
+    applicationResponses = [new Subject<TrackedApplication[]>()];
+    const applicationId = '77777777-7777-4777-8777-777777777777';
+    const authoritativeCvId = '88888888-8888-4888-8888-888888888888';
+    documentSelections.saveSelections.mockReturnValueOnce(throwError(() =>
+      new ApplicationDocumentSelectionConflict({
+        id: applicationId,
+        status: 'DOCUMENTS_GENERATED',
+        version: 8,
+        cvDocumentReference: {documentId: authoritativeCvId},
+      })
+    ));
+    const fixture = TestBed.createComponent(MyApplicationsComponent);
+    fixture.detectChanges();
+    const application = {
+      id: applicationId,
+      applicationId,
+      status: 'SAVED',
+      version: 7,
+    } as TrackedApplication;
+    fixture.componentInstance.applications.set([application]);
+    fixture.componentInstance.documentPanelToggled(
+      application,
+      {currentTarget: {open: true}} as unknown as Event,
+    );
+
+    fixture.componentInstance.saveDocumentSelections(application);
+
+    expect(fixture.componentInstance.applications()[0].version).toBe(8);
+    expect(fixture.componentInstance.documentPanel(application).cvSelection)
+      .toBe(authoritativeCvId);
+    expect(fixture.componentInstance.documentPanel(application).error)
+      .toContain('changed elsewhere');
+  });
+
+  it('loads and downloads only the frozen exact version after application', () => {
+    applicationResponses = [new Subject<TrackedApplication[]>()];
+    const familyId = '11111111-1111-4111-8111-111111111111';
+    const usedId = '55555555-5555-4555-8555-555555555555';
+    const laterId = '99999999-9999-4999-8999-999999999999';
+    const artifactId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    documentLifecycle.history.mockReturnValue(of({versions: [
+      {
+        documentId: usedId,
+        version: 2,
+        lifecycle: 'ARCHIVED',
+        retention: 'AVAILABLE',
+        artifacts: [{
+          artifactId,
+          role: 'DERIVED',
+          format: DocumentArtifactManifestItemFormatEnum.Pdf,
+          availability: 'AVAILABLE',
+          size: 120,
+        }],
+      },
+      {
+        documentId: laterId,
+        version: 3,
+        lifecycle: 'APPROVED',
+        retention: 'AVAILABLE',
+        current: true,
+      },
+    ]}));
+    const fixture = TestBed.createComponent(MyApplicationsComponent);
+    fixture.detectChanges();
+    const application = {
+      id: '77777777-7777-4777-8777-777777777777',
+      applicationId: '77777777-7777-4777-8777-777777777777',
+      status: 'APPLIED',
+      applicationUsedCvState: 'SELECTED',
+      applicationUsedCvDocumentReference: {
+        documentId: usedId,
+        documentFamilyId: familyId,
+        version: 2,
+      },
+      applicationUsedCoverLetterState: 'OMITTED',
+    } as TrackedApplication;
+
+    fixture.componentInstance.documentPanelToggled(
+      application,
+      {currentTarget: {open: true}} as unknown as Event,
+    );
+    const frozen = fixture.componentInstance.frozenVersion(application, 'CV');
+    const artifact = fixture.componentInstance.availableArtifacts(frozen)[0];
+    fixture.componentInstance.downloadExact(frozen!, artifact);
+
+    expect(frozen?.documentId).toBe(usedId);
+    expect(frozen?.documentId).not.toBe(laterId);
+    expect(documentGeneration.downloadArtifact).toHaveBeenCalledWith(usedId, artifact);
   });
 });
