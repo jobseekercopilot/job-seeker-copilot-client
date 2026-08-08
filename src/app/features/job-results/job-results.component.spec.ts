@@ -847,6 +847,8 @@ describe('JobResultsComponent', () => {
       'Complete provider responsibility and requirement. '.repeat(20);
     jobService.getJobDetails.mockReturnValueOnce(of({
       ...selectedJob,
+      id: '57152954',
+      canonicalJobId: 'reed:57152954',
       description: completeDescription,
       descriptionCompleteness: JobDescriptionCompletenessEnum.Full,
     }));
@@ -862,6 +864,12 @@ describe('JobResultsComponent', () => {
       .toBe(completeDescription.trim());
     expect(fixture.componentInstance.generationJobDescriptionNeedsConfirmation())
       .toBe(false);
+    expect(fixture.componentInstance.isEvidenceSelectionJob(selectedJob))
+      .toBe(true);
+    expect(fixture.componentInstance.evidenceSelectionJob()?.id)
+      .toBe(selectedJob.id);
+    expect(fixture.componentInstance.evidenceSelectionJob()?.canonicalJobId)
+      .toBe(selectedJob.canonicalJobId);
     expect(fixture.nativeElement.textContent)
       .toContain('Complete provider advert');
     expect(fixture.debugElement.query(By.css('.job-advert-confirmation')))

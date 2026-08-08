@@ -992,7 +992,15 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.jobService.getJobDetails(provider, externalJobId).subscribe({
       next: details => {
         if (!this.isCurrentJobDetailsRequest(jobKey, requestSequence)) return;
-        const hydratedJob: Job = {...job, ...details};
+        // Provider detail records use the provider's raw identifier. Keep the
+        // search result identity stable so the inline panel remains attached
+        // to the card that opened it while applying the richer advert fields.
+        const hydratedJob: Job = {
+          ...job,
+          ...details,
+          id: job.id,
+          canonicalJobId: job.canonicalJobId,
+        };
         this.evidenceSelectionJob.set(hydratedJob);
         if (!this.generationJobDescriptionEdited()) {
           this.generationJobDescription.set(details.description?.trim() ?? '');
