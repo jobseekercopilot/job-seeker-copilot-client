@@ -9,6 +9,8 @@ import {sanitiseProviderLinksJson} from '../shared/provider-content-policy';
 const ACCESS_TOKEN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const CSRF_TOKEN = /^[A-Za-z0-9._~+/=-]+$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PROVIDER_JOB_ID = /^[A-Za-z0-9._~:+@=-]{1,512}$/;
+const JOB_PROVIDERS = new Set(['ADZUNA', 'JSEARCH', 'REED']);
 const SAVED_JOB_OUTCOMES = new Set([
   'CREATED',
   'REPLAYED',
@@ -249,6 +251,17 @@ function validSavedJobId(value: string): boolean {
   return UUID.test(value);
 }
 
+function providerDetailsPath(
+  providerValue: string,
+  externalJobId: string,
+): string | undefined {
+  const provider = providerValue.trim().toUpperCase();
+  if (!JOB_PROVIDERS.has(provider) || !PROVIDER_JOB_ID.test(externalJobId)) {
+    return undefined;
+  }
+  return `/api/jobs/provider/${provider}/${encodeURIComponent(externalJobId)}`;
+}
+
 export function registerJobFinderRoutes(
   app: Express,
   config: JobFinderProxyConfig,
@@ -303,6 +316,22 @@ export function registerJobFinderRoutes(
 
   app.post('/api/jobs/search', async (request, response) => {
     await proxy(request, response, '/api/jobs/search', 'POST', true);
+  });
+  app.get('/api/jobs/provider/:provider/:externalJobId', async (request, response) => {
+    const path = providerDetailsPath(
+      request.params['provider'],
+      request.params['externalJobId'],
+    );
+    if (!path) {
+      sendFailure(
+        response,
+        400,
+        'INVALID_PROVIDER_JOB_REFERENCE',
+        'The provider job reference is invalid',
+      );
+      return;
+    }
+    await proxy(request, response, path, 'GET', false);
   });
   app.post('/api/jobs/saved', async (request, response) => {
     await proxy(request, response, '/api/jobs/saved', 'POST', true);

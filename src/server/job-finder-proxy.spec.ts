@@ -275,6 +275,53 @@ describe('Job Finder route allowlist', () => {
     });
   });
 
+  it('loads one provider advert through the cookie-session boundary', async () => {
+    const upstream = vi.fn<FetchLike>(async () =>
+      new Response(JSON.stringify({
+        externalJobId: 'reed-123==',
+        description: 'Complete provider advert',
+        descriptionCompleteness: 'FULL',
+      }), {
+        headers: {'Content-Type': 'application/json'},
+        status: 200,
+      }));
+    const origin = await startApp(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/jobs/provider/reed/reed-123%3D%3D`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(expect.objectContaining({
+      descriptionCompleteness: 'FULL',
+    }));
+    expect(upstream).toHaveBeenCalledOnce();
+    expect(upstream.mock.calls[0][0]).toBe(
+      'https://job-finder.example.test/api/jobs/provider/REED/reed-123%3D%3D',
+    );
+    expect(upstream.mock.calls[0][1]?.headers).toEqual({
+      Accept: 'application/json',
+      Authorization: `Bearer ${ACCESS_TOKEN}`,
+    });
+  });
+
+  it.each([
+    '/api/jobs/provider/unknown/reed-123',
+    '/api/jobs/provider/reed/%20',
+    '/api/jobs/provider/reed/reed%3Fprivate%3Dvalue',
+  ])('rejects invalid provider details path %s before downstream', async (path) => {
+    const upstream = vi.fn() as unknown as typeof fetch;
+    const origin = await startApp(upstream);
+
+    const response = await fetch(`${origin}${path}`, {
+      headers: sessionHeaders(false),
+    });
+
+    expect(response.status).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
   it('preserves a reviewed saved-job outcome but no other upstream headers', async () => {
     const upstream = vi.fn(async () =>
       new Response(`{"savedJobId":"${SAVED_JOB_ID}"}`, {
