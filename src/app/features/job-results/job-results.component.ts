@@ -22,7 +22,11 @@ import {
   PendingDocumentGeneration,
 } from '../../services/document-generation.service';
 import { Job, JobSearchResponse } from '../../models/job-search.model';
-import { ApplicationRecordResponse } from '../../api/job-finder';
+import {
+  ApplicationRecordResponse,
+  JobAdvertiserTypeEnum,
+  JobDescriptionCompletenessEnum,
+} from '../../api/job-finder';
 import {
   DownloadFileResponse,
   DocumentEvidenceSelectionSectionOrderEnum,
@@ -53,6 +57,8 @@ type StatusUpdateTarget =
 type SortOption = 'MOST_RELEVANT' | 'CLOSEST' | 'HIGHEST_SALARY' | 'NEWEST_POSTED' | 'OLDEST_POSTED' | 'COMPANY_AZ' | 'JOB_TITLE_AZ';
 type EvidencePurpose = 'CV' | 'COVER_LETTER';
 type EvidenceSection = DocumentEvidenceSelectionSectionOrderEnum;
+type GenerationAdvertiserType = `${JobAdvertiserTypeEnum}`;
+type GenerationJob = Job;
 
 interface RolePageCache {
   jobs: Job[];
@@ -87,6 +93,12 @@ interface EvidenceSelectionDraft {
   coverLetterEvidenceIds: string[];
   cvSectionOrder: EvidenceSection[];
   coverLetterSectionOrder: EvidenceSection[];
+}
+
+interface EvidenceMatch {
+  score: number;
+  label: string;
+  explanation: string;
 }
 
 @Component({
@@ -227,6 +239,12 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   evidenceLoading = signal(false);
   evidenceSelectionError = signal<string | null>(null);
   evidenceLoadError = signal<string | null>(null);
+  generationJobDescription = signal('');
+  generationJobDescriptionConfirmed = signal(false);
+  generationAdvertiserName = signal('');
+  generationAdvertiserType = signal<GenerationAdvertiserType>('UNKNOWN');
+  generationHiringOrganisationName = signal('');
+  generationApplicationContactName = signal('');
   cvEvidenceIds = signal<string[]>([]);
   coverLetterEvidenceIds = signal<string[]>([]);
   cvSectionOrder = signal<EvidenceSection[]>([]);
@@ -253,11 +271,56 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       && !entry.reviewRequired
       && latest?.confirmationState === EvidenceRevisionConfirmationStateEnum.UserConfirmed;
   }));
+  readonly evidenceMatches = computed(() => {
+    const advert = this.generationJobDescription().toLowerCase();
+    const advertTerms = this.relevanceTerms(advert);
+    return new Map(this.eligibleEvidence().map(entry => {
+      const revision = this.latestEvidence(entry);
+      if (!revision) return [entry.entryId, this.matchLabel(0, [])] as const;
+      const fields = [
+        revision.heading,
+        revision.organisationContext,
+        revision.roleTitle,
+        revision.programmeOrSubject,
+        revision.institution,
+        revision.qualificationTitle,
+        revision.issuer,
+        revision.projectRole,
+        revision.description,
+        revision.responsibilities,
+        revision.achievements,
+        ...revision.demonstratedSkills,
+      ].filter((value): value is string => Boolean(value));
+      const evidenceTerms = this.relevanceTerms(fields.join(' '));
+      const matchedTerms = [...evidenceTerms].filter(term => advertTerms.has(term));
+      const matchedSkills = revision.demonstratedSkills.filter(skill =>
+        advert.includes(skill.trim().toLowerCase()));
+      const score = matchedTerms.length + (matchedSkills.length * 6);
+      const reasons = [...new Set([...matchedSkills, ...matchedTerms])].slice(0, 4);
+      return [entry.entryId, this.matchLabel(score, reasons)] as const;
+    }));
+  });
+  readonly rankedEligibleEvidence = computed(() => [...this.eligibleEvidence()].sort((left, right) => {
+    const scoreDifference = (this.evidenceMatches().get(right.entryId)?.score ?? 0)
+      - (this.evidenceMatches().get(left.entryId)?.score ?? 0);
+    if (scoreDifference !== 0) return scoreDifference;
+    return (this.latestEvidence(left)?.heading ?? '')
+      .localeCompare(this.latestEvidence(right)?.heading ?? '');
+  }));
   readonly ineligibleEvidenceCount = computed(() =>
     this.evidenceEntries().length - this.eligibleEvidence().length);
+  readonly generationJobDescriptionLooksIncomplete = computed(() => {
+    const description = this.generationJobDescription().trim();
+    return description.length < 600
+      || /(?:\.\.\.|…|\bTHE\s+(?:ROL|ROLE)\s*)$/i.test(description);
+  });
   readonly canGenerateFromSelection = computed(() =>
     !this.evidenceLoading()
     && !this.evidenceLoadError()
+    && this.generationJobDescriptionConfirmed()
+    && this.generationJobDescription().trim().length >= 200
+    && this.generationAdvertiserName().trim().length > 0
+    && this.generationAdvertiserType() !== 'UNKNOWN'
     && this.validEvidenceSelection(this.cvEvidenceIds(), this.cvSectionOrder())
     && this.validEvidenceSelection(this.coverLetterEvidenceIds(), this.coverLetterSectionOrder()));
 
@@ -836,6 +899,27 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     if (!jobKey || this.generatingJobIds().has(jobKey)) return;
     this.persistEvidenceDraft();
     this.evidenceSelectionJob.set(job);
+    this.generationJobDescription.set(job.description?.trim() ?? '');
+    this.generationJobDescriptionConfirmed.set(false);
+    const generationJob = job as GenerationJob;
+    const advertiserName = generationJob.advertiserName?.trim()
+      || job.companyName?.trim()
+      || job.company?.trim()
+      || '';
+    this.generationAdvertiserName.set(advertiserName);
+    this.generationAdvertiserType.set(
+      generationJob.advertiserType && generationJob.advertiserType !== 'UNKNOWN'
+        ? generationJob.advertiserType
+        : /recruit/i.test(advertiserName)
+          ? 'RECRUITER'
+          : 'EMPLOYER',
+    );
+    this.generationHiringOrganisationName.set(
+      generationJob.hiringOrganisationName?.trim() ?? '',
+    );
+    this.generationApplicationContactName.set(
+      generationJob.applicationContactName?.trim() ?? '',
+    );
     this.restoreEvidenceDraft(jobKey);
     this.evidenceEntries.set([]);
     this.evidenceSelectionError.set(null);
@@ -879,11 +963,35 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.evidenceLoading.set(false);
     this.evidenceSelectionError.set(null);
     this.evidenceLoadError.set(null);
+    this.generationJobDescription.set('');
+    this.generationJobDescriptionConfirmed.set(false);
+    this.resetGenerationJobParties();
+  }
+
+  updateGenerationJobDescription(event: Event): void {
+    const value = event.target instanceof HTMLTextAreaElement
+      ? event.target.value
+      : '';
+    this.generationJobDescription.set(value.slice(0, 12_000));
+    this.generationJobDescriptionConfirmed.set(false);
+    this.evidenceSelectionError.set(null);
+  }
+
+  updateGenerationJobDescriptionConfirmation(event: Event): void {
+    const confirmed = event.target instanceof HTMLInputElement
+      && event.target.checked;
+    this.generationJobDescriptionConfirmed.set(confirmed);
+    this.evidenceSelectionError.set(null);
   }
 
   latestEvidence(entry: EvidenceEntry): EvidenceRevision | undefined {
     return [...entry.revisions].sort((left, right) =>
       right.revisionNumber - left.revisionNumber)[0];
+  }
+
+  evidenceMatch(entry: EvidenceEntry): EvidenceMatch {
+    return this.evidenceMatches().get(entry.entryId)
+      ?? this.matchLabel(0, []);
   }
 
   selectedEvidence(purpose: EvidencePurpose): EvidenceEntry[] {
@@ -950,6 +1058,40 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       .replace(/\b\w/g, character => character.toUpperCase());
   }
 
+  private relevanceTerms(value: string): Set<string> {
+    const ignored = new Set([
+      'about', 'after', 'also', 'been', 'being', 'build', 'company', 'could',
+      'from', 'have', 'into', 'more', 'role', 'that', 'their', 'there', 'these',
+      'they', 'this', 'using', 'will', 'with', 'work', 'your',
+    ]);
+    return new Set((value.toLowerCase().match(/[a-z0-9+#.]{3,}/g) ?? [])
+      .filter(term => !ignored.has(term)));
+  }
+
+  private matchLabel(score: number, reasons: string[]): EvidenceMatch {
+    const label = score >= 10
+      ? 'Strong advert match'
+      : score >= 4
+        ? 'Relevant to advert'
+        : score > 0
+          ? 'Possible advert match'
+          : 'No obvious keyword match';
+    return {
+      score,
+      label,
+      explanation: reasons.length
+        ? `Matched: ${reasons.join(', ')}`
+        : 'Review manually; no distinctive advert terms matched.',
+    };
+  }
+
+  private resetGenerationJobParties(): void {
+    this.generationAdvertiserName.set('');
+    this.generationAdvertiserType.set('UNKNOWN');
+    this.generationHiringOrganisationName.set('');
+    this.generationApplicationContactName.set('');
+  }
+
   isEvidenceSelectionJob(job: Job): boolean {
     const active = this.evidenceSelectionJob();
     return Boolean(active && this.jobStateKey(active) === this.jobStateKey(job));
@@ -992,10 +1134,21 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     const job = this.evidenceSelectionJob();
     if (!job || !this.canGenerateFromSelection()) {
       this.evidenceSelectionError.set(
-        'Choose at least one entry confirmed by you for both documents.',
+        !this.generationJobDescriptionConfirmed()
+          ? 'Review and confirm the complete job advert before generating.'
+          : 'Choose at least one entry confirmed by you for both documents.',
       );
       return;
     }
+    const generationJob: GenerationJob = {
+      ...job,
+      description: this.generationJobDescription().trim(),
+      descriptionCompleteness: JobDescriptionCompletenessEnum.UserConfirmed,
+      advertiserName: this.generationAdvertiserName().trim(),
+      advertiserType: this.generationAdvertiserType() as JobAdvertiserTypeEnum,
+      hiringOrganisationName: this.generationHiringOrganisationName().trim() || undefined,
+      applicationContactName: this.generationApplicationContactName().trim() || undefined,
+    };
     const evidence = {
       cv: {
         entryIds: [...this.cvEvidenceIds()],
@@ -1013,7 +1166,10 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.evidenceLoading.set(false);
     this.evidenceSelectionError.set(null);
     this.evidenceLoadError.set(null);
-    this.generateDocuments(job, evidence);
+    this.generationJobDescription.set('');
+    this.generationJobDescriptionConfirmed.set(false);
+    this.resetGenerationJobParties();
+    this.generateDocuments(generationJob, evidence);
   }
 
   private generateDocuments(

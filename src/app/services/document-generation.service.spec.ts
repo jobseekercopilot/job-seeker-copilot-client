@@ -700,6 +700,22 @@ describe('DocumentGenerationService', () => {
     expect(TestBed.inject(DocumentGenerationService).pendingGenerations()).toHaveLength(1);
   });
 
+  it('explains when a complete job advert must be confirmed before generation', async () => {
+    writeAttempt({operationId});
+    getOperation.mockReturnValue(of({
+      operationId,
+      state: 'FAILED',
+      failureCode: 'JOB_DESCRIPTION_REVIEW_REQUIRED',
+    }));
+
+    await expect(firstValueFrom(
+      TestBed.inject(DocumentGenerationService).resume(canonicalJobId),
+    )).rejects.toMatchObject({
+      code: 'DESCRIPTION_REQUIRED',
+      message: expect.stringContaining('No AI credit was used'),
+    });
+  });
+
   it('cancels by operation id and retains no resumable operation', async () => {
     writeAttempt({operationId});
     const service = TestBed.inject(DocumentGenerationService);

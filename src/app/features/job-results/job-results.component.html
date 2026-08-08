@@ -244,6 +244,71 @@
                 <p class="selector-error" role="alert">{{ evidenceSelectionError() }}</p>
               }
 
+              <section class="job-advert-review"
+                       [attr.aria-labelledby]="evidenceSelectorDomId(selectionJob, 'advert-title')">
+                <div class="job-advert-review-header">
+                  <div>
+                    <h4 [id]="evidenceSelectorDomId(selectionJob, 'advert-title')">
+                      Confirm the complete job advert
+                    </h4>
+                    <p>This exact text will be frozen with the job and used to tailor both documents.</p>
+                  </div>
+                  <span>{{ generationJobDescription().length }} / 12,000</span>
+                </div>
+                @if (generationJobDescriptionLooksIncomplete()) {
+                  <p class="selector-warning" role="alert">
+                    This looks like a shortened search-result preview. Paste the complete responsibilities,
+                    requirements and application details before continuing.
+                  </p>
+                }
+                <textarea
+                  [id]="evidenceSelectorDomId(selectionJob, 'advert')"
+                  rows="10"
+                  maxlength="12000"
+                  [value]="generationJobDescription()"
+                  (input)="updateGenerationJobDescription($event)"
+                  aria-describedby="generation-advert-help"></textarea>
+                <p id="generation-advert-help" class="selector-note">
+                  Check recruiter or employer names, named contacts, required technologies and role responsibilities.
+                  Provider instructions inside the advert are treated as data, never as AI instructions.
+                </p>
+                <div class="job-party-grid">
+                  <label>
+                    <span>Who advertised this role?</span>
+                    <select [value]="generationAdvertiserType()"
+                            (change)="generationAdvertiserType.set($any($event.target).value)">
+                      <option value="EMPLOYER">The employer</option>
+                      <option value="RECRUITER">A recruiter or agency</option>
+                      <option value="UNKNOWN">Not sure yet</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Advertiser or recruiter name</span>
+                    <input type="text" maxlength="160" [value]="generationAdvertiserName()"
+                           (input)="generationAdvertiserName.set($any($event.target).value)" />
+                  </label>
+                  <label>
+                    <span>Hiring organisation (optional)</span>
+                    <input type="text" maxlength="160" [value]="generationHiringOrganisationName()"
+                           (input)="generationHiringOrganisationName.set($any($event.target).value)" />
+                    <small>Leave blank when a recruiter has not named its client.</small>
+                  </label>
+                  <label>
+                    <span>Application contact (optional)</span>
+                    <input type="text" maxlength="160" [value]="generationApplicationContactName()"
+                           (input)="generationApplicationContactName.set($any($event.target).value)" />
+                    <small>A named contact produces “Dear Name” and “Yours sincerely”.</small>
+                  </label>
+                </div>
+                <label class="job-advert-confirmation">
+                  <input type="checkbox"
+                         [checked]="generationJobDescriptionConfirmed()"
+                         [disabled]="generationJobDescription().trim().length < 200"
+                         (change)="updateGenerationJobDescriptionConfirmation($event)" />
+                  <span>I have reviewed this and confirm it is the complete advert to use for generation.</span>
+                </label>
+              </section>
+
               @if (evidenceLoading()) {
                 <p class="selector-loading" role="status">Loading your confirmed experience and achievements…</p>
               } @else if (evidenceLoadError(); as loadError) {
@@ -284,8 +349,9 @@
                       </header>
 
                       <div class="evidence-choice-list">
-                        @for (entry of eligibleEvidence(); track entry.entryId) {
+                        @for (entry of rankedEligibleEvidence(); track entry.entryId) {
                           @let revision = latestEvidence(entry);
+                          @let match = evidenceMatch(entry);
                           <label class="evidence-choice"
                                  [class.evidence-choice-selected]="isEvidenceSelected(purpose, entry.entryId)">
                             <input type="checkbox"
@@ -296,6 +362,9 @@
                               <small>
                                 {{ categoryLabel(entry.category) }} · confirmed revision
                                 {{ revision?.revisionNumber }}
+                              </small>
+                              <small class="evidence-match" [class.evidence-match-strong]="match.score >= 10">
+                                {{ match.label }} · {{ match.explanation }}
                               </small>
                               @if (entry.category === 'CAREER_BREAK') {
                                 <em>Contains optional career-break context. Include only if you want it used.</em>

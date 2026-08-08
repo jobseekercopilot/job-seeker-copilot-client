@@ -129,6 +129,7 @@ export type DocumentGenerationErrorCode =
   | 'AUTH_REQUIRED'
   | 'CANCELLED'
   | 'DISABLED'
+  | 'DESCRIPTION_REQUIRED'
   | 'EVIDENCE_CHANGED'
   | 'FAILED'
   | 'OUTCOME_UNKNOWN'
@@ -1064,6 +1065,12 @@ export class DocumentGenerationService {
 
   private operationError(operation: GenerationOperationResponse): DocumentGenerationError {
     const code = operation.failureCode?.toUpperCase() ?? '';
+    if (code.includes('JOB_DESCRIPTION_REVIEW_REQUIRED')) {
+      return new DocumentGenerationError(
+        'DESCRIPTION_REQUIRED',
+        'Review and confirm the complete job advert before generating. No AI credit was used.',
+      );
+    }
     if (
       operation.state === GenerationOperationResponseStateEnum.GenerationOutcomeUnknown
       || operation.state === GenerationOperationResponseStateEnum.RecoveryRequired
@@ -1140,6 +1147,12 @@ export class DocumentGenerationService {
       : typeof body === 'string'
         ? body.toUpperCase()
         : '';
+    if (upstreamCode.includes('JOB_DESCRIPTION_REVIEW_REQUIRED')) {
+      return new DocumentGenerationError(
+        'DESCRIPTION_REQUIRED',
+        'Review and confirm the complete job advert before generating. No AI credit was used.',
+      );
+    }
     if (status === 401 || status === 403 || upstreamCode.includes('AUTH')) {
       return new DocumentGenerationError(
         'AUTH_REQUIRED',
