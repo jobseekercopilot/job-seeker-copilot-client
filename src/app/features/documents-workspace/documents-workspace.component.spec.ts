@@ -4,7 +4,11 @@ import {DocumentsWorkspaceComponent} from './documents-workspace.component';
 import {ApplicationTrackerService} from '../../services/application-tracker.service';
 import {DocumentGenerationService} from '../../services/document-generation.service';
 import {DocumentLifecycleService} from '../../services/document-lifecycle.service';
-import {DocumentFamilyHistoryResponse} from '../../api/document-generation-gateway';
+import {
+  DocumentFamilyHistoryResponse,
+  DocumentFamilySummary,
+  DocumentFamilySummaryDocumentTypeEnum,
+} from '../../api/document-generation-gateway';
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const CURRENT_ID = '22222222-2222-4222-8222-222222222222';
@@ -61,6 +65,25 @@ describe('DocumentsWorkspaceComponent', () => {
     expect(fixture.componentInstance.jobDetails(fixture.componentInstance.families()[0]))
       .toMatchObject({jobTitle: 'Platform engineer', companyName: 'Example Ltd'});
     expect(documentLifecycle.history).not.toHaveBeenCalled();
+  });
+
+  it('keeps a family visible when no current version has been selected', () => {
+    documentLifecycle.allFamilies.mockReturnValueOnce(of([{
+      ...family(),
+      currentDocumentId: undefined,
+      currentVersion: undefined,
+    }]));
+    const fixture = TestBed.createComponent(DocumentsWorkspaceComponent);
+    fixture.componentRef.setInput('enabled', true);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.families()).toEqual([
+      expect.objectContaining({
+        documentFamilyId: FAMILY_ID,
+        currentDocumentId: undefined,
+        currentVersion: undefined,
+      }),
+    ]);
   });
 
   it('loads exact history lazily and orders rows by trusted version number', () => {
@@ -136,11 +159,11 @@ describe('DocumentsWorkspaceComponent', () => {
   });
 });
 
-function family() {
+function family(): DocumentFamilySummary {
   return {
     documentFamilyId: FAMILY_ID,
     jobId: 'job-1',
-    documentType: 'CV' as const,
+    documentType: DocumentFamilySummaryDocumentTypeEnum.Cv,
     latestDocumentId: CURRENT_ID,
     latestVersion: 7,
     latestSource: 'GENERATED',
