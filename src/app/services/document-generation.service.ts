@@ -465,6 +465,28 @@ export class DocumentGenerationService {
           ));
         }
 
+        const preProviderDeadlineExpired = this.isPreProviderDeadlineExpired(operation);
+        if (preProviderDeadlineExpired) {
+          if (replayAttempted) {
+            return throwError(() => new DocumentGenerationError(
+              'TIMEOUT',
+              'Document generation could not restart after its deadline. Your evidence selection has been kept.',
+            ));
+          }
+          if (replayAvailable && operation.replaySafe === true) {
+            replayAvailable = false;
+            replayAttempted = true;
+            replayAcknowledgementPending = true;
+            return this.browserSession.ensureCsrf().pipe(
+              switchMap(() => this.startOperation(attempt)),
+            );
+          }
+          return throwError(() => new DocumentGenerationError(
+            'TIMEOUT',
+            'Document generation expired before the AI request started, but the gateway did not confirm that replay is safe. Your evidence selection has been kept.',
+          ));
+        }
+
         if (this.isTerminal(operation.state)) return EMPTY;
 
         const downstreamRetryable = this.isDownstreamRetryable(operation);
@@ -527,7 +549,8 @@ export class DocumentGenerationService {
       tap(operation => this.acceptOperation(attempt, operation)),
       filter(operation =>
         this.isTerminal(operation.state)
-        && !this.isDeadlineRecoveryRequired(operation)),
+        && !this.isDeadlineRecoveryRequired(operation)
+        && !this.isPreProviderDeadlineExpired(operation)),
       take(1),
       map(operation => {
         if (operation.state !== GenerationOperationResponseStateEnum.Completed) {
@@ -641,6 +664,14 @@ export class DocumentGenerationService {
     return operation.state === GenerationOperationResponseStateEnum.RecoveryRequired
       && operation.failureCode?.trim().toUpperCase()
         === 'OPERATION_DEADLINE_RECOVERY_REQUIRED';
+  }
+
+  private isPreProviderDeadlineExpired(
+    operation: GenerationOperationResponse,
+  ): boolean {
+    return operation.state === GenerationOperationResponseStateEnum.Failed
+      && operation.failureCode?.trim().toUpperCase()
+        === 'OPERATION_DEADLINE_EXCEEDED';
   }
 
   private shouldRetainAttempt(
