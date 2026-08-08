@@ -568,7 +568,8 @@ function safeDocumentFamilySummary(value: unknown): Record<string, unknown> | un
   };
   const currentDocumentId = source['currentDocumentId'];
   const currentVersion = source['currentVersion'];
-  if (currentDocumentId !== undefined || currentVersion !== undefined) {
+  const hasNoCurrentSelection = currentDocumentId === null && currentVersion === null;
+  if (!hasNoCurrentSelection && (currentDocumentId !== undefined || currentVersion !== undefined)) {
     if (
       typeof currentDocumentId !== 'string'
       || !validUuid(currentDocumentId)
@@ -638,7 +639,8 @@ function safeDocumentFamilyHistory(body: string): Record<string, unknown> | unde
   };
   const currentDocumentId = source['currentDocumentId'];
   const currentVersion = source['currentVersion'];
-  if (currentDocumentId !== undefined || currentVersion !== undefined) {
+  const hasNoCurrentSelection = currentDocumentId === null && currentVersion === null;
+  if (!hasNoCurrentSelection && (currentDocumentId !== undefined || currentVersion !== undefined)) {
     if (
       typeof currentDocumentId !== 'string'
       || !validUuid(currentDocumentId)

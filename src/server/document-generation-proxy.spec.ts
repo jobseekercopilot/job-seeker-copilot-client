@@ -166,6 +166,88 @@ describe('Document generation session boundary', () => {
     );
   });
 
+  it('accepts a document family with no explicitly selected current version', async () => {
+    const upstream = vi.fn<FetchLike>(async () => Response.json({
+      items: [{
+        documentFamilyId: DOCUMENT_FAMILY_ID,
+        jobId: 'job-1',
+        documentType: 'CV',
+        latestDocumentId: DOCUMENT_ID,
+        latestVersion: 1,
+        latestSource: 'GENERATED',
+        latestLifecycle: 'APPROVED',
+        latestRetention: 'AVAILABLE',
+        currentDocumentId: null,
+        currentVersion: null,
+        versionCount: 1,
+      }],
+      page: 0,
+      size: 100,
+      totalElements: 1,
+      totalPages: 1,
+    }));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/document-families?page=0&size=100`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      items: [{
+        documentFamilyId: DOCUMENT_FAMILY_ID,
+        jobId: 'job-1',
+        documentType: 'CV',
+        latestDocumentId: DOCUMENT_ID,
+        latestVersion: 1,
+        latestSource: 'GENERATED',
+        latestLifecycle: 'APPROVED',
+        latestRetention: 'AVAILABLE',
+        versionCount: 1,
+      }],
+      page: 0,
+      size: 100,
+      totalElements: 1,
+      totalPages: 1,
+    });
+  });
+
+  it.each([
+    {currentDocumentId: null, currentVersion: 1},
+    {currentDocumentId: DOCUMENT_ID, currentVersion: null},
+    {currentDocumentId: null},
+    {currentVersion: null},
+  ])('rejects a partial current-version selection from upstream (%o)', async current => {
+    const upstream = vi.fn<FetchLike>(async () => Response.json({
+      items: [{
+        documentFamilyId: DOCUMENT_FAMILY_ID,
+        jobId: 'job-1',
+        documentType: 'CV',
+        latestDocumentId: DOCUMENT_ID,
+        latestVersion: 1,
+        latestSource: 'GENERATED',
+        latestLifecycle: 'APPROVED',
+        latestRetention: 'AVAILABLE',
+        versionCount: 1,
+        ...current,
+      }],
+      page: 0,
+      size: 100,
+      totalElements: 1,
+      totalPages: 1,
+    }));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/document-families?page=0&size=100`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({error: 'INVALID_DOWNSTREAM_RESPONSE'});
+  });
+
   it('returns content-free exact family history with manifests and associations', async () => {
     const upstream = vi.fn<FetchLike>(async () => Response.json({
       documentFamilyId: DOCUMENT_FAMILY_ID,
@@ -228,6 +310,31 @@ describe('Document generation session boundary', () => {
       }],
     });
     expect(JSON.stringify(body)).not.toContain('must-not-reach-browser');
+  });
+
+  it('accepts family history with no explicitly selected current version', async () => {
+    const upstream = vi.fn<FetchLike>(async () => Response.json({
+      documentFamilyId: DOCUMENT_FAMILY_ID,
+      jobId: 'job-1',
+      documentType: 'CV',
+      currentDocumentId: null,
+      currentVersion: null,
+      versions: [],
+    }));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/document-families/${DOCUMENT_FAMILY_ID}`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      documentFamilyId: DOCUMENT_FAMILY_ID,
+      jobId: 'job-1',
+      documentType: 'CV',
+      versions: [],
+    });
   });
 
   it('validates and forwards an expected-version current selection with CSRF', async () => {
