@@ -127,14 +127,20 @@
            [id]="descriptionId()">
           {{ visibleDescription() }}
         </p>
-        @if (hasExpandableDescription()) {
+        @if (hasExpandableDescription() || canLoadFullDescription()) {
           <button type="button"
                   class="description-toggle mt-2"
-                  (click)="toggleDescription()"
+                  (click)="requestDescriptionAction()"
+                  [disabled]="descriptionLoading()"
                   [attr.aria-controls]="descriptionId()"
                   [attr.aria-expanded]="descriptionExpanded()">
-            {{ descriptionExpanded() ? 'Show less' : 'Read more' }}
+            {{ descriptionActionLabel() }}
           </button>
+        }
+        @if (descriptionLoadError()) {
+          <p class="description-load-error text-xs mt-2 mb-0" role="alert">
+            {{ descriptionLoadError() }}
+          </p>
         }
       </div>
       <div class="mt-4">

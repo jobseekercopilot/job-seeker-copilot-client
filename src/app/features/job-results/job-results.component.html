@@ -191,6 +191,8 @@
           [applicationTrackingAvailable]="applicationTrackingAvailable()"
           [applicationToolsAvailable]="applicationToolsAvailable()"
           [generationPanelActive]="isEvidenceSelectionJob(job)"
+          [descriptionLoading]="loadingJobDescriptionIds().has(jobStateKey(job))"
+          [descriptionLoadError]="jobDescriptionErrors()[jobStateKey(job)] ?? null"
           (trackApplication)="trackApplication($event)"
           (generateDocuments)="openEvidenceSelection($event)"
           (cancelGeneration)="cancelGeneration($event)"
@@ -198,7 +200,8 @@
           (withdrawGeneratedApplication)="withdrawGeneratedApplication(job)"
           (downloadFile)="downloadFile($event)"
           (uploadReplacement)="uploadReplacement(job, $event)"
-          (dismissGenerationError)="dismissGenerationError($event)">
+          (dismissGenerationError)="dismissGenerationError($event)"
+          (requestFullDescription)="loadFullJobDescription($event)">
           <ng-container generation-evidence-panel>
             @if (isEvidenceSelectionJob(job)) {
               @let selectionJob = evidenceSelectionJob()!;
@@ -230,8 +233,8 @@
                     </div>
                   </dl>
                   <p>
-                    Nothing is included automatically. Choose and order user-confirmed entries separately
-                    for the CV and cover letter. The service will freeze the current confirmed revisions.
+                    Nothing is included automatically. Choose user-confirmed entries separately for the CV
+                    and cover letter, then set the section order. The service will freeze the current revisions.
                   </p>
                 </div>
                 <button type="button" class="selector-close" (click)="closeEvidenceSelection()"
@@ -368,6 +371,11 @@
                           </h4>
                           <p>Select only what is relevant to this document.</p>
                         </div>
+                        <button type="button"
+                                class="evidence-select-all"
+                                (click)="toggleAllEvidence(purpose)">
+                          {{ allEvidenceSelected(purpose) ? 'Clear all' : 'Select all' }}
+                        </button>
                       </header>
 
                       <div class="evidence-choice-list">
@@ -398,27 +406,6 @@
 
                       @if (selectedEvidence(purpose).length) {
                         <div class="selection-order">
-                          <h5>Experience and achievement order</h5>
-                          <ol>
-                            @for (entry of selectedEvidence(purpose); track entry.entryId; let index = $index) {
-                              <li>
-                                <span>{{ latestEvidence(entry)?.heading }}</span>
-                                <span class="order-actions">
-                                  <button type="button" (click)="moveEvidence(purpose, entry.entryId, -1)"
-                                          [disabled]="index === 0"
-                                          [attr.aria-label]="'Move ' + latestEvidence(entry)?.heading + ' up'">
-                                    <mat-icon>arrow_upward</mat-icon>
-                                  </button>
-                                  <button type="button" (click)="moveEvidence(purpose, entry.entryId, 1)"
-                                          [disabled]="index === selectedEvidence(purpose).length - 1"
-                                          [attr.aria-label]="'Move ' + latestEvidence(entry)?.heading + ' down'">
-                                    <mat-icon>arrow_downward</mat-icon>
-                                  </button>
-                                </span>
-                              </li>
-                            }
-                          </ol>
-
                           <h5>Section order</h5>
                           <ol>
                             @for (section of sectionOrder(purpose); track section; let index = $index) {

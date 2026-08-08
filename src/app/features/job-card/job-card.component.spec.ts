@@ -3,6 +3,7 @@ import { By } from '@angular/platform-browser';
 import { JobCardComponent } from './job-card.component';
 import { Job } from '../../models/job-search.model';
 import { DownloadFileResponse } from '../../api/document-generation-gateway';
+import {JobDescriptionCompletenessEnum} from '../../api/job-finder';
 import { GenerationDownloadsResponse } from '../../services/document-generation.service';
 
 describe('JobCardComponent', () => {
@@ -214,6 +215,28 @@ describe('JobCardComponent', () => {
     expect(fixture.debugElement.query(By.css('.job-description')).nativeElement.textContent)
       .toContain('First line\nSecond line\nThird line');
     expect(fixture.debugElement.query(By.css('.description-toggle'))).toBeNull();
+  });
+
+  it('loads the complete provider advert when a preview Read full advert action is used', () => {
+    const previewJob: Job = {
+      ...job,
+      externalJobId: 'reed-42',
+      primarySource: 'REED',
+      descriptionCompleteness: JobDescriptionCompletenessEnum.Preview,
+    };
+    const fixture = createFixture({job: previewJob});
+    const requested: Job[] = [];
+    fixture.componentInstance.requestFullDescription.subscribe(value => requested.push(value));
+    expandCard(fixture);
+    const toggle: HTMLButtonElement = fixture.debugElement
+      .query(By.css('.description-toggle')).nativeElement;
+
+    expect(toggle.textContent).toContain('Read full advert');
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(requested).toEqual([previewJob]);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
   });
 
   it('keeps an expanded description open while the in-card generation panel becomes active', () => {

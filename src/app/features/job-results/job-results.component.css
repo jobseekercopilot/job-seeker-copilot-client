@@ -10,6 +10,11 @@
   padding: 0.9rem 1rem !important;
 }
 
+.job-results-header > div:last-child {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
 .job-results-header h2 {
   font-size: 1rem;
   font-weight: 700;
@@ -355,6 +360,27 @@
   gap: 0.65rem;
 }
 
+.purpose-panel > header > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.evidence-select-all {
+  background: #eef2ff;
+  border: 1px solid #a5b4fc;
+  border-radius: var(--radius-control);
+  color: #3730a3;
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 750;
+  padding: 0.38rem 0.55rem;
+}
+
+.evidence-select-all:hover {
+  background: #e0e7ff;
+  border-color: #818cf8;
+}
+
 .purpose-panel h4,
 .purpose-panel h5 {
   color: var(--text-primary);
@@ -460,6 +486,11 @@
 }
 
 @media (max-width: 720px) {
+  .job-results-header > div:last-child {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
   .job-party-grid {
     grid-template-columns: 1fr;
   }
