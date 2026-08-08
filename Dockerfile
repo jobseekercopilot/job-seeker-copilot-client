@@ -4,7 +4,7 @@ WORKDIR /app
 
 # OpenAPI Generator is checksum-pinned and runs only while creating the
 # ignored TypeScript clients; Java is not copied into the runtime image.
-RUN apk add --no-cache openjdk17-jre-headless=17.0.19_p10-r0
+RUN apk add --no-cache openjdk17-jre-headless=17.0.20_p8-r0
 
 COPY package*.json ./
 
