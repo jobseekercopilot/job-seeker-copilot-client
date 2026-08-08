@@ -12,6 +12,7 @@ import { Job, JobSearchResponse } from '../../models/job-search.model';
 import {
   ProviderResultStatus,
   ProviderResultStatusStatusEnum,
+  JobDescriptionCompletenessEnum,
   ReedJobSearchResponseMatchingStatusEnum,
   ReedJobSearchResponseSearchStatusEnum,
   TargetRoleJobResultsMatchingStatusEnum,
@@ -57,6 +58,10 @@ describe('JobResultsComponent', () => {
       }
       return of(responseForRequest(currentResponse, options));
     },
+    getJobDetails: vi.fn(
+      (_provider: string, _externalJobId: string): Observable<Job> =>
+        throwError(() => ({status: 404})),
+    ),
   };
 
   const documentGenerationService = {
@@ -86,6 +91,10 @@ describe('JobResultsComponent', () => {
   beforeEach(async () => {
     jobService.callCount = 0;
     jobService.calls = [];
+    jobService.getJobDetails.mockReset();
+    jobService.getJobDetails.mockImplementation(
+      (): Observable<Job> => throwError(() => ({status: 404})),
+    );
     currentResponse = response;
     searchErrorStatus = undefined;
     queuedSearchResponses = [];
@@ -820,6 +829,56 @@ describe('JobResultsComponent', () => {
     expect(fixture.componentInstance.generationJobDescriptionConfirmed()).toBe(true);
   });
 
+  it('hydrates a selected provider advert and uses Generate as its confirmation', () => {
+    evidenceEntries = [evidenceEntry(
+      '50000000-0000-4000-8000-000000000001',
+      'PROJECT',
+      'Production software project',
+      1,
+    )];
+    const fixture = createFixture();
+    const selectedJob: Job = {
+      ...fixture.componentInstance.paginatedJobs()[0],
+      primarySource: 'REED',
+      externalJobId: 'reed-42',
+      descriptionCompleteness: JobDescriptionCompletenessEnum.Preview,
+    };
+    const completeDescription =
+      'Complete provider responsibility and requirement. '.repeat(20);
+    jobService.getJobDetails.mockReturnValueOnce(of({
+      ...selectedJob,
+      description: completeDescription,
+      descriptionCompleteness: JobDescriptionCompletenessEnum.Full,
+    }));
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    fixture.detectChanges();
+
+    expect(jobService.getJobDetails).toHaveBeenCalledWith(
+      'REED',
+      'reed-42',
+    );
+    expect(fixture.componentInstance.generationJobDescription())
+      .toBe(completeDescription.trim());
+    expect(fixture.componentInstance.generationJobDescriptionNeedsConfirmation())
+      .toBe(false);
+    expect(fixture.nativeElement.textContent)
+      .toContain('Complete provider advert');
+    expect(fixture.debugElement.query(By.css('.job-advert-confirmation')))
+      .toBeNull();
+
+    const evidence = fixture.componentInstance.eligibleEvidence()[0];
+    fixture.componentInstance.toggleEvidence('CV', evidence);
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', evidence);
+    expect(fixture.componentInstance.canGenerateFromSelection()).toBe(true);
+    fixture.componentInstance.confirmEvidenceGeneration();
+
+    expect(documentGenerationService.generate).toHaveBeenCalledWith(
+      expect.objectContaining({descriptionCompleteness: 'FULL'}),
+      expect.any(Object),
+    );
+  });
+
   it('ranks confirmed evidence against the reviewed advert without selecting it automatically', () => {
     const general = evidenceEntry(
       '50000000-0000-4000-8000-000000000001',
@@ -1319,7 +1378,7 @@ describe('JobResultsComponent', () => {
     expect(fixture.componentInstance.cvEvidenceIds()).toEqual([evidenceId]);
     expect(fixture.componentInstance.coverLetterEvidenceIds()).toEqual([evidenceId]);
     expect(fixture.componentInstance.canGenerateFromSelection()).toBe(false);
-    expect(fixture.nativeElement.textContent).toContain('Confirm the complete job advert');
+    expect(fixture.nativeElement.textContent).toContain('Review the job advert');
   });
 
   it('cancels a restored generation, keeps its evidence draft and restores job-card actions', () => {

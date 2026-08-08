@@ -9,6 +9,34 @@ import {JobService} from './job.service';
 import {LocationService} from './location.service';
 
 describe('JobService', () => {
+  it('loads one selected provider job without caching the advert', () => {
+    const getJobDetails = vi.fn(() => of({
+      externalJobId: 'reed-42',
+      description: 'Complete provider advert',
+      descriptionCompleteness: 'FULL',
+    }));
+    TestBed.configureTestingModule({
+      providers: [
+        JobService,
+        {provide: GeneratedJobSearchService, useValue: {getJobDetails}},
+        {provide: BrowserSessionService, useValue: {ensureCsrf: vi.fn()}},
+        {provide: LocationService, useValue: {getByPostcode: vi.fn()}},
+      ],
+    });
+
+    TestBed.inject(JobService)
+      .getJobDetails('REED', 'reed-42')
+      .subscribe();
+
+    expect(getJobDetails).toHaveBeenCalledWith(
+      'REED',
+      'reed-42',
+      'body',
+      false,
+      {transferCache: false},
+    );
+  });
+
   it('bootstraps CSRF and sends only the canonical request body', () => {
     const searchJobs = vi.fn((request: JobSearchRequest) => {
       void request;

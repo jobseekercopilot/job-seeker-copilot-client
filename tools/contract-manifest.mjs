@@ -16,6 +16,7 @@ function hasBearerSecurity(operation, document) {
 function validateJobFinderContract(document) {
   const operations = [
     ['/api/jobs/search', 'post', 'searchJobs'],
+    ['/api/jobs/provider/{provider}/{externalJobId}', 'get', 'getJobDetails'],
     ['/api/jobs/saved', 'post', 'save'],
     ['/api/jobs/saved', 'get', 'list'],
     ['/api/jobs/saved/{savedJobId}', 'get', 'get'],

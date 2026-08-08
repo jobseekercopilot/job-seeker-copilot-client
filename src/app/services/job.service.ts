@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 import {
   JobSearchRequest,
   ReedJobSearchResponse,
+  Job,
   JobSearchService as GeneratedJobSearchService
 } from '../api/job-finder';
 import { LocationService } from './location.service';
@@ -152,6 +153,16 @@ export class JobService {
         false,
         { transferCache: false }
       ))
+    );
+  }
+
+  getJobDetails(provider: string, externalJobId: string): Observable<Job> {
+    return this.jobSearchApi.getJobDetails(
+      provider,
+      externalJobId,
+      'body',
+      false,
+      {transferCache: false},
     );
   }
 
