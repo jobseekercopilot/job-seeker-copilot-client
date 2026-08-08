@@ -39,7 +39,10 @@ import {
   EvidenceRevision,
   EvidenceRevisionConfirmationStateEnum,
 } from '../../api';
-import {logMalformedProviderResult} from '../../../shared/provider-content-policy';
+import {
+  logMalformedProviderResult,
+  providerPlainText,
+} from '../../../shared/provider-content-policy';
 import {
   ApplicationTrackerService,
 } from '../../services/application-tracker.service';
@@ -100,6 +103,18 @@ interface EvidenceMatch {
   label: string;
   explanation: string;
 }
+
+const MATCH_STOP_WORDS = new Set([
+  'about', 'after', 'again', 'against', 'also', 'among', 'and', 'any', 'are',
+  'because', 'been', 'before', 'being', 'between', 'both', 'build', 'but',
+  'can', 'company', 'could', 'did', 'does', 'doing', 'each', 'for', 'from',
+  'further', 'had', 'has', 'have', 'having', 'here', 'how', 'into', 'its',
+  'more', 'most', 'our', 'out', 'over', 'own', 'role', 'same', 'should',
+  'such', 'team', 'than', 'that', 'the', 'their', 'them', 'then', 'there', 'these',
+  'they', 'this', 'those', 'through', 'under', 'use', 'used', 'using', 'very',
+  'was', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'will',
+  'with', 'work', 'would', 'you', 'your',
+]);
 
 @Component({
   selector: 'app-job-results',
@@ -235,6 +250,8 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   uploadingDocuments = signal<Record<string, 'CV' | 'COVER_LETTER' | undefined>>({});
   updatingApplicationStatuses = signal<Record<string, StatusUpdateTarget | undefined>>({});
   creatingApplicationIds = signal<Set<string>>(new Set());
+  loadingJobDescriptionIds = signal<Set<string>>(new Set());
+  jobDescriptionErrors = signal<Record<string, string | undefined>>({});
   evidenceSelectionJob = signal<Job | null>(null);
   evidenceEntries = signal<EvidenceEntry[]>([]);
   evidenceLoading = signal(false);
@@ -450,7 +467,10 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       return null;
     }
 
-    return job;
+    return {
+      ...job,
+      description: providerPlainText(job.description),
+    };
   }
 
   search(): void {
@@ -471,6 +491,42 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       this.selectedPublisher.set('All Job Sites');
       this.filtersOpen.set(false);
     }
+  }
+
+  loadFullJobDescription(job: Job): void {
+    const jobId = this.jobStateKey(job);
+    if (!jobId || this.loadingJobDescriptionIds().has(jobId)) return;
+    const provider = job.primarySource?.trim() || job.provider?.trim();
+    const externalJobId = job.externalJobId?.trim();
+    if (!provider || !externalJobId) {
+      this.jobDescriptionErrors.update(errors => ({
+        ...errors,
+        [jobId]: 'The provider did not supply a reference for loading the complete advert.',
+      }));
+      return;
+    }
+
+    this.loadingJobDescriptionIds.update(ids => new Set(ids).add(jobId));
+    this.jobDescriptionErrors.update(errors => ({...errors, [jobId]: undefined}));
+    this.jobService.getJobDetails(provider, externalJobId)
+      .pipe(finalize(() => this.loadingJobDescriptionIds.update(ids => {
+        const next = new Set(ids);
+        next.delete(jobId);
+        return next;
+      })))
+      .subscribe({
+        next: details => {
+          this.updateJobLocally(jobId, {
+            ...details,
+            id: job.id,
+            canonicalJobId: job.canonicalJobId,
+          });
+        },
+        error: () => this.jobDescriptionErrors.update(errors => ({
+          ...errors,
+          [jobId]: 'The complete provider advert could not be loaded. Please try again.',
+        })),
+      });
   }
 
   private synchroniseSearchContext(): boolean {
@@ -1128,13 +1184,27 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.persistEvidenceDraft();
   }
 
-  moveEvidence(
-    purpose: EvidencePurpose,
-    entryId: string,
-    direction: -1 | 1,
-  ): void {
+  allEvidenceSelected(purpose: EvidencePurpose): boolean {
+    const eligibleIds = this.eligibleEvidence().map(entry => entry.entryId);
+    const selectedIds = purpose === 'CV' ? this.cvEvidenceIds() : this.coverLetterEvidenceIds();
+    return eligibleIds.length > 0
+      && eligibleIds.every(entryId => selectedIds.includes(entryId));
+  }
+
+  toggleAllEvidence(purpose: EvidencePurpose): void {
     const selected = purpose === 'CV' ? this.cvEvidenceIds : this.coverLetterEvidenceIds;
-    selected.update(ids => this.move(ids, entryId, direction));
+    const sections = purpose === 'CV' ? this.cvSectionOrder : this.coverLetterSectionOrder;
+    if (this.allEvidenceSelected(purpose)) {
+      selected.set([]);
+      sections.set([]);
+      this.persistEvidenceDraft();
+      return;
+    }
+
+    const entries = this.rankedEligibleEvidence();
+    selected.set(entries.map(entry => entry.entryId));
+    sections.set(Array.from(new Set(entries.map(entry =>
+      entry.category as unknown as EvidenceSection))));
     this.persistEvidenceDraft();
   }
 
@@ -1158,13 +1228,10 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   }
 
   private relevanceTerms(value: string): Set<string> {
-    const ignored = new Set([
-      'about', 'after', 'also', 'been', 'being', 'build', 'company', 'could',
-      'from', 'have', 'into', 'more', 'role', 'that', 'their', 'there', 'these',
-      'they', 'this', 'using', 'will', 'with', 'work', 'your',
-    ]);
     return new Set((value.toLowerCase().match(/[a-z0-9+#.]{3,}/g) ?? [])
-      .filter(term => !ignored.has(term)));
+      .map(term => term.replace(/^\.+|\.+$/g, ''))
+      .filter(Boolean)
+      .filter(term => !MATCH_STOP_WORDS.has(term)));
   }
 
   private matchLabel(score: number, reasons: string[]): EvidenceMatch {

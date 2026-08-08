@@ -37,6 +37,29 @@ describe('JobService', () => {
     );
   });
 
+  it('returns provider advert HTML as readable plain text', () => {
+    const getJobDetails = vi.fn(() => of({
+      externalJobId: 'reed-42',
+      description: '<p>Build Java APIs &amp; services.</p><ul><li>AWS</li></ul>',
+      descriptionCompleteness: 'FULL',
+    }));
+    TestBed.configureTestingModule({
+      providers: [
+        JobService,
+        {provide: GeneratedJobSearchService, useValue: {getJobDetails}},
+        {provide: BrowserSessionService, useValue: {ensureCsrf: vi.fn()}},
+        {provide: LocationService, useValue: {getByPostcode: vi.fn()}},
+      ],
+    });
+
+    let description: string | undefined;
+    TestBed.inject(JobService)
+      .getJobDetails('REED', 'reed-42')
+      .subscribe(job => description = job.description);
+
+    expect(description).toBe('Build Java APIs & services.\n\n• AWS');
+  });
+
   it('bootstraps CSRF and sends only the canonical request body', () => {
     const searchJobs = vi.fn((request: JobSearchRequest) => {
       void request;

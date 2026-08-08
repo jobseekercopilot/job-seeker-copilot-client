@@ -1,10 +1,23 @@
 import {
   approvedExternalUrl,
   logMalformedProviderResult,
+  providerPlainText,
   sanitiseProviderLinksJson,
 } from './provider-content-policy';
 
 describe('provider content URL policy', () => {
+  it('turns provider advert HTML and entities into readable inert text', () => {
+    expect(providerPlainText(
+      '<p>Build APIs &amp; services.</p><ul><li>Java</li><li>AWS &#38; SQL</li></ul>',
+    )).toBe('Build APIs & services.\n\n• Java\n• AWS & SQL');
+  });
+
+  it('removes active element content, including encoded markup', () => {
+    expect(providerPlainText(
+      '&lt;p&gt;Safe role&lt;/p&gt;&lt;script&gt;alert(1)&lt;/script&gt;',
+    )).toBe('Safe role');
+  });
+
   it.each([
     'https://jobs.example.test/listing/123?source=search',
     'http://jobs.example.test/listing/123',

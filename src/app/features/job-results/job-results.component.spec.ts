@@ -732,7 +732,7 @@ describe('JobResultsComponent', () => {
     expect(fixture.componentInstance.jobs()).toHaveLength(11);
   });
 
-  it('requires separate explicit evidence selections and preserves claimant order', () => {
+  it('requires separate explicit evidence selections and preserves section ordering', () => {
     evidenceEntries = [
       evidenceEntry(
         '50000000-0000-4000-8000-000000000001',
@@ -768,7 +768,6 @@ describe('JobResultsComponent', () => {
     const [project, volunteering] = fixture.componentInstance.eligibleEvidence();
     fixture.componentInstance.toggleEvidence('CV', project);
     fixture.componentInstance.toggleEvidence('CV', volunteering);
-    fixture.componentInstance.moveEvidence('CV', volunteering.entryId, -1);
     fixture.componentInstance.moveEvidenceSection(
       'CV',
       DocumentEvidenceSelectionSectionOrderEnum.Volunteering,
@@ -788,7 +787,7 @@ describe('JobResultsComponent', () => {
       }),
       {
         cv: {
-          entryIds: [volunteering.entryId, project.entryId],
+          entryIds: [project.entryId, volunteering.entryId],
           sectionOrder: ['VOLUNTEERING', 'PROJECT'],
         },
         coverLetter: {
@@ -797,6 +796,31 @@ describe('JobResultsComponent', () => {
         },
       },
     );
+  });
+
+  it('selects or clears every eligible entry independently for each document', () => {
+    evidenceEntries = [
+      evidenceEntry('50000000-0000-4000-8000-000000000001', 'PROJECT', 'Portfolio', 2),
+      evidenceEntry('50000000-0000-4000-8000-000000000002', 'EMPLOYMENT', 'Developer', 3),
+      evidenceEntry('50000000-0000-4000-8000-000000000003', 'ACHIEVEMENT', 'Draft award', 1, 'DRAFT'),
+    ];
+    const fixture = createFixture();
+
+    fixture.componentInstance.openEvidenceSelection(
+      fixture.componentInstance.paginatedJobs()[0],
+    );
+    fixture.componentInstance.toggleAllEvidence('CV');
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.cvEvidenceIds()).toHaveLength(2);
+    expect(fixture.componentInstance.coverLetterEvidenceIds()).toEqual([]);
+    expect(fixture.componentInstance.cvSectionOrder()).toEqual(['EMPLOYMENT', 'PROJECT']);
+    expect(fixture.nativeElement.textContent).toContain('Clear all');
+    expect(fixture.nativeElement.textContent).not.toContain('Experience and achievement order');
+
+    fixture.componentInstance.toggleAllEvidence('CV');
+    expect(fixture.componentInstance.cvEvidenceIds()).toEqual([]);
+    expect(fixture.componentInstance.cvSectionOrder()).toEqual([]);
   });
 
   it('flags a likely provider preview and requires confirmation of the exact advert text', () => {
@@ -887,6 +911,29 @@ describe('JobResultsComponent', () => {
     );
   });
 
+  it('hydrates a preview card from Read full advert without opening generation', () => {
+    const fixture = createFixture();
+    const selectedJob: Job = {
+      ...fixture.componentInstance.paginatedJobs()[0],
+      primarySource: 'REED',
+      externalJobId: 'reed-42',
+      descriptionCompleteness: JobDescriptionCompletenessEnum.Preview,
+    };
+    jobService.getJobDetails.mockReturnValueOnce(of({
+      ...selectedJob,
+      description: 'Complete provider advert with every responsibility.',
+      descriptionCompleteness: JobDescriptionCompletenessEnum.Full,
+    }));
+
+    fixture.componentInstance.loadFullJobDescription(selectedJob);
+    fixture.detectChanges();
+
+    expect(jobService.getJobDetails).toHaveBeenCalledWith('REED', 'reed-42');
+    expect(fixture.componentInstance.paginatedJobs()[0].description)
+      .toBe('Complete provider advert with every responsibility.');
+    expect(fixture.componentInstance.evidenceSelectionJob()).toBeNull();
+  });
+
   it('ranks confirmed evidence against the reviewed advert without selecting it automatically', () => {
     const general = evidenceEntry(
       '50000000-0000-4000-8000-000000000001',
@@ -919,6 +966,30 @@ describe('JobResultsComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Matched: Java, Spring Boot');
     expect(fixture.componentInstance.cvEvidenceIds()).toEqual([]);
     expect(fixture.componentInstance.coverLetterEvidenceIds()).toEqual([]);
+  });
+
+  it('does not present common joining words as advert-match evidence', () => {
+    const evidence = evidenceEntry(
+      '50000000-0000-4000-8000-000000000001',
+      'VOLUNTEERING',
+      'Community support',
+      1,
+    );
+    evidence.revisions[0].description = 'The role and our work are for you with the team.';
+    evidenceEntries = [evidence];
+    const fixture = createFixture();
+    const selectedJob = {
+      ...fixture.componentInstance.paginatedJobs()[0],
+      description: 'The role and our work are for you with the team. '.repeat(15),
+    };
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+
+    expect(fixture.componentInstance.evidenceMatch(evidence)).toEqual({
+      score: 0,
+      label: 'No obvious keyword match',
+      explanation: 'Review manually; no distinctive advert terms matched.',
+    });
   });
 
   it('freezes recruiter, unnamed employer and named-contact context with the confirmed advert', () => {

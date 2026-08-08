@@ -135,6 +135,15 @@
   outline: none;
 }
 
+.description-toggle:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.description-load-error {
+  color: #b91c1c;
+}
+
 .source-badge,
 .status-badge {
   align-items: center;

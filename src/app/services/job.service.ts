@@ -10,6 +10,7 @@ import {
 } from '../api/job-finder';
 import { LocationService } from './location.service';
 import { BrowserSessionService } from './browser-session.service';
+import {providerPlainText} from '../../shared/provider-content-policy';
 
 const SEARCH_EMPLOYMENT_TYPES = new Set([
   'FULL_TIME',
@@ -163,7 +164,10 @@ export class JobService {
       'body',
       false,
       {transferCache: false},
-    );
+    ).pipe(map(job => ({
+      ...job,
+      description: providerPlainText(job.description),
+    })));
   }
 
   private resolveHomeLocation(body: JobSearchRequest): Observable<JobSearchRequest> {

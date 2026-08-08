@@ -57,6 +57,8 @@ export class JobCardComponent {
   applicationTrackingAvailable = input(false);
   applicationToolsAvailable = input(false);
   generationPanelActive = input(false);
+  descriptionLoading = input(false);
+  descriptionLoadError = input<string | null>(null);
   trackApplication = output<Job>();
   generateDocuments = output<Job>();
   cancelGeneration = output<Job>();
@@ -65,6 +67,7 @@ export class JobCardComponent {
   uploadReplacement = output<DocumentUploadRequest>();
   dismissGenerationError = output<string>();
   withdrawGeneratedApplication = output<boolean>();
+  requestFullDescription = output<Job>();
 
   expanded = signal(false);
   descriptionExpanded = signal(false);
@@ -153,6 +156,31 @@ export class JobCardComponent {
   toggleDescription(): void {
     if (!this.hasExpandableDescription()) return;
     this.descriptionExpanded.update(expanded => !expanded);
+  }
+
+  canLoadFullDescription(): boolean {
+    const job = this.job();
+    return job.descriptionCompleteness !== 'FULL'
+      && Boolean(job.externalJobId?.trim())
+      && Boolean(job.primarySource?.trim() || job.provider?.trim());
+  }
+
+  requestDescriptionAction(): void {
+    if (this.descriptionLoading()) return;
+    if (this.canLoadFullDescription()) {
+      this.descriptionExpanded.set(true);
+      this.requestFullDescription.emit(this.job());
+      return;
+    }
+    this.toggleDescription();
+  }
+
+  descriptionActionLabel(): string {
+    if (this.descriptionLoading()) return 'Loading full advert…';
+    if (this.canLoadFullDescription()) {
+      return this.descriptionLoadError() ? 'Retry full advert' : 'Read full advert';
+    }
+    return this.descriptionExpanded() ? 'Show less' : 'Read more';
   }
 
   requestTrackApplication(): void {
