@@ -185,11 +185,11 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
   assert.equal(
     gateway.sourceCommit,
-    '89ce3c78635c64d7ebc4e9bc5913ea2a626198da',
+    '9e381a95fe36e6ca40c839a42c5ae89dcbaa8b4e',
   );
   assert.equal(
     gateway.sha256,
-    'b97b37634d8c37fb959b521b1a29f7d9db247a35227fdfc986c10723b2fac829',
+    'b21967fbf1adad4029b732bc264c81fc931f9c81b0e20aa9562069f60d3ccec0',
   );
   assert.equal(
     gateway.path,
@@ -206,6 +206,7 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
   );
   assert.deepEqual(gateway.requiredPaths, [
     '/api/jobs/search',
+    '/api/jobs/provider/{provider}/{externalJobId}',
     '/api/jobs/saved',
     '/api/jobs/saved/{savedJobId}',
     '/api/jobs/applications',

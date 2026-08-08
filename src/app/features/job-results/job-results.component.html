@@ -249,15 +249,31 @@
                 <div class="job-advert-review-header">
                   <div>
                     <h4 [id]="evidenceSelectorDomId(selectionJob, 'advert-title')">
-                      Confirm the complete job advert
+                      Review the job advert
                     </h4>
-                    <p>This exact text will be frozen with the job and used to tailor both documents.</p>
+                    <p>
+                      The provider advert is loaded automatically where available. You can correct or add
+                      details before this exact text is frozen and used to tailor both documents.
+                    </p>
                   </div>
-                  <span>{{ generationJobDescription().length }} / 12,000</span>
+                  <span>
+                    {{ generationJobDescriptionStatus() }} ·
+                    {{ generationJobDescription().length }} / 12,000
+                  </span>
                 </div>
-                @if (generationJobDescriptionLooksIncomplete()) {
+                @if (generationJobDetailsLoading()) {
+                  <p class="selector-loading" role="status">
+                    Loading the complete advert from the provider…
+                  </p>
+                } @else if (generationJobDetailsError(); as detailsError) {
+                  <div class="selector-error selector-load-error" role="alert">
+                    <p>{{ detailsError }}</p>
+                    <button type="button" (click)="retryJobDetails()">Retry provider advert</button>
+                  </div>
+                }
+                @if (!generationJobDetailsLoading() && generationJobDescriptionLooksIncomplete()) {
                   <p class="selector-warning" role="alert">
-                    This looks like a shortened search-result preview. Paste the complete responsibilities,
+                    This looks like a shortened search-result preview. Add the complete responsibilities,
                     requirements and application details before continuing.
                   </p>
                 }
@@ -300,13 +316,19 @@
                     <small>A named contact produces “Dear Name” and “Yours sincerely”.</small>
                   </label>
                 </div>
-                <label class="job-advert-confirmation">
-                  <input type="checkbox"
-                         [checked]="generationJobDescriptionConfirmed()"
-                         [disabled]="generationJobDescription().trim().length < 200"
-                         (change)="updateGenerationJobDescriptionConfirmation($event)" />
-                  <span>I have reviewed this and confirm it is the complete advert to use for generation.</span>
-                </label>
+                @if (generationJobDescriptionNeedsConfirmation()) {
+                  <label class="job-advert-confirmation">
+                    <input type="checkbox"
+                           [checked]="generationJobDescriptionConfirmed()"
+                           [disabled]="generationJobDescription().trim().length < 200"
+                           (change)="updateGenerationJobDescriptionConfirmation($event)" />
+                    <span>I have reviewed this and confirm it is the complete advert to use for generation.</span>
+                  </label>
+                } @else {
+                  <p class="selector-note">
+                    This is the provider's complete advert. Choosing Generate below confirms it for this request.
+                  </p>
+                }
               </section>
 
               @if (evidenceLoading()) {

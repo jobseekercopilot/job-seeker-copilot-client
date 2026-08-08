@@ -119,6 +119,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   private evidenceLibrary = inject(EvidenceLibraryService);
   private searchRequestSequence = 0;
   private evidenceRequestSequence = 0;
+  private jobDetailsRequestSequence = 0;
   private searchContextFingerprint = '';
   private readonly activeGenerationIds = new Set<string>();
   private readonly resumedGenerationIds = new Set<string>();
@@ -239,8 +240,11 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   evidenceLoading = signal(false);
   evidenceSelectionError = signal<string | null>(null);
   evidenceLoadError = signal<string | null>(null);
+  generationJobDetailsLoading = signal(false);
+  generationJobDetailsError = signal<string | null>(null);
   generationJobDescription = signal('');
   generationJobDescriptionConfirmed = signal(false);
+  generationJobDescriptionEdited = signal(false);
   generationAdvertiserName = signal('');
   generationAdvertiserType = signal<GenerationAdvertiserType>('UNKNOWN');
   generationHiringOrganisationName = signal('');
@@ -310,14 +314,38 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   readonly ineligibleEvidenceCount = computed(() =>
     this.evidenceEntries().length - this.eligibleEvidence().length);
   readonly generationJobDescriptionLooksIncomplete = computed(() => {
+    if (!this.generationJobDescriptionEdited()
+        && this.evidenceSelectionJob()?.descriptionCompleteness
+          === JobDescriptionCompletenessEnum.Full) {
+      return false;
+    }
     const description = this.generationJobDescription().trim();
     return description.length < 600
       || /(?:\.\.\.|…|\bTHE\s+(?:ROL|ROLE)\s*)$/i.test(description);
   });
+  readonly generationJobDescriptionNeedsConfirmation = computed(() =>
+    this.generationJobDescriptionEdited()
+    || this.evidenceSelectionJob()?.descriptionCompleteness
+      !== JobDescriptionCompletenessEnum.Full);
+  readonly generationJobDescriptionStatus = computed(() => {
+    if (this.generationJobDescriptionEdited()) return 'Edited by you';
+    switch (this.evidenceSelectionJob()?.descriptionCompleteness) {
+      case JobDescriptionCompletenessEnum.Full:
+        return 'Complete provider advert';
+      case JobDescriptionCompletenessEnum.Preview:
+        return 'Provider preview';
+      case JobDescriptionCompletenessEnum.UserConfirmed:
+        return 'Confirmed by you';
+      default:
+        return 'Completeness unknown';
+    }
+  });
   readonly canGenerateFromSelection = computed(() =>
     !this.evidenceLoading()
     && !this.evidenceLoadError()
-    && this.generationJobDescriptionConfirmed()
+    && !this.generationJobDetailsLoading()
+    && (!this.generationJobDescriptionNeedsConfirmation()
+      || this.generationJobDescriptionConfirmed())
     && this.generationJobDescription().trim().length >= 200
     && this.generationAdvertiserName().trim().length > 0
     && this.generationAdvertiserType() !== 'UNKNOWN'
@@ -900,7 +928,10 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.persistEvidenceDraft();
     this.evidenceSelectionJob.set(job);
     this.generationJobDescription.set(job.description?.trim() ?? '');
-    this.generationJobDescriptionConfirmed.set(false);
+    this.generationJobDescriptionEdited.set(false);
+    this.generationJobDescriptionConfirmed.set(
+      job.descriptionCompleteness === JobDescriptionCompletenessEnum.Full,
+    );
     const generationJob = job as GenerationJob;
     const advertiserName = generationJob.advertiserName?.trim()
       || job.companyName?.trim()
@@ -924,7 +955,62 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.evidenceEntries.set([]);
     this.evidenceSelectionError.set(null);
     this.evidenceLoadError.set(null);
+    this.generationJobDetailsError.set(null);
     this.loadEvidenceForSelection(jobKey);
+    this.loadJobDetailsForSelection(job, jobKey);
+  }
+
+  retryJobDetails(): void {
+    const job = this.evidenceSelectionJob();
+    const jobKey = job ? this.jobStateKey(job) : '';
+    if (!job || !jobKey || this.generationJobDetailsLoading()) return;
+    this.loadJobDetailsForSelection(job, jobKey, true);
+  }
+
+  private loadJobDetailsForSelection(
+    job: Job,
+    jobKey: string,
+    force = false,
+  ): void {
+    if (!force
+        && job.descriptionCompleteness === JobDescriptionCompletenessEnum.Full) {
+      this.generationJobDetailsLoading.set(false);
+      return;
+    }
+    const provider = job.primarySource?.trim() || job.provider?.trim();
+    const externalJobId = job.externalJobId?.trim();
+    if (!provider || !externalJobId) {
+      this.generationJobDetailsLoading.set(false);
+      this.generationJobDetailsError.set(
+        'This result has no provider reference, so its advert could not be refreshed automatically.',
+      );
+      return;
+    }
+    const requestSequence = ++this.jobDetailsRequestSequence;
+    this.generationJobDetailsLoading.set(true);
+    this.generationJobDetailsError.set(null);
+    this.jobService.getJobDetails(provider, externalJobId).subscribe({
+      next: details => {
+        if (!this.isCurrentJobDetailsRequest(jobKey, requestSequence)) return;
+        const hydratedJob: Job = {...job, ...details};
+        this.evidenceSelectionJob.set(hydratedJob);
+        if (!this.generationJobDescriptionEdited()) {
+          this.generationJobDescription.set(details.description?.trim() ?? '');
+          this.generationJobDescriptionConfirmed.set(
+            details.descriptionCompleteness
+              === JobDescriptionCompletenessEnum.Full,
+          );
+        }
+        this.generationJobDetailsLoading.set(false);
+      },
+      error: () => {
+        if (!this.isCurrentJobDetailsRequest(jobKey, requestSequence)) return;
+        this.generationJobDetailsLoading.set(false);
+        this.generationJobDetailsError.set(
+          'The provider advert could not be refreshed automatically. You can retry or review and complete the editable text below.',
+        );
+      },
+    });
   }
 
   retryEvidenceSelection(): void {
@@ -958,13 +1044,17 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   closeEvidenceSelection(): void {
     this.persistEvidenceDraft();
     this.evidenceRequestSequence++;
+    this.jobDetailsRequestSequence++;
     this.evidenceSelectionJob.set(null);
     this.evidenceEntries.set([]);
     this.evidenceLoading.set(false);
     this.evidenceSelectionError.set(null);
     this.evidenceLoadError.set(null);
+    this.generationJobDetailsLoading.set(false);
+    this.generationJobDetailsError.set(null);
     this.generationJobDescription.set('');
     this.generationJobDescriptionConfirmed.set(false);
+    this.generationJobDescriptionEdited.set(false);
     this.resetGenerationJobParties();
   }
 
@@ -973,6 +1063,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       ? event.target.value
       : '';
     this.generationJobDescription.set(value.slice(0, 12_000));
+    this.generationJobDescriptionEdited.set(true);
     this.generationJobDescriptionConfirmed.set(false);
     this.evidenceSelectionError.set(null);
   }
@@ -1133,17 +1224,25 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   confirmEvidenceGeneration(): void {
     const job = this.evidenceSelectionJob();
     if (!job || !this.canGenerateFromSelection()) {
+      const confirmationRequired =
+        this.generationJobDescriptionNeedsConfirmation()
+        && !this.generationJobDescriptionConfirmed();
       this.evidenceSelectionError.set(
-        !this.generationJobDescriptionConfirmed()
-          ? 'Review and confirm the complete job advert before generating.'
-          : 'Choose at least one entry confirmed by you for both documents.',
+        this.generationJobDetailsLoading()
+          ? 'Wait for the complete provider advert to finish loading.'
+          : confirmationRequired
+            ? 'Review and confirm the complete job advert before generating.'
+            : 'Choose at least one entry confirmed by you for both documents.',
       );
       return;
     }
     const generationJob: GenerationJob = {
       ...job,
       description: this.generationJobDescription().trim(),
-      descriptionCompleteness: JobDescriptionCompletenessEnum.UserConfirmed,
+      descriptionCompleteness: this.generationJobDescriptionEdited()
+        || job.descriptionCompleteness !== JobDescriptionCompletenessEnum.Full
+        ? JobDescriptionCompletenessEnum.UserConfirmed
+        : JobDescriptionCompletenessEnum.Full,
       advertiserName: this.generationAdvertiserName().trim(),
       advertiserType: this.generationAdvertiserType() as JobAdvertiserTypeEnum,
       hiringOrganisationName: this.generationHiringOrganisationName().trim() || undefined,
@@ -1161,13 +1260,17 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     };
     this.persistEvidenceDraft();
     this.evidenceRequestSequence++;
+    this.jobDetailsRequestSequence++;
     this.evidenceSelectionJob.set(null);
     this.evidenceEntries.set([]);
     this.evidenceLoading.set(false);
     this.evidenceSelectionError.set(null);
     this.evidenceLoadError.set(null);
+    this.generationJobDetailsLoading.set(false);
+    this.generationJobDetailsError.set(null);
     this.generationJobDescription.set('');
     this.generationJobDescriptionConfirmed.set(false);
+    this.generationJobDescriptionEdited.set(false);
     this.resetGenerationJobParties();
     this.generateDocuments(generationJob, evidence);
   }
@@ -1460,6 +1563,16 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   private isCurrentEvidenceRequest(jobKey: string, requestSequence: number): boolean {
     const active = this.evidenceSelectionJob();
     return this.evidenceRequestSequence === requestSequence
+      && Boolean(active)
+      && this.jobStateKey(active as Job) === jobKey;
+  }
+
+  private isCurrentJobDetailsRequest(
+    jobKey: string,
+    requestSequence: number,
+  ): boolean {
+    const active = this.evidenceSelectionJob();
+    return this.jobDetailsRequestSequence === requestSequence
       && Boolean(active)
       && this.jobStateKey(active as Job) === jobKey;
   }
