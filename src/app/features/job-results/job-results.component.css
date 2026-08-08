@@ -415,6 +415,56 @@
   display: block;
 }
 
+.evidence-match {
+  margin-top: 0.2rem;
+}
+
+.evidence-match-strong {
+  color: #166534 !important;
+  font-weight: 700;
+}
+
+.job-party-grid {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0.75rem 0;
+}
+
+.job-party-grid label,
+.job-party-grid span,
+.job-party-grid small {
+  display: block;
+}
+
+.job-party-grid span {
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.job-party-grid input,
+.job-party-grid select {
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.45rem;
+  box-sizing: border-box;
+  padding: 0.55rem;
+  width: 100%;
+}
+
+.job-party-grid small {
+  color: var(--text-secondary);
+  font-size: 0.65rem;
+  margin-top: 0.2rem;
+}
+
+@media (max-width: 720px) {
+  .job-party-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .evidence-choice strong {
   color: var(--text-primary);
   font-size: 0.78rem;
@@ -501,6 +551,72 @@
 .order-actions button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.job-advert-review {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+}
+
+.job-advert-review-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.job-advert-review-header h4,
+.job-advert-review-header p {
+  margin: 0;
+}
+
+.job-advert-review-header span {
+  flex: 0 0 auto;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.job-advert-review textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 12rem;
+  padding: 0.75rem;
+  border: 1px solid #94a3b8;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.job-advert-review textarea:focus-visible {
+  outline: 3px solid rgb(37 99 235 / 25%);
+  border-color: #2563eb;
+}
+
+.selector-warning {
+  margin: 0;
+  padding: 0.75rem;
+  border-left: 4px solid #d97706;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.job-advert-confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  font-weight: 600;
+}
+
+.job-advert-confirmation input {
+  margin-top: 0.2rem;
 }
 
 @media (min-width: 900px) {

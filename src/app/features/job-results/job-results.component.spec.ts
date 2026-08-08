@@ -766,13 +766,17 @@ describe('JobResultsComponent', () => {
       -1,
     );
     fixture.componentInstance.toggleEvidence('COVER_LETTER', project);
+    confirmGenerationAdvert(fixture);
     fixture.detectChanges();
 
     expect(fixture.componentInstance.canGenerateFromSelection()).toBe(true);
     fixture.componentInstance.confirmEvidenceGeneration();
 
     expect(documentGenerationService.generate).toHaveBeenCalledWith(
-      selectedJob,
+      expect.objectContaining({
+        id: selectedJob.id,
+        description: expect.stringContaining('Build and launch production software'),
+      }),
       {
         cv: {
           entryIds: [volunteering.entryId, project.entryId],
@@ -783,6 +787,105 @@ describe('JobResultsComponent', () => {
           sectionOrder: ['PROJECT'],
         },
       },
+    );
+  });
+
+  it('flags a likely provider preview and requires confirmation of the exact advert text', () => {
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.generationJobDescription()).toBe('Useful work.');
+    expect(fixture.componentInstance.generationJobDescriptionLooksIncomplete()).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain(
+      'This looks like a shortened search-result preview.',
+    );
+
+    const textarea: HTMLTextAreaElement = fixture.debugElement
+      .query(By.css('.job-advert-review textarea')).nativeElement;
+    textarea.value = `${'Detailed responsibility and requirement. '.repeat(20)}Apply to the named contact.`;
+    textarea.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.generationJobDescriptionLooksIncomplete()).toBe(false);
+    expect(fixture.componentInstance.generationJobDescriptionConfirmed()).toBe(false);
+
+    const confirmation: HTMLInputElement = fixture.debugElement
+      .query(By.css('.job-advert-confirmation input')).nativeElement;
+    confirmation.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.generationJobDescriptionConfirmed()).toBe(true);
+  });
+
+  it('ranks confirmed evidence against the reviewed advert without selecting it automatically', () => {
+    const general = evidenceEntry(
+      '50000000-0000-4000-8000-000000000001',
+      'VOLUNTEERING',
+      'Community support',
+      1,
+    );
+    const software = evidenceEntry(
+      '50000000-0000-4000-8000-000000000002',
+      'PROJECT',
+      'Production API project',
+      2,
+    );
+    software.revisions[0].demonstratedSkills = ['Java', 'Spring Boot'];
+    software.revisions[0].description = 'Built and tested REST APIs with Docker.';
+    evidenceEntries = [general, software];
+    const fixture = createFixture();
+    const selectedJob = {
+      ...fixture.componentInstance.paginatedJobs()[0],
+      description: `${'Build Java and Spring Boot REST APIs with Docker for production. '.repeat(12)}`,
+    };
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.rankedEligibleEvidence()[0].entryId)
+      .toBe(software.entryId);
+    expect(fixture.componentInstance.evidenceMatch(software).label)
+      .toBe('Strong advert match');
+    expect(fixture.nativeElement.textContent).toContain('Matched: Java, Spring Boot');
+    expect(fixture.componentInstance.cvEvidenceIds()).toEqual([]);
+    expect(fixture.componentInstance.coverLetterEvidenceIds()).toEqual([]);
+  });
+
+  it('freezes recruiter, unnamed employer and named-contact context with the confirmed advert', () => {
+    evidenceEntries = [evidenceEntry(
+      '50000000-0000-4000-8000-000000000001',
+      'PROJECT',
+      'Job Seeker Copilot',
+      3,
+    )];
+    const fixture = createFixture();
+    const selectedJob = {
+      ...fixture.componentInstance.paginatedJobs()[0],
+      company: 'Harnham - Data & Analytics Recruitment',
+      companyName: 'Harnham - Data & Analytics Recruitment',
+      description: 'Junior Software Engineer full advert. '.repeat(20),
+    };
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    const evidence = fixture.componentInstance.eligibleEvidence()[0];
+    fixture.componentInstance.toggleEvidence('CV', evidence);
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', evidence);
+    fixture.componentInstance.generationApplicationContactName.set('Molly Bird');
+    confirmGenerationAdvert(fixture);
+    fixture.componentInstance.confirmEvidenceGeneration();
+
+    expect(documentGenerationService.generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        advertiserName: 'Harnham - Data & Analytics Recruitment',
+        advertiserType: 'RECRUITER',
+        hiringOrganisationName: undefined,
+        applicationContactName: 'Molly Bird',
+        descriptionCompleteness: 'USER_CONFIRMED',
+      }),
+      expect.any(Object),
     );
   });
 
@@ -945,6 +1048,7 @@ describe('JobResultsComponent', () => {
     const [project] = fixture.componentInstance.eligibleEvidence();
     fixture.componentInstance.toggleEvidence('CV', project);
     fixture.componentInstance.toggleEvidence('COVER_LETTER', project);
+    confirmGenerationAdvert(fixture);
 
     expect(() => fixture.componentInstance.confirmEvidenceGeneration()).not.toThrow();
     expect(fixture.componentInstance.generatingJobIds().has(selectedJob.id!)).toBe(false);
@@ -952,6 +1056,7 @@ describe('JobResultsComponent', () => {
       .toBe('Generation failed. Please try again.');
 
     fixture.componentInstance.openEvidenceSelection(selectedJob);
+    confirmGenerationAdvert(fixture);
 
     expect(fixture.componentInstance.cvEvidenceIds()).toEqual([project.entryId]);
     expect(fixture.componentInstance.coverLetterEvidenceIds()).toEqual([project.entryId]);
@@ -1053,6 +1158,7 @@ describe('JobResultsComponent', () => {
     const [project] = fixture.componentInstance.eligibleEvidence();
     fixture.componentInstance.toggleEvidence('CV', project);
     fixture.componentInstance.toggleEvidence('COVER_LETTER', project);
+    confirmGenerationAdvert(fixture);
     fixture.detectChanges();
     const generateButton: HTMLButtonElement = fixture.debugElement
       .query(By.css('.selector-generate'))
@@ -1136,6 +1242,8 @@ describe('JobResultsComponent', () => {
     const [project] = fixture.componentInstance.eligibleEvidence();
     fixture.componentInstance.toggleEvidence('CV', project);
     fixture.componentInstance.toggleEvidence('COVER_LETTER', project);
+    confirmGenerationAdvert(fixture);
+    expect(fixture.componentInstance.canGenerateFromSelection()).toBe(true);
     fixture.componentInstance.confirmEvidenceGeneration();
 
     queuedSearchResponses = [staleSearch];
@@ -1210,7 +1318,8 @@ describe('JobResultsComponent', () => {
 
     expect(fixture.componentInstance.cvEvidenceIds()).toEqual([evidenceId]);
     expect(fixture.componentInstance.coverLetterEvidenceIds()).toEqual([evidenceId]);
-    expect(fixture.componentInstance.canGenerateFromSelection()).toBe(true);
+    expect(fixture.componentInstance.canGenerateFromSelection()).toBe(false);
+    expect(fixture.nativeElement.textContent).toContain('Confirm the complete job advert');
   });
 
   it('cancels a restored generation, keeps its evidence draft and restores job-card actions', () => {
@@ -1414,6 +1523,8 @@ describe('JobResultsComponent', () => {
     const [project] = fixture.componentInstance.eligibleEvidence();
     fixture.componentInstance.toggleEvidence('CV', project);
     fixture.componentInstance.toggleEvidence('COVER_LETTER', project);
+    confirmGenerationAdvert(fixture);
+    expect(fixture.componentInstance.canGenerateFromSelection()).toBe(true);
     fixture.componentInstance.confirmEvidenceGeneration();
     fixture.detectChanges();
 
@@ -1437,6 +1548,16 @@ describe('JobResultsComponent', () => {
     fixture.componentRef.setInput('applicationTrackingAvailable', true);
     fixture.detectChanges();
     return fixture;
+  }
+
+  function confirmGenerationAdvert(
+    fixture: {componentInstance: JobResultsComponent},
+  ): void {
+    fixture.componentInstance.generationJobDescription.set(
+      `${'Build and launch production software with a collaborative product team. '.repeat(10)}`
+      + 'Required skills include supported technologies and clear problem solving.',
+    );
+    fixture.componentInstance.generationJobDescriptionConfirmed.set(true);
   }
 
   function clickButtonContaining(fixture: ReturnType<typeof createFixture>, text: string): void {
