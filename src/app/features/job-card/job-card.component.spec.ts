@@ -3,7 +3,11 @@ import { By } from '@angular/platform-browser';
 import { JobCardComponent } from './job-card.component';
 import { Job } from '../../models/job-search.model';
 import { DownloadFileResponse } from '../../api/document-generation-gateway';
-import {JobDescriptionCompletenessEnum} from '../../api/job-finder';
+import {
+  JobDescriptionCompletenessEnum,
+  JobSalaryPeriodCodeEnum,
+  JobSpecialistTypeEnum,
+} from '../../api/job-finder';
 import { GenerationDownloadsResponse } from '../../services/document-generation.service';
 
 describe('JobCardComponent', () => {
@@ -167,6 +171,46 @@ describe('JobCardComponent', () => {
     const fixture = createFixture({ job: { ...job, postedDate: 'not-a-date' } });
 
     expect(fixture.nativeElement.textContent).toContain('Posted date unavailable');
+  });
+
+  it('labels and explains an apprenticeship while preserving all advertised locations', () => {
+    const fixture = createFixture({
+      job: {
+        ...job,
+        specialistType: JobSpecialistTypeEnum.Apprenticeship,
+        locations: [
+          {displayName: 'Leeds, LS1 2AB'},
+          {displayName: 'Bradford, BD1 1AA'},
+        ],
+        salary: {minimum: 15000, currencyCode: 'GBP', periodCode: JobSalaryPeriodCodeEnum.Year},
+        apprenticeshipDetails: {
+          courseTitle: 'Software developer (level 4)',
+          apprenticeshipLevel: 'Higher',
+          trainingProvider: 'Example Training Provider',
+          duration: '18 months',
+          hoursPerWeek: 37.5,
+          startDate: '2026-10-01',
+          numberOfPositions: 2,
+        },
+      },
+    });
+
+    expect(fixture.debugElement.query(By.css('[data-testid="specialist-job-badge"]')).nativeElement.textContent)
+      .toContain('Apprenticeship');
+    expect(fixture.nativeElement.textContent).toContain('GBP 15,000 per year');
+
+    expandCard(fixture);
+    const details = fixture.debugElement.query(By.css('[data-testid="apprenticeship-details"]')).nativeElement;
+    expect(details.textContent).toContain('Software developer (level 4)');
+    expect(details.textContent).toContain('Example Training Provider');
+    expect(details.textContent).toContain('Leeds, LS1 2AB');
+    expect(details.textContent).toContain('Bradford, BD1 1AA');
+  });
+
+  it('labels an NHS specialist vacancy', () => {
+    const fixture = createFixture({job: {...job, specialistType: JobSpecialistTypeEnum.Nhs}});
+    expect(fixture.debugElement.query(By.css('[data-testid="specialist-job-badge"]')).nativeElement.textContent)
+      .toContain('NHS vacancy');
   });
 
   it('attributes Google Maps commute content in the same job metadata container', () => {

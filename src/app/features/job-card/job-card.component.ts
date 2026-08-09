@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, input, output, signal } from '@angu
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { Job } from '../../models/job-search.model';
-import { UpdateApplicationStatusRequest } from '../../api/job-finder';
+import {JobSpecialistTypeEnum, UpdateApplicationStatusRequest} from '../../api/job-finder';
 import { DownloadFileResponse } from '../../api/document-generation-gateway';
 import { GenerationDownloadsResponse } from '../../services/document-generation.service';
 import {approvedExternalUrl} from '../../../shared/provider-content-policy';
@@ -294,11 +294,38 @@ export class JobCardComponent {
     }
   }
 
-  formatSalary(salary: { min?: number; max?: number; currency?: string } | undefined | null): string {
-    if (!salary || typeof salary.min !== 'number' || typeof salary.max !== 'number') {
+  formatSalary(salary: Job['salary']): string {
+    if (!salary) {
       return 'Salary not specified';
     }
-    return `${salary.currency ?? 'GBP'} ${salary.min.toLocaleString()} - ${salary.max.toLocaleString()}`;
+    const minimum = salary.minimum ?? salary.rawMinimum ?? salary.min;
+    const maximum = salary.maximum ?? salary.rawMaximum ?? salary.max;
+    if (typeof minimum !== 'number' && typeof maximum !== 'number') return 'Salary not specified';
+    const currency = salary.currencyCode ?? salary.rawCurrency ?? salary.currency ?? 'GBP';
+    const period = (salary.periodCode ?? salary.rawPeriod ?? salary.period)?.toLowerCase();
+    const suffix = period && period !== 'unknown' ? ` per ${period.replace('annually', 'year')}` : '';
+    if (typeof minimum === 'number' && typeof maximum === 'number') {
+      return `${currency} ${minimum.toLocaleString()} - ${maximum.toLocaleString()}${suffix}`;
+    }
+    const amount = minimum ?? maximum!;
+    return `${currency} ${amount.toLocaleString()}${suffix}`;
+  }
+
+  specialistLabel(): string | null {
+    if (this.job().specialistType === JobSpecialistTypeEnum.Apprenticeship) return 'Apprenticeship';
+    if (this.job().specialistType === JobSpecialistTypeEnum.Nhs) return 'NHS vacancy';
+    return null;
+  }
+
+  isApprenticeship(): boolean {
+    return this.job().specialistType === JobSpecialistTypeEnum.Apprenticeship;
+  }
+
+  displayLocations(): string[] {
+    const values = (this.job().locations ?? [])
+      .map(location => location.displayName?.trim() || location.rawDisplayName?.trim())
+      .filter((value): value is string => Boolean(value));
+    return Array.from(new Set(values));
   }
 
   formatDate(dateString: string | undefined | null): string {

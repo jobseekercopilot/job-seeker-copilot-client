@@ -13,6 +13,9 @@
         <p class="job-company text-sm m-0 mt-0.5">{{ job().company ?? 'Unknown Company' }}</p>
       </button>
       <div class="flex-shrink-0 flex items-center gap-2">
+        @if (specialistLabel(); as label) {
+          <span class="specialist-badge" data-testid="specialist-job-badge">{{ label }}</span>
+        }
         @for (label of sourceLabels(); track label) {
           <span class="source-badge hidden sm:inline-flex">{{ label }}</span>
         } @empty {
@@ -153,6 +156,46 @@
           </p>
         }
       </div>
+      @if (isApprenticeship() && job().apprenticeshipDetails; as details) {
+        <section class="apprenticeship-details mt-4 rounded-lg p-4"
+                 data-testid="apprenticeship-details"
+                 aria-labelledby="apprenticeship-details-title">
+          <h4 id="apprenticeship-details-title" class="m-0">Apprenticeship details</h4>
+          <dl class="apprenticeship-facts mt-3 grid gap-3 sm:grid-cols-2">
+            @if (details.courseTitle) {
+              <div><dt>Training course</dt><dd>{{ details.courseTitle }}</dd></div>
+            }
+            @if (details.apprenticeshipLevel) {
+              <div><dt>Level</dt><dd>{{ details.apprenticeshipLevel }}</dd></div>
+            }
+            @if (details.trainingProvider) {
+              <div><dt>Training provider</dt><dd>{{ details.trainingProvider }}</dd></div>
+            }
+            @if (details.duration) {
+              <div><dt>Duration</dt><dd>{{ details.duration }}</dd></div>
+            }
+            @if (details.hoursPerWeek != null) {
+              <div><dt>Hours</dt><dd>{{ details.hoursPerWeek }} per week</dd></div>
+            }
+            @if (details.startDate) {
+              <div><dt>Expected start</dt><dd>{{ formatDate(details.startDate) }}</dd></div>
+            }
+            @if (details.numberOfPositions != null) {
+              <div><dt>Positions</dt><dd>{{ details.numberOfPositions }}</dd></div>
+            }
+          </dl>
+          @if (displayLocations().length > 1) {
+            <div class="mt-3">
+              <h5 class="m-0 text-xs font-semibold uppercase tracking-wide">Available locations</h5>
+              <ul class="mt-2 mb-0 pl-5 text-sm">
+                @for (location of displayLocations(); track location) {
+                  <li>{{ location }}</li>
+                }
+              </ul>
+            </div>
+          }
+        </section>
+      }
       <div class="mt-4">
         @if (sourceLabels().length > 1) {
           <div class="available-sources mb-3 flex flex-wrap items-center gap-2 text-xs">

@@ -145,6 +145,7 @@
 }
 
 .source-badge,
+.specialist-badge,
 .status-badge {
   align-items: center;
   border-radius: 6px;
@@ -212,6 +213,39 @@
 .source-badge {
   background: var(--color-soft-grey);
   color: var(--text-secondary);
+}
+
+.specialist-badge {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1e3a8a;
+}
+
+.apprenticeship-details {
+  background: #f8fafc;
+  border: 1px solid var(--border-subtle);
+}
+
+.apprenticeship-facts {
+  margin-bottom: 0;
+}
+
+.apprenticeship-facts div {
+  min-width: 0;
+}
+
+.apprenticeship-facts dt {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.apprenticeship-facts dd {
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  margin: 0.15rem 0 0;
+  overflow-wrap: anywhere;
 }
 
 .status-new {
