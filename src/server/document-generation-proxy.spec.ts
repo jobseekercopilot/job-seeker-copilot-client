@@ -1,5 +1,5 @@
 import express from 'express';
-import type {Server} from 'node:http';
+import {request as httpRequest, type Server} from 'node:http';
 import {
   type DocumentGenerationProxyConfig,
   registerDocumentGenerationRoutes,
@@ -1512,5 +1512,127 @@ describe('Document generation session boundary', () => {
 
     expect(response.status).toBe(502);
     expect(response.headers.get('content-disposition')).toBeNull();
+  });
+
+  it('streams one application-scoped upload with session identity, CSRF and idempotency', async () => {
+    const streamedChunks: Buffer[] = [];
+    const upstream = vi.fn<FetchLike>(async (_input, init) => {
+      for await (const chunk of init?.body as unknown as AsyncIterable<Uint8Array>) {
+        streamedChunks.push(Buffer.from(chunk));
+      }
+      return Response.json({
+        operationId: OPERATION_ID,
+        applicationId: APPLICATION_ID,
+        jobId: 'canonical-job-1',
+        documentType: 'CV',
+        fileType: 'DOCX',
+        state: 'COMPLETED',
+        documentStoreState: 'READY',
+        documentId: DOCUMENT_ID,
+        applicationVersion: 9,
+        createdAt: '2026-08-09T10:00:00Z',
+        updatedAt: '2026-08-09T10:00:01Z',
+      });
+    });
+    const origin = await start(upstream as typeof fetch);
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/applications/${APPLICATION_ID}/document-uploads?jobId=canonical-job-1&documentType=CV&fileType=DOCX`,
+      {
+        method: 'POST',
+        headers: {
+          ...sessionHeaders(),
+          'Content-Type': MULTIPART_TYPE,
+          'Idempotency-Key': 'browser-upload-1',
+        },
+        body: MULTIPART_BODY,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(expect.objectContaining({
+      operationId: OPERATION_ID,
+      applicationId: APPLICATION_ID,
+      documentId: DOCUMENT_ID,
+      state: 'COMPLETED',
+      applicationVersion: 9,
+    }));
+    expect(Buffer.concat(streamedChunks).toString()).toContain('safe-docx-test');
+    expect(upstream).toHaveBeenCalledWith(
+      `https://documents.example.test/api/v1/document-generation/applications/${APPLICATION_ID}/document-uploads?jobId=canonical-job-1&documentType=CV&fileType=DOCX`,
+      expect.objectContaining({
+        method: 'POST',
+        duplex: 'half',
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${ACCESS_TOKEN}`,
+          'Idempotency-Key': 'browser-upload-1',
+        }),
+      }),
+    );
+    const upstreamHeaders = upstream.mock.calls[0][1]?.headers as Record<string, string>;
+    expect(upstreamHeaders['X-User-ID']).toBeUndefined();
+    expect(upstreamHeaders['X-Service-Name']).toBeUndefined();
+  });
+
+  it('rejects an application upload envelope over 11 MiB before contacting the gateway', async () => {
+    const upstream = vi.fn<FetchLike>();
+    const origin = await start(upstream as typeof fetch);
+    const target = new URL(
+      `${origin}/api/v1/document-generation/applications/${APPLICATION_ID}/document-uploads?jobId=canonical-job-1&documentType=CV&fileType=PDF`,
+    );
+
+    const result = await new Promise<{status: number; body: string}>((resolve, reject) => {
+      const request = httpRequest({
+        hostname: target.hostname,
+        port: target.port,
+        path: `${target.pathname}${target.search}`,
+        method: 'POST',
+        headers: {
+          ...sessionHeaders(),
+          'Content-Length': String((11 * 1024 * 1024) + 1),
+          'Content-Type': MULTIPART_TYPE,
+          'Idempotency-Key': 'browser-upload-oversize',
+        },
+      }, response => {
+        const chunks: Buffer[] = [];
+        response.on('data', chunk => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => resolve({
+          status: response.statusCode ?? 0,
+          body: Buffer.concat(chunks).toString('utf8'),
+        }));
+      });
+      request.on('error', reject);
+      request.end();
+    });
+
+    expect(result.status).toBe(413);
+    expect(JSON.parse(result.body)).toEqual({
+      error: 'APPLICATION_UPLOAD_TOO_LARGE',
+      message: 'The document must be 10 MiB or smaller',
+    });
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('returns only the owner-scoped content-free application upload status', async () => {
+    const upstream = vi.fn<FetchLike>(async () => Response.json({
+      operationId: OPERATION_ID,
+      applicationId: APPLICATION_ID,
+      jobId: 'canonical-job-1',
+      documentType: 'COVER_LETTER',
+      fileType: 'DOCX',
+      state: 'LINKING',
+      ownerEmail: 'must-not-reach-browser@example.test',
+    }));
+    const origin = await start(upstream as typeof fetch);
+
+    const response = await fetch(
+      `${origin}/api/v1/document-generation/application-document-uploads/${OPERATION_ID}`,
+      {headers: sessionHeaders(false)},
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: 'INVALID_DOWNSTREAM_RESPONSE',
+      message: 'The document service returned an invalid upload status',
+    });
   });
 });

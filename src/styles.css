@@ -95,3 +95,132 @@ textarea {
     border-radius: 0;
   }
 }
+
+app-job-results .document-choice-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 1rem;
+}
+
+app-job-results .document-choice-panel {
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.85rem;
+}
+
+app-job-results .document-choice-panel legend {
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-weight: 800;
+  padding: 0 0.3rem;
+}
+
+app-job-results .document-choice-panel > label:not(.document-file-choice) {
+  align-items: flex-start;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.55rem;
+  display: flex;
+  gap: 0.55rem;
+  padding: 0.55rem;
+}
+
+app-job-results .document-choice-panel strong,
+app-job-results .document-choice-panel small,
+app-job-results .document-file-choice span {
+  display: block;
+}
+
+app-job-results .document-choice-panel strong {
+  color: var(--text-primary);
+  font-size: 0.78rem;
+}
+
+app-job-results .document-choice-panel small,
+app-job-results .selected-file-name {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+}
+
+app-job-results .document-file-choice {
+  color: var(--text-primary);
+  display: grid;
+  font-size: 0.72rem;
+  font-weight: 700;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+}
+
+app-job-results .document-file-choice input {
+  border: 1px dashed #94a3b8;
+  border-radius: 0.5rem;
+  max-width: 100%;
+  padding: 0.55rem;
+}
+
+app-job-results .application-upload-statuses {
+  display: grid;
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+}
+
+app-job-results .application-upload-statuses article {
+  align-items: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.7rem;
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: minmax(0, 1fr) minmax(7rem, 0.35fr) auto;
+  padding: 0.7rem;
+}
+
+app-job-results .application-upload-statuses article.upload-error {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+app-job-results .application-upload-statuses article.upload-complete {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+app-job-results .application-upload-statuses strong,
+app-job-results .application-upload-statuses span,
+app-job-results .application-upload-statuses small {
+  display: block;
+}
+
+app-job-results .application-upload-statuses span,
+app-job-results .application-upload-statuses small {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+app-job-results .application-upload-statuses progress {
+  width: 100%;
+}
+
+app-job-results .upload-actions {
+  display: inline-flex !important;
+  gap: 0.35rem;
+}
+
+app-job-results .upload-actions button {
+  background: white;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.4rem;
+  font-size: 0.72rem;
+  padding: 0.35rem 0.55rem;
+}
+
+@media (max-width: 720px) {
+  app-job-results .document-choice-grid,
+  app-job-results .application-upload-statuses article {
+    grid-template-columns: 1fr;
+  }
+}

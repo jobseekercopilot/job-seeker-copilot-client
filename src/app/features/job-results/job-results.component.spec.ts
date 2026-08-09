@@ -70,6 +70,7 @@ describe('JobResultsComponent', () => {
     resume: vi.fn(() => new Subject<any>()),
     cancel: vi.fn(() => of(undefined)),
     uploadReplacement: vi.fn(),
+    uploadApplicationDocument: vi.fn(),
     generate: vi.fn(() => of({
       applicationId: 'application-1',
       cvDocumentId: 'cv-1',
@@ -108,6 +109,7 @@ describe('JobResultsComponent', () => {
     documentGenerationService.cancel.mockClear();
     documentGenerationService.cancel.mockImplementation(() => of(undefined));
     documentGenerationService.uploadReplacement.mockReset();
+    documentGenerationService.uploadApplicationDocument.mockReset();
     documentGenerationService.generate.mockClear();
     documentGenerationService.generate.mockImplementation(() => of({
       applicationId: 'application-1',
@@ -796,6 +798,148 @@ describe('JobResultsComponent', () => {
         },
       },
     );
+  });
+
+  it('creates the application before offering an explicit non-empty generation choice', () => {
+    const applicationId = '10000000-0000-4000-8000-000000000001';
+    currentResponse = singleRoleResponse([job('Application-first role', {
+      id: 'application-first-role',
+      canonicalJobId: 'canonical-application-first-role',
+      primarySource: 'ADZUNA',
+      externalJobId: 'external-1',
+    })]);
+    applicationTracker.createApplication.mockReturnValue(of({
+      id: applicationId,
+      status: 'SAVED',
+    }));
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+
+    fixture.componentInstance.prepareApplicationDocuments(selectedJob, 'GENERATE');
+    fixture.detectChanges();
+
+    expect(applicationTracker.createApplication).toHaveBeenCalledWith(selectedJob);
+    expect(documentGenerationService.generate).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.documentChoiceJob()).toMatchObject({applicationId});
+    expect(fixture.componentInstance.canContinueDocumentChoice()).toBe(false);
+    expect(fixture.nativeElement.textContent).toContain('Application saved');
+    expect(fixture.nativeElement.textContent).toContain('Uploading is free');
+
+    fixture.componentInstance.chooseDocumentAction('CV', 'GENERATE');
+    fixture.componentInstance.chooseDocumentAction('COVER_LETTER', 'OMIT');
+    expect(fixture.componentInstance.canContinueDocumentChoice()).toBe(true);
+    fixture.componentInstance.continueDocumentChoice();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.evidenceSelectionJob()).toMatchObject({applicationId});
+    expect(fixture.componentInstance.activeEvidencePurposes()).toEqual(['CV']);
+    expect(fixture.nativeElement.textContent).toContain('Generate CV (1 AI Credit)');
+    expect(fixture.nativeElement.textContent).not.toContain('Cover letter evidence');
+  });
+
+  it('supports an upload-only Add path without generation or AI Credit use', () => {
+    const applicationId = '10000000-0000-4000-8000-000000000002';
+    const documentId = '20000000-0000-4000-8000-000000000002';
+    currentResponse = singleRoleResponse([job('Upload-only role', {
+      id: 'upload-only-role',
+      canonicalJobId: 'canonical-upload-only-role',
+      primarySource: 'ADZUNA',
+      externalJobId: 'external-2',
+    })]);
+    applicationTracker.createApplication.mockReturnValue(of({
+      id: applicationId,
+      status: 'SAVED',
+    }));
+    documentGenerationService.uploadApplicationDocument.mockImplementation(
+      (request: any, onProgress: (progress: any) => void) => {
+        onProgress({phase: 'UPLOADING', loadedBytes: request.file.size, totalBytes: request.file.size, percent: 100});
+        return of({
+          operationId: '30000000-0000-4000-8000-000000000002',
+          applicationId,
+          jobId: request.jobId,
+          documentType: request.documentType,
+          fileType: 'PDF',
+          state: 'COMPLETED',
+          documentId,
+        });
+      },
+    );
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+
+    fixture.componentInstance.trackApplication(selectedJob);
+    fixture.componentInstance.chooseDocumentAction('CV', 'UPLOAD');
+    fixture.componentInstance.chooseDocumentAction('COVER_LETTER', 'OMIT');
+    const file = new File(['safe content'], 'existing-cv.pdf', {type: 'application/pdf'});
+    fixture.componentInstance.documentChoiceFiles.set({CV: file, COVER_LETTER: null});
+    fixture.componentInstance.continueDocumentChoice();
+    fixture.detectChanges();
+
+    expect(documentGenerationService.generate).not.toHaveBeenCalled();
+    expect(documentGenerationService.uploadApplicationDocument).toHaveBeenCalledOnce();
+    expect(documentGenerationService.uploadApplicationDocument.mock.calls[0][0]).toMatchObject({
+      applicationId,
+      jobId: 'canonical-upload-only-role',
+      documentType: 'CV',
+      file,
+    });
+    expect(fixture.componentInstance.jobs()[0].cvDocumentId).toBe(documentId);
+    expect(fixture.componentInstance.applicationUploadState(selectedJob, 'CV')).toMatchObject({
+      phase: 'COMPLETED',
+      percent: 100,
+    });
+  });
+
+  it('retries one failed mixed upload with the same identity and can skip it independently', () => {
+    const applicationId = '10000000-0000-4000-8000-000000000003';
+    const existingCvId = '20000000-0000-4000-8000-000000000003';
+    const uploadedLetterId = '20000000-0000-4000-8000-000000000004';
+    currentResponse = singleRoleResponse([job('Mixed documents role', {
+      id: 'mixed-documents-role',
+      canonicalJobId: 'canonical-mixed-documents-role',
+      applicationId,
+      cvDocumentId: existingCvId,
+    })]);
+    documentGenerationService.uploadApplicationDocument
+      .mockReturnValueOnce(throwError(() => new Error('Temporary upload failure.')))
+      .mockReturnValueOnce(of({
+        operationId: '30000000-0000-4000-8000-000000000003',
+        applicationId,
+        jobId: 'canonical-mixed-documents-role',
+        documentType: 'COVER_LETTER',
+        fileType: 'DOCX',
+        state: 'COMPLETED',
+        documentId: uploadedLetterId,
+      }));
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+    const file = new File(['letter'], 'letter.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+
+    fixture.componentInstance.prepareApplicationDocuments(selectedJob, 'GENERATE');
+    fixture.componentInstance.chooseDocumentAction('CV', 'GENERATE');
+    fixture.componentInstance.chooseDocumentAction('COVER_LETTER', 'UPLOAD');
+    fixture.componentInstance.documentChoiceFiles.set({CV: null, COVER_LETTER: file});
+    fixture.componentInstance.continueDocumentChoice();
+
+    const firstRequest = documentGenerationService.uploadApplicationDocument.mock.calls[0][0];
+    expect(fixture.componentInstance.applicationUploadState(selectedJob, 'COVER_LETTER')).toMatchObject({
+      phase: 'ERROR',
+      canRetry: true,
+    });
+    expect(fixture.componentInstance.activeEvidencePurposes()).toEqual(['CV']);
+
+    fixture.componentInstance.retryApplicationUpload(selectedJob, 'COVER_LETTER');
+
+    const retryRequest = documentGenerationService.uploadApplicationDocument.mock.calls[1][0];
+    expect(retryRequest.idempotencyKey).toBe(firstRequest.idempotencyKey);
+    expect(fixture.componentInstance.jobs()[0]).toMatchObject({
+      cvDocumentId: existingCvId,
+      coverLetterDocumentId: uploadedLetterId,
+    });
+    fixture.componentInstance.skipApplicationUpload(selectedJob, 'COVER_LETTER');
+    expect(fixture.componentInstance.applicationUploadState(selectedJob, 'COVER_LETTER')).toBeUndefined();
   });
 
   it('selects or clears every eligible entry independently for each document', () => {

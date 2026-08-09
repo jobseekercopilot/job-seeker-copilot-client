@@ -190,11 +190,11 @@
           [creatingApplication]="creatingApplicationIds().has(jobStateKey(job))"
           [applicationTrackingAvailable]="applicationTrackingAvailable()"
           [applicationToolsAvailable]="applicationToolsAvailable()"
-          [generationPanelActive]="isEvidenceSelectionJob(job)"
+          [generationPanelActive]="isEvidenceSelectionJob(job) || isDocumentChoiceJob(job) || hasApplicationUploadState(job)"
           [descriptionLoading]="loadingJobDescriptionIds().has(jobStateKey(job))"
           [descriptionLoadError]="jobDescriptionErrors()[jobStateKey(job)] ?? null"
           (trackApplication)="trackApplication($event)"
-          (generateDocuments)="openEvidenceSelection($event)"
+          (generateDocuments)="prepareApplicationDocuments($event, 'GENERATE')"
           (cancelGeneration)="cancelGeneration($event)"
           (updateApplicationStatus)="updateApplicationStatus(job, $event)"
           (withdrawGeneratedApplication)="withdrawGeneratedApplication(job)"
@@ -203,6 +203,131 @@
           (dismissGenerationError)="dismissGenerationError($event)"
           (requestFullDescription)="loadFullJobDescription($event)">
           <ng-container generation-evidence-panel>
+            @if (isDocumentChoiceJob(job)) {
+              @let choiceJob = documentChoiceJob()!;
+              <section class="evidence-selector document-choice-selector"
+                       data-testid="application-document-choice"
+                       [attr.aria-labelledby]="evidenceSelectorDomId(choiceJob, 'document-choice-title')">
+                <header class="evidence-selector-header">
+                  <div>
+                    <p class="evidence-kicker">Application saved</p>
+                    <h3 [id]="evidenceSelectorDomId(choiceJob, 'document-choice-title')">
+                      Choose documents for {{ jobTitle(choiceJob) }}
+                    </h3>
+                    <p>
+                      Choose each document independently. Uploading is free; AI Credit is used only for
+                      documents you explicitly choose to generate.
+                    </p>
+                  </div>
+                  <button type="button" class="selector-close" (click)="closeDocumentChoice()"
+                          aria-label="Close document choices">
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </header>
+
+                @if (documentChoiceError()) {
+                  <p class="selector-error" role="alert">{{ documentChoiceError() }}</p>
+                }
+
+                <div class="document-choice-grid">
+                  @for (purpose of evidencePurposes; track purpose) {
+                    <fieldset class="document-choice-panel">
+                      <legend>{{ documentPurposeLabel(purpose) }}</legend>
+                      @if (documentChoiceEntryPoint() === 'GENERATE') {
+                        <label>
+                          <input type="radio"
+                                 [name]="evidenceSelectorDomId(choiceJob, 'choice-' + purpose)"
+                                 [checked]="documentChoices()[purpose] === 'GENERATE'"
+                                 (change)="chooseDocumentAction(purpose, 'GENERATE')" />
+                          <span><strong>Generate</strong><small>Use 1 AI Credit after evidence review.</small></span>
+                        </label>
+                      }
+                      <label>
+                        <input type="radio"
+                               [name]="evidenceSelectorDomId(choiceJob, 'choice-' + purpose)"
+                               [checked]="documentChoices()[purpose] === 'UPLOAD'"
+                               (change)="chooseDocumentAction(purpose, 'UPLOAD')" />
+                        <span><strong>Upload</strong><small>Free. PDF or DOCX, up to 10 MiB.</small></span>
+                      </label>
+                      <label>
+                        <input type="radio"
+                               [name]="evidenceSelectorDomId(choiceJob, 'choice-' + purpose)"
+                               [checked]="documentChoices()[purpose] === 'OMIT'"
+                               (change)="chooseDocumentAction(purpose, 'OMIT')" />
+                        <span><strong>Not now</strong><small>Keep this document empty.</small></span>
+                      </label>
+                      @if (documentChoices()[purpose] === 'UPLOAD') {
+                        <label class="document-file-choice">
+                          <span>Select {{ documentPurposeLabel(purpose).toLowerCase() }} file</span>
+                          <input type="file"
+                                 accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                 (change)="chooseDocumentFile(purpose, $event)" />
+                        </label>
+                        @if (documentChoiceFiles()[purpose]; as selectedFile) {
+                          <small class="selected-file-name">
+                            {{ selectedFile.name }} · {{ selectedFile.size | number }} bytes
+                          </small>
+                        }
+                      }
+                    </fieldset>
+                  }
+                </div>
+
+                @if (documentChoiceEntryPoint() === 'GENERATE') {
+                  <p class="selector-note">
+                    Select Generate for at least one document. You will review the exact AI Credit cost
+                    before generation starts.
+                  </p>
+                }
+                <footer class="selector-actions">
+                  <button type="button" class="dashboard-button dashboard-button-secondary"
+                          (click)="closeDocumentChoice()">Cancel</button>
+                  <button type="button" class="selector-generate"
+                          [disabled]="!canContinueDocumentChoice()"
+                          (click)="continueDocumentChoice()">
+                    Continue
+                  </button>
+                </footer>
+              </section>
+            }
+
+            @if (hasApplicationUploadState(job)) {
+              <section class="application-upload-statuses" aria-label="Application document upload status">
+                @for (purpose of evidencePurposes; track purpose) {
+                  @if (applicationUploadState(job, purpose); as upload) {
+                    <article [class.upload-error]="upload.phase === 'ERROR'"
+                             [class.upload-complete]="upload.phase === 'COMPLETED'">
+                      <div>
+                        <strong>{{ documentPurposeLabel(purpose) }}</strong>
+                        <span>{{ upload.fileName }}</span>
+                        @if (upload.message) {
+                          <small [attr.role]="upload.phase === 'ERROR' ? 'alert' : 'status'">
+                            {{ upload.message }}
+                          </small>
+                        } @else if (upload.phase === 'UPLOADING') {
+                          <small role="status">Uploading{{ upload.percent != null ? ' · ' + upload.percent + '%' : '…' }}</small>
+                        }
+                      </div>
+                      @if (upload.phase === 'UPLOADING' && upload.percent != null) {
+                        <progress max="100" [value]="upload.percent"
+                                  [attr.aria-label]="documentPurposeLabel(purpose) + ' upload progress'">
+                          {{ upload.percent }}%
+                        </progress>
+                      }
+                      @if (upload.phase === 'ERROR') {
+                        <span class="upload-actions">
+                          @if (upload.canRetry) {
+                            <button type="button" (click)="retryApplicationUpload(job, purpose)">Retry</button>
+                          }
+                          <button type="button" (click)="skipApplicationUpload(job, purpose)">Skip</button>
+                        </span>
+                      }
+                    </article>
+                  }
+                }
+              </section>
+            }
+
             @if (isEvidenceSelectionJob(job)) {
               @let selectionJob = evidenceSelectionJob()!;
               <section class="evidence-selector"
@@ -229,12 +354,14 @@
                     </div>
                     <div>
                       <dt>Documents</dt>
-                      <dd>CV and cover letter</dd>
+                      <dd>{{ activeEvidencePurposes().length === 2
+                        ? 'CV and cover letter'
+                        : documentPurposeLabel(activeEvidencePurposes()[0]) }}</dd>
                     </div>
                   </dl>
                   <p>
                     Nothing is included automatically. Choose user-confirmed entries separately for the CV
-                    and cover letter, then set the section order. The service will freeze the current revisions.
+                    for each selected document, then set the section order. The service will freeze the current revisions.
                   </p>
                 </div>
                 <button type="button" class="selector-close" (click)="closeEvidenceSelection()"
@@ -256,7 +383,7 @@
                     </h4>
                     <p>
                       The provider advert is loaded automatically where available. You can correct or add
-                      details before this exact text is frozen and used to tailor both documents.
+                      details before this exact text is frozen and used to tailor the selected document(s).
                     </p>
                   </div>
                   <span>
@@ -360,7 +487,7 @@
                 }
 
                 <div class="purpose-grid">
-                  @for (purpose of evidencePurposes; track purpose) {
+                  @for (purpose of activeEvidencePurposes(); track purpose) {
                     <section class="purpose-panel"
                              [attr.aria-labelledby]="evidenceSelectorDomId(selectionJob, 'purpose-' + purpose)">
                       <header>
@@ -442,7 +569,7 @@
                 </button>
                 <button type="button" class="selector-generate"
                         (click)="confirmEvidenceGeneration()" [disabled]="!canGenerateFromSelection()">
-                  Generate from selected evidence
+                  {{ generationActionLabel() }}
                 </button>
               </footer>
               </section>

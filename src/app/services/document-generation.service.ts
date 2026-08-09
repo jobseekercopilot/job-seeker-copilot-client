@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpEventType, HttpResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import {
   catchError,
@@ -27,9 +27,13 @@ import {
   DocumentEvidenceSelectionPurposeEnum,
   DocumentEvidenceSelectionSectionOrderEnum,
   DocumentGenerationControllerService,
+  ApplicationDocumentUploadControllerService,
+  ApplicationDocumentUploadOperationResponse,
+  ApplicationDocumentUploadOperationResponseStateEnum,
   DownloadFileResponse,
   GenerationOperationResponse,
   GenerationOperationResponseStateEnum,
+  StartGenerationRequestOutputsEnum,
 } from '../api/document-generation-gateway';
 import {
   Job as SavedJob,
@@ -73,6 +77,29 @@ export interface GenerationEvidenceSelection {
     entryIds: string[];
     sectionOrder: DocumentEvidenceSelectionSectionOrderEnum[];
   };
+}
+
+export type ApplicationDocumentUploadPhase =
+  | 'UPLOADING'
+  | 'CHECKING'
+  | 'LINKING'
+  | 'COMPLETED'
+  | 'ERROR';
+
+export interface ApplicationDocumentUploadProgress {
+  phase: ApplicationDocumentUploadPhase;
+  loadedBytes?: number;
+  totalBytes?: number;
+  percent?: number;
+  state?: ApplicationDocumentUploadOperationResponse['state'];
+}
+
+export interface ApplicationDocumentUploadRequest {
+  applicationId: string;
+  jobId: string;
+  documentType: DocumentKind;
+  file: File;
+  idempotencyKey: string;
 }
 
 export interface DocumentUploadResponse {
@@ -120,8 +147,8 @@ export interface GenerationDownloadsResponse {
 
 export interface DocumentGenerationResponse {
   applicationId: string;
-  cvDocumentId: string;
-  coverLetterDocumentId: string;
+  cvDocumentId?: string;
+  coverLetterDocumentId?: string;
   downloads: GenerationDownloadsResponse;
 }
 
@@ -153,6 +180,7 @@ export interface PendingDocumentGeneration {
   state: 'PROCESSING';
   startedAt: number;
   evidence: GenerationEvidenceSelection;
+  outputs?: DocumentKind[];
 }
 
 interface StoredGenerationAttempt {
@@ -164,6 +192,7 @@ interface StoredGenerationAttempt {
   approvalRequested?: boolean;
   startedAt: number;
   evidence: GenerationEvidenceSelection;
+  outputs?: DocumentKind[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -174,6 +203,7 @@ export class DocumentGenerationService {
   private static readonly POLL_INTERVAL_MS = 1_500;
   private static readonly OPERATION_STATUS_TIMEOUT_MS = 75_000;
   private readonly api = inject(DocumentGenerationControllerService);
+  private readonly applicationUploads = inject(ApplicationDocumentUploadControllerService);
   private readonly savedJobs = inject(SavedJobsService);
   private readonly browserSession = inject(BrowserSessionService);
   private readonly http = inject(HttpClient);
@@ -181,18 +211,23 @@ export class DocumentGenerationService {
   private readonly activeGenerations = new Map<string, Observable<DocumentGenerationResponse>>();
   private readonly cancellationSignals = new Map<string, Subject<void>>();
 
-  generate(job: Job, evidence: GenerationEvidenceSelection): Observable<DocumentGenerationResponse> {
+  generate(
+    job: Job,
+    evidence: GenerationEvidenceSelection,
+    outputs: DocumentKind[] = ['CV', 'COVER_LETTER'],
+  ): Observable<DocumentGenerationResponse> {
     const canonicalJobId = job.canonicalJobId ?? job.id;
     if (!canonicalJobId || !job.title || !job.company || !job.description) {
       throw new Error('The selected job does not contain the data required for generation.');
     }
-    if (
-      !evidence.cv.entryIds.length
-      || !evidence.cv.sectionOrder.length
-      || !evidence.coverLetter.entryIds.length
-      || !evidence.coverLetter.sectionOrder.length
-    ) {
-      throw new Error('Choose entries confirmed by you for both the CV and cover letter.');
+    if (!this.validRequestedOutputs(outputs)) {
+      throw new Error('Choose at least one document type to generate.');
+    }
+    if (outputs.some(output => {
+      const selected = output === 'CV' ? evidence.cv : evidence.coverLetter;
+      return !selected.entryIds.length || !selected.sectionOrder.length;
+    })) {
+      throw new Error('Choose entries confirmed by you for every requested document.');
     }
 
     const active = this.activeGenerations.get(canonicalJobId);
@@ -204,7 +239,9 @@ export class DocumentGenerationService {
       idempotencyKey: `browser-${crypto.randomUUID()}`,
       startedAt: Date.now(),
       evidence: this.copyEvidence(evidence),
+      outputs: [...outputs],
     } satisfies StoredGenerationAttempt;
+    if (!attempt.operationId) attempt.outputs = [...outputs];
     this.writeAttempt(attempt);
     const cancellation = new Subject<void>();
     this.cancellationSignals.set(canonicalJobId, cancellation);
@@ -240,6 +277,7 @@ export class DocumentGenerationService {
       state: 'PROCESSING',
       startedAt: attempt.startedAt,
       evidence: this.copyEvidence(attempt.evidence),
+      outputs: this.attemptOutputs(attempt),
     }));
   }
 
@@ -383,22 +421,27 @@ export class DocumentGenerationService {
         'The saved job reference required to resume generation is missing.',
       ));
     }
+    const outputs = this.attemptOutputs(attempt);
+    const documents = outputs.map(output => {
+      const selection = output === 'CV'
+        ? attempt.evidence.cv
+        : attempt.evidence.coverLetter;
+      return {
+        purpose: output === 'CV'
+          ? DocumentEvidenceSelectionPurposeEnum.Cv
+          : DocumentEvidenceSelectionPurposeEnum.CoverLetter,
+        entryIds: [...selection.entryIds],
+        sectionOrder: [...selection.sectionOrder],
+      };
+    });
     return this.api.startOperation(
       attempt.savedJobId,
       attempt.idempotencyKey,
       {
-        documents: [
-          {
-            purpose: DocumentEvidenceSelectionPurposeEnum.Cv,
-            entryIds: [...attempt.evidence.cv.entryIds],
-            sectionOrder: [...attempt.evidence.cv.sectionOrder],
-          },
-          {
-            purpose: DocumentEvidenceSelectionPurposeEnum.CoverLetter,
-            entryIds: [...attempt.evidence.coverLetter.entryIds],
-            sectionOrder: [...attempt.evidence.coverLetter.sectionOrder],
-          },
-        ],
+        outputs: new Set(outputs.map(output => output === 'CV'
+          ? StartGenerationRequestOutputsEnum.Cv
+          : StartGenerationRequestOutputsEnum.CoverLetter)),
+        documents,
       },
       'body',
       false,
@@ -522,7 +565,11 @@ export class DocumentGenerationService {
           approvalAvailable
           && this.isApprovalRecoveryState(operation.state)
         ) {
-          if (!operation.cvDocumentId || !operation.coverLetterDocumentId) {
+          const outputs = this.attemptOutputs(attempt);
+          if (
+            (outputs.includes('CV') && !operation.cvDocumentId)
+            || (outputs.includes('COVER_LETTER') && !operation.coverLetterDocumentId)
+          ) {
             return throwError(() => new DocumentGenerationError(
               'FAILED',
               'The generation operation is missing its document references.',
@@ -535,8 +582,12 @@ export class DocumentGenerationService {
             switchMap(() => this.api.approveOperation(
               attempt.operationId as string,
               {
-                cvDocumentId: operation.cvDocumentId as string,
-                coverLetterDocumentId: operation.coverLetterDocumentId as string,
+                ...(outputs.includes('CV')
+                  ? {cvDocumentId: operation.cvDocumentId as string}
+                  : {}),
+                ...(outputs.includes('COVER_LETTER')
+                  ? {coverLetterDocumentId: operation.coverLetterDocumentId as string}
+                  : {}),
               },
               'body',
               false,
@@ -559,7 +610,7 @@ export class DocumentGenerationService {
           }
           throw this.operationError(operation);
         }
-        const completed = this.completedGeneration(operation);
+        const completed = this.completedGeneration(operation, this.attemptOutputs(attempt));
         this.clearAttempt(attempt.canonicalJobId);
         return completed;
       }),
@@ -644,6 +695,8 @@ export class DocumentGenerationService {
     return [
       GenerationOperationResponseStateEnum.Created,
       GenerationOperationResponseStateEnum.SnapshotsResolved,
+      GenerationOperationResponseStateEnum.ApplicationSaved,
+      GenerationOperationResponseStateEnum.OutputReady,
       GenerationOperationResponseStateEnum.Estimated,
       GenerationOperationResponseStateEnum.CreditReserved,
       GenerationOperationResponseStateEnum.DraftGenerated,
@@ -877,12 +930,144 @@ export class DocumentGenerationService {
     ));
   }
 
+  uploadApplicationDocument(
+    request: ApplicationDocumentUploadRequest,
+    onProgress: (progress: ApplicationDocumentUploadProgress) => void,
+  ): Observable<ApplicationDocumentUploadOperationResponse> {
+    const fileType = this.applicationUploadFileType(request.file);
+    if (!UUID.test(request.applicationId)) {
+      throw new Error('A valid application is required before uploading.');
+    }
+    if (!request.jobId.trim() || request.jobId.length > 2_048) {
+      throw new Error('A valid canonical job is required before uploading.');
+    }
+    if (!fileType) {
+      throw new Error('Choose a PDF or Microsoft Word .docx file.');
+    }
+    if (request.file.size < 1 || request.file.size > 10 * 1024 * 1024) {
+      throw new Error('The document must be between 1 byte and 10 MiB.');
+    }
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(request.idempotencyKey)) {
+      throw new Error('The upload retry identity is invalid.');
+    }
+
+    onProgress({phase: 'UPLOADING', loadedBytes: 0, totalBytes: request.file.size, percent: 0});
+    return this.browserSession.ensureCsrf().pipe(
+      switchMap(() => this.applicationUploads.upload(
+        request.applicationId,
+        request.jobId.trim(),
+        request.documentType,
+        fileType,
+        request.idempotencyKey,
+        request.file,
+        'events',
+        true,
+        {transferCache: false},
+      )),
+      tap(event => {
+        if (event.type === HttpEventType.UploadProgress) {
+          const total = event.total ?? request.file.size;
+          onProgress({
+            phase: 'UPLOADING',
+            loadedBytes: Math.min(event.loaded, total),
+            totalBytes: total,
+            percent: total > 0
+              ? Math.min(100, Math.round((event.loaded / total) * 100))
+              : undefined,
+          });
+        } else if (
+          event.type === HttpEventType.ResponseHeader
+          || event.type === HttpEventType.Response
+        ) {
+          onProgress({phase: 'CHECKING'});
+        }
+      }),
+      filter((event): event is HttpResponse<ApplicationDocumentUploadOperationResponse> =>
+        event instanceof HttpResponse),
+      map(event => this.acceptApplicationUploadOperation(event.body, request)),
+      switchMap(operation => this.monitorApplicationUpload(operation, request, onProgress)),
+      catchError(error => {
+        onProgress({phase: 'ERROR'});
+        return throwError(() => error);
+      }),
+    );
+  }
+
   isDocx(file: File): boolean {
     const hasDocxExtension = file.name.toLowerCase().endsWith('.docx');
     const mimeType = file.type;
     const hasAllowedMimeType = !mimeType
       || mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     return hasDocxExtension && hasAllowedMimeType;
+  }
+
+  private applicationUploadFileType(file: File): UploadFormat | undefined {
+    const name = file.name.toLowerCase();
+    if (name.endsWith('.pdf') && (!file.type || file.type === 'application/pdf')) {
+      return 'PDF';
+    }
+    return this.isDocx(file) ? 'DOCX' : undefined;
+  }
+
+  private monitorApplicationUpload(
+    initial: ApplicationDocumentUploadOperationResponse,
+    request: ApplicationDocumentUploadRequest,
+    onProgress: (progress: ApplicationDocumentUploadProgress) => void,
+  ): Observable<ApplicationDocumentUploadOperationResponse> {
+    const terminal = new Set([
+      ApplicationDocumentUploadOperationResponseStateEnum.Completed,
+      ApplicationDocumentUploadOperationResponseStateEnum.RecoveryRequired,
+      ApplicationDocumentUploadOperationResponseStateEnum.Rejected,
+    ]);
+    return from([initial]).pipe(
+      expand(operation => terminal.has(
+        operation.state as ApplicationDocumentUploadOperationResponseStateEnum,
+      )
+        ? EMPTY
+        : timer(1_000).pipe(
+            switchMap(() => this.applicationUploads.get(
+              operation.operationId as string,
+              'body',
+              false,
+              {transferCache: false},
+            )),
+            map(next => this.acceptApplicationUploadOperation(next, request, operation.operationId)),
+          )),
+      tap(operation => onProgress({
+        phase: operation.state === ApplicationDocumentUploadOperationResponseStateEnum.Completed
+          ? 'COMPLETED'
+          : operation.state === ApplicationDocumentUploadOperationResponseStateEnum.Linking
+            ? 'LINKING'
+            : terminal.has(operation.state as ApplicationDocumentUploadOperationResponseStateEnum)
+              ? 'ERROR'
+              : 'CHECKING',
+        state: operation.state,
+      })),
+      filter(operation => terminal.has(
+        operation.state as ApplicationDocumentUploadOperationResponseStateEnum,
+      )),
+      take(1),
+    );
+  }
+
+  private acceptApplicationUploadOperation(
+    operation: ApplicationDocumentUploadOperationResponse | null | undefined,
+    request: ApplicationDocumentUploadRequest,
+    expectedOperationId?: string,
+  ): ApplicationDocumentUploadOperationResponse {
+    if (
+      !operation?.operationId
+      || !UUID.test(operation.operationId)
+      || (expectedOperationId && operation.operationId !== expectedOperationId)
+      || operation.applicationId !== request.applicationId
+      || operation.jobId !== request.jobId.trim()
+      || operation.documentType !== request.documentType
+      || !operation.fileType
+      || !operation.state
+    ) {
+      throw new Error('The upload service returned a mismatched operation.');
+    }
+    return operation;
   }
 
   private copyEvidence(evidence: GenerationEvidenceSelection): GenerationEvidenceSelection {
@@ -896,6 +1081,20 @@ export class DocumentGenerationService {
         sectionOrder: [...evidence.coverLetter.sectionOrder],
       },
     };
+  }
+
+  private validRequestedOutputs(outputs: DocumentKind[] | undefined): outputs is DocumentKind[] {
+    return Boolean(outputs)
+      && (outputs?.length ?? 0) >= 1
+      && (outputs?.length ?? 0) <= 2
+      && outputs?.every(output => output === 'CV' || output === 'COVER_LETTER') === true
+      && new Set(outputs).size === outputs.length;
+  }
+
+  private attemptOutputs(attempt: StoredGenerationAttempt): DocumentKind[] {
+    return this.validRequestedOutputs(attempt.outputs)
+      ? [...attempt.outputs]
+      : ['CV', 'COVER_LETTER'];
   }
 
   private ownerScope(): string | undefined {
@@ -1006,7 +1205,7 @@ export class DocumentGenerationService {
       || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(attempt.idempotencyKey)
       || !Number.isSafeInteger(attempt.startedAt)
       || Number(attempt.startedAt) < 1
-      || !this.validStoredEvidence(attempt.evidence)
+      || !this.validStoredEvidence(attempt.evidence, attempt.outputs)
     ) {
       return false;
     }
@@ -1016,15 +1215,21 @@ export class DocumentGenerationService {
       && (
         attempt.approvalRequested === undefined
         || typeof attempt.approvalRequested === 'boolean'
-      );
+      )
+      && (attempt.outputs === undefined || this.validRequestedOutputs(attempt.outputs));
   }
 
   private validStoredEvidence(
     evidence: GenerationEvidenceSelection | undefined,
+    outputs: DocumentKind[] | undefined,
   ): evidence is GenerationEvidenceSelection {
     const sections = new Set(Object.values(DocumentEvidenceSelectionSectionOrderEnum));
+    const requiredOutputs = this.validRequestedOutputs(outputs)
+      ? outputs
+      : ['CV', 'COVER_LETTER'];
     return Boolean(evidence)
-      && [evidence?.cv, evidence?.coverLetter].every(selection =>
+      && requiredOutputs.map(output => output === 'CV' ? evidence?.cv : evidence?.coverLetter)
+        .every(selection =>
         Boolean(selection)
         && Array.isArray(selection?.entryIds)
         && selection.entryIds.length >= 1
@@ -1048,19 +1253,24 @@ export class DocumentGenerationService {
     return asciiMatch?.[1] ?? null;
   }
 
-  private completedGeneration(operation: GenerationOperationResponse): DocumentGenerationResponse {
+  private completedGeneration(
+    operation: GenerationOperationResponse,
+    requestedOutputs: DocumentKind[] = ['CV', 'COVER_LETTER'],
+  ): DocumentGenerationResponse {
     if (
       operation.state !== 'COMPLETED'
       || !operation.applicationId
-      || !operation.cvDocumentId
-      || !operation.coverLetterDocumentId
+      || (requestedOutputs.includes('CV') && !operation.cvDocumentId)
+      || (requestedOutputs.includes('COVER_LETTER') && !operation.coverLetterDocumentId)
     ) {
       throw this.operationError(operation);
     }
     return {
       applicationId: operation.applicationId,
-      cvDocumentId: operation.cvDocumentId,
-      coverLetterDocumentId: operation.coverLetterDocumentId,
+      ...(operation.cvDocumentId ? {cvDocumentId: operation.cvDocumentId} : {}),
+      ...(operation.coverLetterDocumentId
+        ? {coverLetterDocumentId: operation.coverLetterDocumentId}
+        : {}),
       downloads: {
         cv: this.exportDownloads(operation.downloads?.['cv']),
         coverLetter: this.exportDownloads(operation.downloads?.['coverLetter']),
