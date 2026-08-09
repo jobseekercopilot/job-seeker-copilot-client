@@ -181,19 +181,19 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
   const targetRoleResults =
     contract.components.schemas.TargetRoleJobResults;
 
-  assert.equal(gateway.version, '1.8.0');
+  assert.equal(gateway.version, '1.9.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
   assert.equal(
     gateway.sourceCommit,
-    '04807c860d015cfd7f5fc00d142508b7c8afc1d8',
+    'fac0dc9814fade281d65f839db8d5c052d9c4b59',
   );
   assert.equal(
     gateway.sha256,
-    'c7ba25fc8ba3544b4b8586be92ece2809b568664a230f3b1131d7a451950a9b1',
+    '427dd5da8cb0a25cd00e5c47bcc787ca4034a5208d16947571d1b9ad9d7688bc',
   );
   assert.equal(
     gateway.path,
-    'contracts/job-finder-gateway/1.8.0/openapi.json',
+    'contracts/job-finder-gateway/1.9.0/openapi.json',
   );
   assert.equal(gateway.output, 'src/app/api/job-finder');
   assert.deepEqual(
@@ -212,7 +212,19 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
     '/api/jobs/applications',
     '/api/jobs/applications/{applicationId}/status',
   ]);
-  assert.equal(contract.info.version, '1.8.0');
+  assert.equal(contract.info.version, '1.9.0');
+  assert.deepEqual(
+    contract.components.schemas.Job.properties.specialistType.enum,
+    ['STANDARD', 'NHS', 'APPRENTICESHIP'],
+  );
+  assert.equal(
+    contract.components.schemas.Job.properties.apprenticeshipDetails.$ref,
+    '#/components/schemas/ApprenticeshipDetails',
+  );
+  assert.equal(
+    contract.components.schemas.Job.properties.locations.items.$ref,
+    '#/components/schemas/CanonicalLocation',
+  );
   assert.equal(savedJob.savedJobId.format, 'uuid');
   assert.equal(savedJob.snapshotVersion.format, 'int64');
   assert.equal(savedJob.contentSha256.type, 'string');

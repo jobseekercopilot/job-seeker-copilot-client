@@ -164,6 +164,16 @@ function validateJobFinderContract(document) {
     );
   }
 
+  const jobProperties = document.components?.schemas?.Job?.properties ?? {};
+  if (!jobProperties.specialistType?.enum?.includes('NHS') ||
+      !jobProperties.specialistType?.enum?.includes('APPRENTICESHIP') ||
+      jobProperties.locations?.items?.$ref !== '#/components/schemas/CanonicalLocation' ||
+      jobProperties.apprenticeshipDetails?.$ref !== '#/components/schemas/ApprenticeshipDetails') {
+    throw new Error(
+      'job-finder-gateway must preserve specialist classification, all locations and apprenticeship details',
+    );
+  }
+
   const savedJobProperties =
     document.components?.schemas?.SavedJobResponse?.properties ?? {};
   const requiredSavedJobProperties = [

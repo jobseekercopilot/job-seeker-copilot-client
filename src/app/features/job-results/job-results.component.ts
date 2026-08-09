@@ -431,7 +431,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         counts.set(publisher, (counts.get(publisher) ?? 0) + 1);
       }
     }
-    const preferredOrder = ['Reed.co.uk', 'Adzuna', 'Indeed', 'LinkedIn', 'Employer Sites', 'Other'];
+    const preferredOrder = ['NHS Jobs', 'Find an apprenticeship', 'Reed.co.uk', 'Adzuna', 'Indeed', 'LinkedIn', 'Employer Sites', 'Other'];
     return [
       { label: 'All Job Sites', count: this.activeJobs().length },
       ...Array.from(counts.entries())
@@ -2494,6 +2494,8 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   private sourceFilterLabel(publisher: string | undefined | null, provider: string | undefined | null): string {
     const value = (publisher ?? '').trim().toLowerCase();
     const providerValue = (provider ?? '').trim().toUpperCase();
+    if (value.includes('nhs jobs') || providerValue === 'NHS_JOBS') return 'NHS Jobs';
+    if (value.includes('find an apprenticeship') || providerValue === 'APPRENTICESHIPS') return 'Find an apprenticeship';
     if (value.includes('reed') || providerValue === 'REED') return 'Reed.co.uk';
     if (value.includes('adzuna') || providerValue === 'ADZUNA') return 'Adzuna';
     if (value.includes('indeed')) return 'Indeed';
