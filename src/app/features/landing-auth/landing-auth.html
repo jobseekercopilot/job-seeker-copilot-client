@@ -50,10 +50,30 @@
             <h3 id="setup-location-title">Where do you want to work?</h3>
             <p>Add a postcode to choose the area your search starts from, including for remote roles.</p>
             <label for="setup-postcode">Search postcode</label>
-            <input id="setup-postcode" type="text" autocomplete="postal-code"
+            <input id="setup-postcode" type="text" role="combobox" autocomplete="postal-code"
+                   aria-controls="setup-location-options"
+                   [attr.aria-expanded]="showSetupLocationDropdown()"
+                   [attr.aria-busy]="setupLocationLookup().status === 'loading'"
                    placeholder="For example: LS1 1AA"
                    [value]="setupPostcode()"
-                   (input)="setupPostcode.set($any($event.target).value)" />
+                   (input)="onSetupLocationInput($any($event.target).value)"
+                   (focus)="showSetupLocationDropdown.set(setupLocationSuggestions().length > 0)" />
+            @if (setupLocationLookup().message) {
+              <p role="status">{{ setupLocationLookup().message }}</p>
+            }
+            @if (setupLocationLookup().attributionProvider === 'GOOGLE_MAPS') {
+              <p>Suggestions provided by Google Maps</p>
+            }
+            @if (showSetupLocationDropdown() && setupLocationSuggestions().length) {
+              <div id="setup-location-options" role="listbox" aria-label="Matching UK locations">
+                @for (location of setupLocationSuggestions(); track location.id) {
+                  <button type="button" role="option" aria-selected="false" (click)="selectSetupLocation(location)">
+                    <strong>{{ location.name }}</strong>
+                    @if (location.postcode) { <span>{{ location.postcode }}</span> }
+                  </button>
+                }
+              </div>
+            }
           </section>
         } @else if (setupStep() === 3) {
           <section aria-labelledby="setup-workplace-title" class="setup-step">

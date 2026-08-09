@@ -211,6 +211,18 @@ app.get('/api/postcodes/:postcode', async (req, res) => {
   res.status(result.statusCode).json(result);
 });
 
+app.post('/api/v2/locations/autocomplete', async (req, res) => {
+  const result = await locationGateway.handleAutocomplete(req.body);
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(result.statusCode).type(result.contentType).send(result.body);
+});
+
+app.post('/api/v2/locations/resolve', async (req, res) => {
+  const result = await locationGateway.handleResolve(req.body);
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(result.statusCode).type(result.contentType).send(result.body);
+});
+
 registerJobFinderRoutes(app, {
   accessCookieName: bffConfig.sessionAccessCookieName,
   csrfCookieName: bffConfig.sessionCsrfCookieName,

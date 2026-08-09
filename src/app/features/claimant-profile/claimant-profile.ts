@@ -475,7 +475,7 @@ export class ClaimantProfileComponent implements OnInit {
         },
       } : {}),
       ...(this.localCommuteRange() == null ? {} : {commuteRange: this.localCommuteRange()}),
-      commuteTravelModes: new Set(this.localCommuteTravelModes()) as Set<'DRIVE' | 'TRANSIT'>,
+      commuteTravelModes: this.localCommuteTravelModes() as unknown as Set<'DRIVE' | 'TRANSIT'>,
       ...(this.localCommuteTravelModes().includes('DRIVE')
         && this.localMaximumDrivingMinutes() != null
         ? {maximumDrivingMinutes: this.localMaximumDrivingMinutes()}

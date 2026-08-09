@@ -55,7 +55,11 @@
         <div>
           <h4 class="font-extrabold text-sm text-slate-900">Location and commute</h4>
           <p class="text-xs text-slate-600 mt-1">
-            {{ localPostcode() || 'Not provided yet' }}
+            @if (localDisplayName()) {
+              {{ localDisplayName() }}@if (localPostcode()) { ({{ localPostcode() }}) }
+            } @else {
+              {{ localPostcode() || 'Not provided yet' }}
+            }
             @if (localCommuteRange() !== undefined) { · within {{ localCommuteRange() }} miles }
           </p>
         </div>

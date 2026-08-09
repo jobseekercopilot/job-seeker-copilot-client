@@ -90,6 +90,7 @@ describe('ClaimantProfileComponent progressive profile', () => {
     expect(update.workPreferences).not.toHaveProperty('commuteRange');
     expect(update.workPreferences).not.toHaveProperty('availableFrom');
     expect(update.workPreferences).not.toHaveProperty('noticePeriodDays');
+    expect(JSON.parse(JSON.stringify(update)).workPreferences.commuteTravelModes).toEqual([]);
     expect(updateCurrentProfile).toHaveBeenCalledWith(expect.objectContaining({revision: 4}));
     expect(invalidateCsrf).toHaveBeenCalledOnce();
   });
@@ -219,6 +220,29 @@ describe('ClaimantProfileComponent progressive profile', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.editingSection()).toBe('skills');
     expect(careerDetails.querySelector('#profile-skills-expertise-editor')).not.toBeNull();
+  });
+
+  it('shows the canonical location label with its postcode', () => {
+    const fixture = TestBed.createComponent(ClaimantProfileComponent);
+    fixture.componentRef.setInput('profile', {
+      skills: [],
+      qualifications: [],
+      roles: [],
+      workPreferences: {
+        location: {
+          locationId: 'postcode:rg11aa',
+          displayName: 'Reading, South East',
+          countryCode: 'GB',
+          postcode: 'RG1 1AA',
+        },
+      },
+    } satisfies UserProfile);
+    fixture.detectChanges();
+
+    const preferences = fixture.nativeElement.querySelector(
+      '[data-testid="job-search-preferences"]',
+    ) as HTMLElement;
+    expect(preferences.textContent).toContain('Reading, South East (RG1 1AA)');
   });
 
   it('shows a compact three-row active evidence summary and opens the manager', async () => {

@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   ElementRef,
   inject,
   input,
@@ -10,9 +11,10 @@ import {
   output,
   signal,
 } from '@angular/core';
+import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {FormsModule} from '@angular/forms';
 import {MatIconModule} from '@angular/material/icon';
-import {firstValueFrom} from 'rxjs';
+import {debounceTime, distinctUntilChanged, firstValueFrom, Subject, switchMap} from 'rxjs';
 import type {GatewayResponse, ProfilePreferencesUpdate, UserProfile} from '../../api';
 import {
   AuthenticationService,
@@ -21,6 +23,13 @@ import {
 } from '../../api';
 import {normaliseProfile} from '../../models/user-profile.model';
 import {BrowserSessionService} from '../../services/browser-session.service';
+import {
+  idleLocationLookup,
+  LocationService,
+  type CanonicalLocation,
+  type LocationLookupState,
+  type LocationOption,
+} from '../../services/location.service';
 import {
   accountEmailError,
   loginPasswordError,
@@ -43,7 +52,9 @@ export class LandingAuthComponent implements OnInit {
   private readonly authenticationApi = inject(AuthenticationService);
   private readonly profileApi = inject(ProfileService);
   private readonly browserSession = inject(BrowserSessionService);
+  private readonly locationService = inject(LocationService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly initialMode = input<'create' | 'signin'>('create');
   readonly onboarded = output<{
@@ -66,6 +77,10 @@ export class LandingAuthComponent implements OnInit {
   readonly setupStep = signal<1 | 2 | 3 | null>(null);
   readonly setupTargetRoles = signal('');
   readonly setupPostcode = signal('');
+  readonly setupCanonicalLocation = signal<CanonicalLocation | null>(null);
+  readonly setupLocationSuggestions = signal<LocationOption[]>([]);
+  readonly setupLocationLookup = signal<LocationLookupState>(idleLocationLookup);
+  readonly showSetupLocationDropdown = signal(false);
   readonly setupWorkplaceArrangements = signal<string[]>([]);
   readonly setupAccount = signal<{
     profile: UserProfile;
@@ -74,12 +89,26 @@ export class LandingAuthComponent implements OnInit {
     email: string;
   } | null>(null);
   readonly setupProgress = computed(() => `${this.setupStep() ?? 1} of 3`);
+  private readonly setupLocationQueries = new Subject<string>();
 
   readonly workplaceOptions = [
     ['ONSITE', 'On-site'],
     ['HYBRID', 'Hybrid'],
     ['REMOTE', 'Remote'],
   ] as const;
+
+  constructor() {
+    this.setupLocationQueries.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      switchMap(query => this.locationService.lookup(query)),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe(state => {
+      this.setupLocationLookup.set(state);
+      this.setupLocationSuggestions.set(state.locations);
+      this.showSetupLocationDropdown.set(state.status === 'results');
+    });
+  }
 
   ngOnInit(): void {
     if (this.initialMode() === 'signin') this.mode.set('signin');
@@ -207,8 +236,8 @@ export class LandingAuthComponent implements OnInit {
       }
       this.setupStep.set(2);
     } else if (step === 2) {
-      if (!this.setupPostcode().trim()) {
-        this.showError('Add a postcode before continuing, or set this up later.');
+      if (!this.setupCanonicalLocation()) {
+        this.showError('Choose a location from the suggestions before continuing, or set this up later.');
         return;
       }
       this.setupStep.set(3);
@@ -232,6 +261,48 @@ export class LandingAuthComponent implements OnInit {
     return this.setupWorkplaceArrangements().includes(value);
   }
 
+  onSetupLocationInput(query: string): void {
+    this.setupPostcode.set(query);
+    this.setupCanonicalLocation.set(null);
+    this.setupLocationQueries.next(query.trim());
+  }
+
+  selectSetupLocation(location: LocationOption): void {
+    if (!location.sessionId || !location.suggestionId) {
+      this.setupLocationLookup.set({
+        status: 'invalid',
+        locations: [],
+        message: 'Choose a more precise UK location before continuing.',
+      });
+      return;
+    }
+    this.setupLocationLookup.set({status: 'loading', locations: [], message: 'Confirming location…'});
+    this.showSetupLocationDropdown.set(false);
+    this.locationService.resolve(location.sessionId, location.suggestionId).pipe(
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe({
+      next: response => {
+        if (response.resolutionStatus !== 'RESOLVED' || !response.location) {
+          this.setupLocationLookup.set({
+            status: 'invalid',
+            locations: [],
+            message: 'Choose a more precise UK location before continuing.',
+          });
+          return;
+        }
+        this.setupCanonicalLocation.set(response.location);
+        this.setupPostcode.set(response.location.postcode ?? response.location.displayName ?? '');
+        this.setupLocationSuggestions.set([]);
+        this.setupLocationLookup.set({status: 'idle', locations: [], message: 'Location confirmed.'});
+      },
+      error: () => this.setupLocationLookup.set({
+        status: 'unavailable',
+        locations: [],
+        message: 'Location confirmation is temporarily unavailable. Try again.',
+      }),
+    });
+  }
+
   skipSetup(): void {
     if (this.isLoading()) return;
     const account = this.setupAccount();
@@ -245,12 +316,11 @@ export class LandingAuthComponent implements OnInit {
     if (!account) return;
     const workplaceArrangements = this.setupWorkplaceArrangements() as unknown as
       Set<WorkPreferencesWorkplaceArrangementsEnum>;
+    const location = this.setupCanonicalLocation();
     const update: ProfilePreferencesUpdate = {
       aspirations: {targetRoles: this.tags(this.setupTargetRoles())},
       workPreferences: {
-        ...(this.setupPostcode().trim() ? {
-          location: {postcode: this.setupPostcode().trim().toUpperCase()},
-        } : {}),
+        ...(location ? {location: this.profileLocation(location)} : {}),
         workplaceArrangements,
       },
     };
@@ -318,5 +388,30 @@ export class LandingAuthComponent implements OnInit {
 
   private tags(value: string): string[] {
     return value.split(/[,;\n]/).map(item => item.trim()).filter(Boolean);
+  }
+
+  private profileLocation(location: CanonicalLocation) {
+    const provenance = (field: string) => location.fieldProvenance?.find(value =>
+      value.field.toUpperCase() === field.toUpperCase())?.source;
+    return {
+      locationId: location.locationId,
+      displayName: location.displayName,
+      countryCode: location.countryCode ?? 'GB',
+      postcode: location.postcode?.toUpperCase(),
+      region: location.region,
+      adminDistrict: location.locality,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      locationType: location.locationType,
+      precision: location.precision,
+      confidence: location.confidence,
+      googlePlaceId: location.providerReferences?.find(value =>
+        value.provider === 'GOOGLE_PLACES')?.externalId,
+      postcodesIoPlaceId: location.providerReferences?.find(value =>
+        value.provider === 'POSTCODES_IO')?.externalId,
+      displayNameSource: provenance('displayName'),
+      postcodeSource: provenance('postcode'),
+      coordinatesSource: provenance('coordinates'),
+    };
   }
 }

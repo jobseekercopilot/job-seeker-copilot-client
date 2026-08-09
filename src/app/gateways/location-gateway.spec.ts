@@ -135,4 +135,41 @@ describe('LocationGateway privacy boundary', () => {
     expect(error.mock.calls.flat().join(' ')).not.toContain(sensitivePostcode);
     expect(error.mock.calls.flat().join(' ')).not.toContain('location-gateway');
   });
+
+  it('forwards v2 autocomplete through the location gateway without logging the query', async () => {
+    const sensitiveQuery = 'RG1 1AA';
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({sessionId: 'session-1', suggestions: []}),
+      {status: 200, headers: {'Content-Type': 'application/json'}},
+    ));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    const result = await new LocationGateway().handleAutocomplete({input: sensitiveQuery});
+
+    expect(result.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://location-gateway:8081/api/v2/locations/autocomplete',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({input: sensitiveQuery}),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(log.mock.calls.flat().join(' ')).not.toContain(sensitiveQuery);
+  });
+
+  it('fails closed without exposing v2 resolve request details', async () => {
+    const sensitiveSuggestion = 'private-suggestion-id';
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error(sensitiveSuggestion));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const result = await new LocationGateway().handleResolve({
+      sessionId: 'private-session-id',
+      suggestionId: sensitiveSuggestion,
+    });
+
+    expect(result.statusCode).toBe(503);
+    expect(result.body).not.toContain(sensitiveSuggestion);
+    expect(error.mock.calls.flat().join(' ')).not.toContain(sensitiveSuggestion);
+  });
 });
