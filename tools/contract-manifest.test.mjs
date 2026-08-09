@@ -178,22 +178,24 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
     await readFile(resolve(rootDir, gateway.path), 'utf8'),
   );
   const savedJob = contract.components.schemas.SavedJobResponse.properties;
+  const documentReference =
+    contract.components.schemas.DocumentVersionReference.properties;
   const targetRoleResults =
     contract.components.schemas.TargetRoleJobResults;
 
-  assert.equal(gateway.version, '1.8.0');
+  assert.equal(gateway.version, '1.9.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
   assert.equal(
     gateway.sourceCommit,
-    '04807c860d015cfd7f5fc00d142508b7c8afc1d8',
+    'b217831731dee7a87b29bed83332e6b346d8676e',
   );
   assert.equal(
     gateway.sha256,
-    'c7ba25fc8ba3544b4b8586be92ece2809b568664a230f3b1131d7a451950a9b1',
+    'ce01852c34dc8d31989b12fc8437c5246040d0e0ac2e50d7f1dcf387c4560791',
   );
   assert.equal(
     gateway.path,
-    'contracts/job-finder-gateway/1.8.0/openapi.json',
+    'contracts/job-finder-gateway/1.9.0/openapi.json',
   );
   assert.equal(gateway.output, 'src/app/api/job-finder');
   assert.deepEqual(
@@ -212,7 +214,7 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
     '/api/jobs/applications',
     '/api/jobs/applications/{applicationId}/status',
   ]);
-  assert.equal(contract.info.version, '1.8.0');
+  assert.equal(contract.info.version, '1.9.0');
   assert.equal(savedJob.savedJobId.format, 'uuid');
   assert.equal(savedJob.snapshotVersion.format, 'int64');
   assert.equal(savedJob.contentSha256.type, 'string');
@@ -254,10 +256,10 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
       .applicationUsedCoverLetterState.enum,
     ['UNKNOWN', 'SELECTED', 'OMITTED'],
   );
-  assert.ok(
-    contract.components.schemas.DocumentVersionReference.properties
-      .evidenceProvenance,
-  );
+  assert.equal(documentReference.sourceType.type, 'string');
+  assert.equal(documentReference.originalContentSha256.type, 'string');
+  assert.equal(documentReference.selectedAt.format, 'date-time');
+  assert.ok(documentReference.evidenceProvenance);
   assert.ok(
     contract.components.schemas.DocumentEvidenceProvenance.properties
       .evidenceSnapshotDigest,
@@ -364,6 +366,14 @@ test('rejects unsafe or incomplete Job Finder saved-job drift', async (context) 
       (contract) => {
         delete contract.components.schemas.DocumentEvidenceProvenance
           .properties.evidenceSnapshotDigest;
+      },
+      /must expose canonical application identity, version and exact non-sensitive evidence provenance/,
+    ],
+    [
+      'missing application source provenance',
+      (contract) => {
+        delete contract.components.schemas.DocumentVersionReference
+          .properties.originalContentSha256;
       },
       /must expose canonical application identity, version and exact non-sensitive evidence provenance/,
     ],

@@ -72,6 +72,9 @@ function validateJobFinderContract(document) {
       !applicationProperties.applicationUsedCvDocumentReference ||
       !applicationProperties.applicationUsedAt ||
       !documentReferenceProperties.contentSha256 ||
+      !documentReferenceProperties.sourceType ||
+      !documentReferenceProperties.originalContentSha256 ||
+      documentReferenceProperties.selectedAt?.format !== 'date-time' ||
       !documentReferenceProperties.evidenceProvenance ||
       !documentReferenceProperties.groundingState ||
       !evidenceProperties.profileRevisionId ||
