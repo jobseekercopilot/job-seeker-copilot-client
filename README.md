@@ -1,10 +1,18 @@
 # Job Seeker Copilot Client
 
+## Role in Job Seeker Copilot
+
+| Role | Called by | Calls | Data | Local port |
+|---|---|---|---|---:|
+| Angular UI plus Express SSR/same-origin BFF | Job seeker's browser | User Management, Location, Job Finder, Document Generation/Store and Reporting | No server database; HttpOnly cookies and in-memory UI state | 3000 |
+
+Reporting routes are registered on `develop`; payment routes remain fail-closed. See the central [product overview](https://docs.jobseekercopilot.com/product/overview/), [frontend/gateway guide](https://docs.jobseekercopilot.com/services/frontend-gateways/), and [user journeys](https://docs.jobseekercopilot.com/journeys/account-authentication/).
+
 Angular 21 browser application with an Express SSR/BFF layer. The BFF proxies
 authentication, profile, location, Job Search, Application Tracking and
-document-generation requests through secure session-derived boundaries.
-Reporting and Payments remain explicitly unavailable until their equivalent
-secure integrations are complete.
+document-generation and reporting requests through secure session-derived
+boundaries. Payments remain explicitly unavailable until their equivalent
+secure integration is enabled.
 
 Private beta is a release stage for this normal application. Reproducible
 builds, browser token custody and the client session lifecycle are in place;
@@ -78,8 +86,8 @@ profile management, a versioned Evidence Library, Job Search, Application
 Tracking, fixture-backed document generation, storage and export. Evidence can
 be drafted, reviewed, confirmed, hidden, archived, restored or superseded;
 migrated history remains review-required until the claimant confirms it.
-Reporting and Payments remain fail-closed until their session-derived
-integrations are approved. Versioned User Management, Job Finder and Document
+Reporting uses the same session-derived boundary. Payments remain fail-closed
+until that integration is approved. Versioned User Management, Job Finder and Document
 Generation contracts are generated reproducibly. See
 [ADR 0001](docs/adr/0001-reproducible-api-clients.md) and the
 [browser-session ADR](docs/adr/0002-browser-session-client.md), plus the
@@ -96,12 +104,11 @@ contract, automated evidence and release checklist. The
 [credential-validation guide](docs/credential-validation.md) records the
 registration and sign-in boundaries and password handling rules.
 
-Express registers only POST `/api/jobs/search`, POST/GET `/api/jobs/saved`, and
-GET/DELETE `/api/jobs/saved/{savedJobId}` before its fail-closed boundary.
-Every other `/api/jobs` route, plus all `/api/v1/applications`,
-`/api/v1/document-generation`, `/api/v1/documents`, `/api/v1/reports` and
-`/api/v1/payment` routes, returns the stable `404 FEATURE_NOT_AVAILABLE` beta
-response before retained handlers can run.
+Express registers explicit auth/profile/evidence, location, Job Search, saved
+job, application, document-generation/document-read and reporting routes. The
+remaining fail-closed capability prefix is `/api/v1/payment`, which returns the
+stable `404 FEATURE_NOT_AVAILABLE` response before the retained payment proxy
+can run.
 
 The retained payment proxy is hardened for its future enablement: it resolves
 the stable owner through UMG's HttpOnly browser session profile, ignores browser
