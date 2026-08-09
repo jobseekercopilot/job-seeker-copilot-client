@@ -10,7 +10,7 @@ const ACCESS_TOKEN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const CSRF_TOKEN = /^[A-Za-z0-9._~+/=-]+$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PROVIDER_JOB_ID = /^[A-Za-z0-9._~:+@=-]{1,512}$/;
-const JOB_PROVIDERS = new Set(['ADZUNA', 'JSEARCH', 'REED']);
+const JOB_PROVIDERS = new Set(['ADZUNA', 'APPRENTICESHIPS', 'JSEARCH', 'NHS_JOBS', 'REED']);
 const SAVED_JOB_OUTCOMES = new Set([
   'CREATED',
   'REPLAYED',
