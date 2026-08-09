@@ -164,9 +164,9 @@ describe('LandingAuthComponent credential-only registration', () => {
       confidence: 'HIGH',
       providerReferences: [{provider: 'POSTCODES_IO', externalId: 'fixture-ls11aa'}],
       fieldProvenance: [
-        {field: 'displayName', source: 'POSTCODES_IO'},
-        {field: 'postcode', source: 'POSTCODES_IO'},
-        {field: 'coordinates', source: 'POSTCODES_IO'},
+        {field: 'DISPLAY_NAME', source: 'POSTCODES_IO'},
+        {field: 'POSTCODE', source: 'POSTCODES_IO'},
+        {field: 'COORDINATES', source: 'POSTCODES_IO'},
       ],
     });
     component.continueSetup();
@@ -183,6 +183,9 @@ describe('LandingAuthComponent credential-only registration', () => {
             displayName: 'Leeds, Yorkshire and the Humber',
             postcode: 'LS1 1AA',
             postcodesIoPlaceId: 'fixture-ls11aa',
+            displayNameSource: 'POSTCODES_IO',
+            postcodeSource: 'POSTCODES_IO',
+            coordinatesSource: 'POSTCODES_IO',
           }),
           workplaceArrangements: ['REMOTE'],
         }),

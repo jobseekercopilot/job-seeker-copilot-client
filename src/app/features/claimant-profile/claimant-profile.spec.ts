@@ -25,6 +25,7 @@ describe('ClaimantProfileComponent progressive profile', () => {
   const handleAuthenticatedError = vi.fn();
   const updateCurrentProfile = vi.fn();
   const lookup = vi.fn(() => of(idleLocationLookup));
+  const resolve = vi.fn();
   const listEvidence = vi.fn();
 
   beforeEach(async () => {
@@ -35,6 +36,7 @@ describe('ClaimantProfileComponent progressive profile', () => {
     updateCurrentProfile.mockReset();
     lookup.mockReset();
     lookup.mockReturnValue(of(idleLocationLookup));
+    resolve.mockReset();
     listEvidence.mockReset();
     listEvidence.mockReturnValue(of(evidenceEntries()));
     updatePreferences.mockImplementation((update: ProfilePreferencesUpdate) => of<GatewayResponse>({
@@ -63,7 +65,7 @@ describe('ClaimantProfileComponent progressive profile', () => {
           handleAuthenticatedError,
           updateCurrentProfile,
         }},
-        {provide: LocationService, useValue: {lookup}},
+        {provide: LocationService, useValue: {lookup, resolve}},
       ],
     }).compileComponents();
   });
@@ -162,6 +164,45 @@ describe('ClaimantProfileComponent progressive profile', () => {
     expect(component.localLatitude()).toBeUndefined();
     expect(lookup).toHaveBeenCalledWith('Bradford');
     vi.useRealTimers();
+  });
+
+  it('preserves underscore-separated canonical field provenance when selecting a location', () => {
+    resolve.mockReturnValue(of({
+      resolutionStatus: 'RESOLVED',
+      location: {
+        locationId: 'postcode:ls11aa',
+        displayName: 'Leeds, Yorkshire and the Humber',
+        countryCode: 'GB',
+        postcode: 'LS1 1AA',
+        locality: 'Leeds',
+        region: 'Yorkshire and the Humber',
+        latitude: 53.797,
+        longitude: -1.548,
+        providerReferences: [
+          {provider: 'GOOGLE_PLACES', externalId: 'google-place'},
+          {provider: 'POSTCODES_IO', externalId: 'fixture-ls11aa'},
+        ],
+        fieldProvenance: [
+          {field: 'DISPLAY_NAME', source: 'POSTCODES_IO'},
+          {field: 'POSTCODE', source: 'POSTCODES_IO'},
+          {field: 'COORDINATES', source: 'POSTCODES_IO'},
+        ],
+      },
+    }));
+    const component = TestBed.createComponent(ClaimantProfileComponent).componentInstance;
+
+    component.selectLocation({
+      id: 'suggestion-1',
+      name: 'LS1 1AA',
+      postcode: '',
+      sessionId: 'session-1',
+      suggestionId: 'suggestion-1',
+    });
+
+    expect(component.localDisplayNameSource()).toBe('POSTCODES_IO');
+    expect(component.localPostcodeSource()).toBe('POSTCODES_IO');
+    expect(component.localCoordinatesSource()).toBe('POSTCODES_IO');
+    expect(component.localGooglePlaceId()).toBe('google-place');
   });
 
   it('shows a safe optimistic-concurrency message', async () => {

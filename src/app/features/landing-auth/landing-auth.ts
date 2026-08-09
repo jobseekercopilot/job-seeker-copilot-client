@@ -391,8 +391,9 @@ export class LandingAuthComponent implements OnInit {
   }
 
   private profileLocation(location: CanonicalLocation) {
+    const normaliseField = (field: string) => field.replace(/[^A-Z0-9]/gi, '').toUpperCase();
     const provenance = (field: string) => location.fieldProvenance?.find(value =>
-      value.field.toUpperCase() === field.toUpperCase())?.source;
+      normaliseField(value.field) === normaliseField(field))?.source;
     return {
       locationId: location.locationId,
       displayName: location.displayName,
