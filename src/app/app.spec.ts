@@ -168,6 +168,22 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-search"]')).toBeNull();
   });
 
+  it('makes the Privacy Policy and Terms publicly reachable without restoring a session', async () => {
+    window.history.pushState({}, '', '/privacy');
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Privacy Policy');
+    expect(fixture.nativeElement.textContent).toContain('Google Maps Platform');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-search"]')).toBeNull();
+
+    window.history.pushState({}, '', '/terms');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Terms of Use');
+    expect(fixture.nativeElement.textContent).toContain('Commute information is an estimate');
+    window.history.pushState({}, '', '/dashboard');
+  });
+
   it('enables the documents workspace for validated real OpenAI generation', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();

@@ -89,6 +89,14 @@ export class JobService {
     let homePostcode: string | undefined;
     let homeLatitude: number | undefined;
     let homeLongitude: number | undefined;
+    let homeLocationId: string | undefined;
+    let homeCountryCode: string | undefined;
+    let homePrecision: string | undefined;
+    let homeConfidence: string | undefined;
+    let commuteTravelModes: string[] = [];
+    let maximumDrivingMinutes: number | undefined;
+    let maximumTransitMinutes: number | undefined;
+    let maximumDistanceMiles: number | undefined;
     try {
       const prefs = JSON.parse(workPrefs);
       if (prefs.postcode) {
@@ -113,6 +121,20 @@ export class JobService {
       if (typeof prefs.longitude === 'number') {
         homeLongitude = prefs.longitude;
       }
+      homeLocationId = typeof prefs.locationId === 'string' ? prefs.locationId : undefined;
+      homeCountryCode = typeof prefs.countryCode === 'string' ? prefs.countryCode : undefined;
+      homePrecision = typeof prefs.precision === 'string' ? prefs.precision : undefined;
+      homeConfidence = typeof prefs.confidence === 'string' ? prefs.confidence : undefined;
+      commuteTravelModes = Array.isArray(prefs.commuteTravelModes)
+        ? prefs.commuteTravelModes.filter((value: unknown): value is string =>
+            value === 'DRIVE' || value === 'TRANSIT')
+        : [];
+      maximumDrivingMinutes = typeof prefs.maximumDrivingMinutes === 'number'
+        ? prefs.maximumDrivingMinutes : undefined;
+      maximumTransitMinutes = typeof prefs.maximumTransitMinutes === 'number'
+        ? prefs.maximumTransitMinutes : undefined;
+      const parsedDistance = Number.parseInt(String(prefs.distance ?? ''), 10);
+      maximumDistanceMiles = Number.isFinite(parsedDistance) ? parsedDistance : undefined;
     } catch {
       // Fallback
     }
@@ -131,20 +153,28 @@ export class JobService {
         companySize: [],
         culture: [],
         homeLatitude,
-        homeLongitude
+        homeLongitude,
+        commuteTravelModes,
+        maximumDrivingMinutes,
+        maximumTransitMinutes,
+        maximumDistanceMiles,
       },
       homeLocation: {
+        locationId: homeLocationId,
         displayName: homeDisplayName,
         postcode: homePostcode,
         latitude: homeLatitude,
-        longitude: homeLongitude
+        longitude: homeLongitude,
+        countryCode: homeCountryCode,
+        precision: homePrecision,
+        confidence: homeConfidence,
       },
       ...(options.page != null ? {page: options.page} : {}),
       ...(options.pageSize != null ? {pageSize: options.pageSize} : {}),
       ...(options.sort
         ? {sort: options.sort as JobSearchRequest['sort']}
         : {}),
-    };
+    } as JobSearchRequest;
 
     return this.browserSession.ensureCsrf().pipe(
       switchMap(() => this.resolveHomeLocation(body)),

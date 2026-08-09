@@ -1,5 +1,7 @@
 import {TestBed} from '@angular/core/testing';
-import {firstValueFrom, of, throwError, toArray} from 'rxjs';
+import {provideHttpClient} from '@angular/common/http';
+import {HttpTestingController, provideHttpClientTesting} from '@angular/common/http/testing';
+import {firstValueFrom, toArray} from 'rxjs';
 import {LocationService as GeneratedLocationService} from '../api/location';
 import {idleLocationLookup, LocationService} from './location.service';
 
@@ -7,6 +9,7 @@ describe('LocationService lookup states', () => {
   const searchLocations = vi.fn();
   const getLocationByPostcode = vi.fn();
   let service: LocationService;
+  let http: HttpTestingController;
 
   beforeEach(() => {
     searchLocations.mockReset();
@@ -14,6 +17,8 @@ describe('LocationService lookup states', () => {
     TestBed.configureTestingModule({
       providers: [
         LocationService,
+        provideHttpClient(),
+        provideHttpClientTesting(),
         {
           provide: GeneratedLocationService,
           useValue: {searchLocations, getLocationByPostcode},
@@ -21,12 +26,14 @@ describe('LocationService lookup states', () => {
       ],
     });
     service = TestBed.inject(LocationService);
+    http = TestBed.inject(HttpTestingController);
   });
 
   it('does not request empty or partial input', async () => {
     await expect(firstValueFrom(service.lookup(' A '))).resolves.toEqual(idleLocationLookup);
     expect(searchLocations).not.toHaveBeenCalled();
     expect(getLocationByPostcode).not.toHaveBeenCalled();
+    http.verify();
   });
 
   it('trims a place query and exposes loading followed by canonical results', async () => {
@@ -38,25 +45,34 @@ describe('LocationService lookup states', () => {
       latitude: 53.8,
       longitude: -1.55,
     };
-    searchLocations.mockReturnValue(of({success: true, statusCode: 200, locations: [location]}));
-
-    const states = await firstValueFrom(service.lookup('  Leeds  ').pipe(toArray()));
-
-    expect(searchLocations).toHaveBeenCalledWith('Leeds');
-    expect(getLocationByPostcode).not.toHaveBeenCalled();
+    const result = firstValueFrom(service.lookup('  Leeds  ').pipe(toArray()));
+    const request = http.expectOne('/api/v2/locations/autocomplete');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({input: 'Leeds', countryCodes: ['GB']});
+    request.flush({
+      sessionId: 'session-1',
+      suggestions: [{
+        suggestionId: location.id,
+        primaryText: location.name,
+        secondaryText: location.region,
+        precisionHint: 'LOCALITY_CENTROID',
+      }],
+    });
+    const states = await result;
     expect(states).toEqual([
       {status: 'loading', locations: [], message: 'Searching locations…'},
-      {status: 'results', locations: [location], message: '1 matching location found.'},
+      {status: 'results', locations: [expect.objectContaining({
+        id: 'place-1', sessionId: 'session-1', suggestionId: 'place-1', name: 'Leeds, Yorkshire and the Humber',
+      })], message: '1 matching location found.'},
     ]);
   });
 
-  it('routes a postcode or outcode to the postcode endpoint', async () => {
-    getLocationByPostcode.mockReturnValue(of({success: true, statusCode: 200, locations: []}));
-
-    const states = await firstValueFrom(service.lookup('  SW1A 1AA  ').pipe(toArray()));
-
-    expect(getLocationByPostcode).toHaveBeenCalledWith('SW1A 1AA');
-    expect(searchLocations).not.toHaveBeenCalled();
+  it('keeps postcode searches inside the v2 gateway flow', async () => {
+    const result = firstValueFrom(service.lookup('  SW1A 1AA  ').pipe(toArray()));
+    const request = http.expectOne('/api/v2/locations/autocomplete');
+    expect(request.request.body.input).toBe('SW1A 1AA');
+    request.flush({sessionId: 'session-2', suggestions: []});
+    const states = await result;
     expect(states.at(-1)).toEqual({
       status: 'empty',
       locations: [],
@@ -71,12 +87,10 @@ describe('LocationService lookup states', () => {
     [0, 'unavailable', 'Location search is temporarily unavailable. Try again.'],
     [503, 'unavailable', 'Location search is temporarily unavailable. Try again.'],
   ] as const)('maps HTTP %s to a stable %s state without upstream detail', async (status, expectedStatus, message) => {
-    searchLocations.mockReturnValue(throwError(() => ({
-      status,
-      error: {message: 'private provider URL and response'},
-    })));
-
-    const states = await firstValueFrom(service.lookup('Leeds').pipe(toArray()));
+    const result = firstValueFrom(service.lookup('Leeds').pipe(toArray()));
+    const request = http.expectOne('/api/v2/locations/autocomplete');
+    request.flush({message: 'private provider URL and response'}, {status, statusText: 'provider failure'});
+    const states = await result;
 
     expect(states.at(-1)).toEqual({status: expectedStatus, locations: [], message});
     expect(JSON.stringify(states)).not.toContain('private provider');

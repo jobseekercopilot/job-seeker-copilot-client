@@ -1,1 +1,506 @@
-{"openapi":"3.1.0","info":{"title":"Jobseeker Copilot - Location Gateway API","description":"Gateway API for UK location searches and postcode lookups. Coordinates with postcode-io-gateway for location data.","version":"1.0.0"},"servers":[{"url":"http://localhost","description":"Generated server url"}],"tags":[{"name":"Location","description":"UK location search and postcode lookup endpoints"}],"paths":{"/api/postcodes/{postcode}":{"get":{"tags":["Location"],"summary":"Get location by postcode","description":"Retrieves location details for a UK postcode via postcode-io-gateway.","operationId":"getLocationByPostcode","parameters":[{"name":"postcode","in":"path","description":"UK postcode","required":true,"schema":{"type":"string"},"example":"SW1A 1AA"}],"responses":{"200":{"description":"Location found","content":{"application/json":{"schema":{"$ref":"#/components/schemas/LocationResponse"}}}},"400":{"description":"Invalid postcode or outcode","content":{"application/json":{"schema":{"$ref":"#/components/schemas/LocationResponse"}}}},"404":{"description":"Location not found","content":{"application/json":{"schema":{"$ref":"#/components/schemas/LocationResponse"}}}},"429":{"description":"Request rate limited","content":{"application/json":{"schema":{"$ref":"#/components/schemas/LocationResponse"}}}},"502":{"description":"Invalid provider response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/LocationResponse"}}}},"503":{"description":"Location provider unavailable","content":{"application/json":{"schema":{"$ref":"#/components/schemas/LocationResponse"}}}},"504":{"description":"Location provider timed out","content":{"application/json":{"schema":{"$ref":"#/components/schemas/LocationResponse"}}}}}}},"/api/locations":{"get":{"tags":["Location"],"summary":"Search UK places","description":"Returns at most ten matching UK places.","operationId":"searchLocations","parameters":[{"name":"q","in":"query","description":"Place-name query","required":true,"schema":{"type":"string","default":""},"example":"Leeds"}],"responses":{"200":{"description":"Search completed","content":{"application/json":{"schema":{"$ref":"#/components/schemas/LocationResponse"}}}},"400":{"description":"Invalid place query","content":{"application/json":{"schema":{"$ref":"#/components/schemas/LocationResponse"}}}},"429":{"description":"Request or provider rate limited","content":{"application/json":{"schema":{"$ref":"#/components/schemas/LocationResponse"}}}},"502":{"description":"Invalid provider response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/LocationResponse"}}}},"503":{"description":"Location provider unavailable","content":{"application/json":{"schema":{"$ref":"#/components/schemas/LocationResponse"}}}},"504":{"description":"Location provider timed out","content":{"application/json":{"schema":{"$ref":"#/components/schemas/LocationResponse"}}}}}}}},"components":{"schemas":{"Location":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"postcode":{"type":"string"},"region":{"type":"string"},"latitude":{"type":"number","format":"double"},"longitude":{"type":"number","format":"double"}}},"LocationResponse":{"type":"object","properties":{"statusCode":{"type":"integer","format":"int32"},"success":{"type":"boolean"},"message":{"type":"string"},"locations":{"type":"array","items":{"$ref":"#/components/schemas/Location"}}}}}}}
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Jobseeker Copilot - Location Gateway API",
+    "description": "Gateway API for UK location searches and postcode lookups. Coordinates with postcode-io-gateway for location data.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost",
+      "description": "Generated server url"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Location",
+      "description": "UK location search and postcode lookup endpoints"
+    }
+  ],
+  "paths": {
+    "/api/v2/locations/resolve": {
+      "post": {
+        "tags": [
+          "location-v-2-controller"
+        ],
+        "operationId": "resolve",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/locations/autocomplete": {
+      "post": {
+        "tags": [
+          "location-v-2-controller"
+        ],
+        "operationId": "autocomplete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutocompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutocompleteResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/postcodes/{postcode}": {
+      "get": {
+        "tags": [
+          "Location"
+        ],
+        "summary": "Get location by postcode",
+        "description": "Retrieves location details for a UK postcode via postcode-io-gateway.",
+        "operationId": "getLocationByPostcode",
+        "parameters": [
+          {
+            "name": "postcode",
+            "in": "path",
+            "description": "UK postcode",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "SW1A 1AA"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Location found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid postcode or outcode",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Location not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid provider response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Location provider unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Location provider timed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations": {
+      "get": {
+        "tags": [
+          "Location"
+        ],
+        "summary": "Search UK places",
+        "description": "Returns at most ten matching UK places.",
+        "operationId": "searchLocations",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Place-name query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": ""
+            },
+            "example": "Leeds"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid place query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request or provider rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid provider response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Location provider unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Location provider timed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ResolveRequest": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "suggestionId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "sessionId",
+          "suggestionId"
+        ]
+      },
+      "Attribution": {
+        "type": "object",
+        "properties": {
+          "required": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string"
+          }
+        }
+      },
+      "CanonicalLocation": {
+        "type": "object",
+        "properties": {
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "countryCode": {
+            "type": "string"
+          },
+          "postcode": {
+            "type": "string"
+          },
+          "locality": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "locationType": {
+            "type": "string"
+          },
+          "precision": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "providerReferences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderReference"
+            }
+          },
+          "fieldProvenance": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldProvenance"
+            }
+          },
+          "normalisedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FieldProvenance": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confidence": {
+            "type": "string"
+          }
+        }
+      },
+      "ProviderReference": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ResolveResponse": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "$ref": "#/components/schemas/CanonicalLocation"
+          },
+          "resolutionStatus": {
+            "type": "string"
+          },
+          "attribution": {
+            "$ref": "#/components/schemas/Attribution"
+          },
+          "reasonCode": {
+            "type": "string"
+          }
+        }
+      },
+      "AutocompleteRequest": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 3
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "countryCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "input"
+        ]
+      },
+      "AutocompleteResponse": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Suggestion"
+            }
+          },
+          "attribution": {
+            "$ref": "#/components/schemas/Attribution"
+          },
+          "source": {
+            "type": "string"
+          }
+        }
+      },
+      "Suggestion": {
+        "type": "object",
+        "properties": {
+          "suggestionId": {
+            "type": "string"
+          },
+          "primaryText": {
+            "type": "string"
+          },
+          "secondaryText": {
+            "type": "string"
+          },
+          "precisionHint": {
+            "type": "string"
+          }
+        }
+      },
+      "Location": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "postcode": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "longitude": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "LocationResponse": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "locations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Location"
+            }
+          }
+        }
+      }
+    }
+  }
+}

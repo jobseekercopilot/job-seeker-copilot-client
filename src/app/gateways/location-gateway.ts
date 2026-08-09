@@ -14,6 +14,12 @@ export interface LocationGatewayResponse {
   locations: UKLocation[];
 }
 
+export interface LocationV2GatewayResponse {
+  statusCode: number;
+  contentType: string;
+  body: string;
+}
+
 export class LocationGateway {
   constructor(
     private readonly timeoutMs = 5_000,
@@ -100,6 +106,47 @@ export class LocationGateway {
         success: false,
         message: 'Error calling postcode gateway service',
         locations: []
+      };
+    }
+  }
+
+  public handleAutocomplete(payload: unknown): Promise<LocationV2GatewayResponse> {
+    return this.handleV2Request('autocomplete', payload);
+  }
+
+  public handleResolve(payload: unknown): Promise<LocationV2GatewayResponse> {
+    return this.handleV2Request('resolve', payload);
+  }
+
+  private async handleV2Request(
+    action: 'autocomplete' | 'resolve',
+    payload: unknown,
+  ): Promise<LocationV2GatewayResponse> {
+    try {
+      const {body, response} = await fetchTextWithTimeout(
+        `${this.gatewayUrl}/api/v2/locations/${action}`,
+        {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        },
+        this.timeoutMs,
+        this.fetchImplementation,
+      );
+      return {
+        statusCode: response.status,
+        contentType: response.headers.get('content-type') || 'application/json',
+        body,
+      };
+    } catch {
+      console.error(`[LocationGateway] ${action} request unavailable`);
+      return {
+        statusCode: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: 'LOCATION_GATEWAY_UNAVAILABLE',
+          message: 'Location search is temporarily unavailable. Try again.',
+        }),
       };
     }
   }

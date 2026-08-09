@@ -4,6 +4,7 @@ import {of, throwError} from 'rxjs';
 import type {UserProfile} from '../../api';
 import {AuthenticationService, ProfileService} from '../../api';
 import {BrowserSessionService} from '../../services/browser-session.service';
+import {idleLocationLookup, LocationService} from '../../services/location.service';
 import {registrationPasswordError, unicodeCodePointLength} from './credential-policy';
 import {LandingAuthComponent} from './landing-auth';
 
@@ -16,6 +17,8 @@ describe('LandingAuthComponent credential-only registration', () => {
   const acceptAuthenticatedUser = vi.fn();
   const handleAuthenticatedError = vi.fn();
   const updatePreferences = vi.fn();
+  const locationLookup = vi.fn(() => of(idleLocationLookup));
+  const resolveLocation = vi.fn();
 
   beforeEach(async () => {
     events.length = 0;
@@ -26,6 +29,8 @@ describe('LandingAuthComponent credential-only registration', () => {
     acceptAuthenticatedUser.mockReset();
     handleAuthenticatedError.mockReset();
     updatePreferences.mockReset();
+    locationLookup.mockClear();
+    resolveLocation.mockReset();
     updatePreferences.mockReturnValue(of({
       statusCode: 200,
       success: true,
@@ -61,6 +66,7 @@ describe('LandingAuthComponent credential-only registration', () => {
       providers: [
         {provide: AuthenticationService, useValue: {login, register}},
         {provide: ProfileService, useValue: {updatePreferences}},
+        {provide: LocationService, useValue: {lookup: locationLookup, resolve: resolveLocation}},
         {provide: BrowserSessionService, useValue: {
           ensureCsrf,
           invalidateCsrf,
@@ -144,6 +150,25 @@ describe('LandingAuthComponent credential-only registration', () => {
     component.setupTargetRoles.set('Support analyst');
     component.continueSetup();
     component.setupPostcode.set('LS1 1AA');
+    component.setupCanonicalLocation.set({
+      locationId: 'postcode:ls11aa',
+      displayName: 'Leeds, Yorkshire and the Humber',
+      countryCode: 'GB',
+      postcode: 'LS1 1AA',
+      locality: 'Leeds',
+      region: 'Yorkshire and the Humber',
+      latitude: 53.797,
+      longitude: -1.548,
+      locationType: 'POSTCODE',
+      precision: 'POSTCODE',
+      confidence: 'HIGH',
+      providerReferences: [{provider: 'POSTCODES_IO', externalId: 'fixture-ls11aa'}],
+      fieldProvenance: [
+        {field: 'displayName', source: 'POSTCODES_IO'},
+        {field: 'postcode', source: 'POSTCODES_IO'},
+        {field: 'coordinates', source: 'POSTCODES_IO'},
+      ],
+    });
     component.continueSetup();
     component.toggleWorkplace('REMOTE');
     component.continueSetup();
@@ -153,7 +178,12 @@ describe('LandingAuthComponent credential-only registration', () => {
       expect.objectContaining({
         aspirations: {targetRoles: ['Support analyst']},
         workPreferences: expect.objectContaining({
-          location: {postcode: 'LS1 1AA'},
+          location: expect.objectContaining({
+            locationId: 'postcode:ls11aa',
+            displayName: 'Leeds, Yorkshire and the Humber',
+            postcode: 'LS1 1AA',
+            postcodesIoPlaceId: 'fixture-ls11aa',
+          }),
           workplaceArrangements: ['REMOTE'],
         }),
       }),
@@ -163,6 +193,10 @@ describe('LandingAuthComponent credential-only registration', () => {
       {transferCache: false},
     );
     expect(updatePreferences.mock.calls[0][0]).not.toHaveProperty('skills');
+    expect(JSON.parse(JSON.stringify(updatePreferences.mock.calls[0][0])))
+      .toEqual(expect.objectContaining({
+        workPreferences: expect.objectContaining({workplaceArrangements: ['REMOTE']}),
+      }));
     expect(onboarded?.profile).toEqual(expect.objectContaining({revision: 2}));
   });
 
@@ -183,7 +217,7 @@ describe('LandingAuthComponent credential-only registration', () => {
     );
   });
 
-  it('does not advance past search location without an explicit postcode', () => {
+  it('does not advance past search location without a canonical selection', () => {
     const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
     component.setupStep.set(2);
 
@@ -191,7 +225,7 @@ describe('LandingAuthComponent credential-only registration', () => {
 
     expect(component.setupStep()).toBe(2);
     expect(component.errorMessage()).toBe(
-      'Add a postcode before continuing, or set this up later.',
+      'Choose a location from the suggestions before continuing, or set this up later.',
     );
   });
 

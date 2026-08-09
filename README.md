@@ -51,6 +51,11 @@ Runtime configuration is supplied to the SSR process, not committed:
 Never place provider or production credentials in Angular environment files;
 browser bundles cannot keep a secret.
 
+Google-backed location and commute content is obtained only through the
+same-origin BFF and `location-gateway`. Suggestions and route estimates carry
+visible `Google Maps` attribution. Public `/privacy` and `/terms` notices explain
+the bounded provider data flow; the browser never receives the Google API key.
+
 The SSR process validates these values before listening. Gateway settings must
 be HTTP(S) origins without credentials, a path, query or fragment. Hosts must
 be explicit IP addresses or DNS names; wildcard host allowlists are rejected.

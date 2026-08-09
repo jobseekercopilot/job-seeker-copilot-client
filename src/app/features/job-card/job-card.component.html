@@ -101,6 +101,16 @@
           <span>{{ distanceText }}</span>
         }
       </span>
+      @if (commuteSummary(); as commuteText) {
+        <span class="inline-flex items-center gap-1.5" data-testid="commute-assessment">
+          <mat-icon class="text-base">commute</mat-icon>
+          {{ commuteText }}
+          @if (googleMapsCommuteAttributionRequired()) {
+            <span class="google-maps-attribution" data-testid="commute-google-maps-attribution"
+                  translate="no">Google Maps</span>
+          }
+        </span>
+      }
       <span class="inline-flex items-center gap-1.5">
         <mat-icon class="text-base">payments</mat-icon>
         {{ formatSalary(job().salary) }}

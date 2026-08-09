@@ -16,6 +16,7 @@
     "src/app/features/job-card/job-card.component.spec.ts",
     "src/app/features/job-results/job-results.component.spec.ts",
     "src/app/features/landing-auth/landing-auth.spec.ts",
+    "src/app/features/legal-notice/legal-notice.spec.ts",
     "src/app/features/password-recovery/password-recovery.spec.ts",
     "src/app/features/my-applications/my-applications.component.spec.ts",
     "src/app/features/navigation-bar/navigation-bar.spec.ts",

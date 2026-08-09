@@ -8,6 +8,7 @@ import { ClaimantProfileComponent } from './features/claimant-profile/claimant-p
 import { NavigationBar } from './features/navigation-bar/navigation-bar';
 import { LandingAuthComponent } from './features/landing-auth/landing-auth';
 import {PasswordRecoveryComponent} from './features/password-recovery/password-recovery';
+import {LegalNoticeComponent} from './features/legal-notice/legal-notice';
 import { JobResultsComponent } from './features/job-results/job-results.component';
 import { ReportingPanelComponent } from './features/reporting-panel/reporting-panel';
 import { PaymentPanelComponent } from './features/payment-panel/payment-panel';
@@ -40,6 +41,7 @@ type WorkspaceTab = 'search' | 'applications' | 'documents';
     NavigationBar,
     LandingAuthComponent,
     PasswordRecoveryComponent,
+    LegalNoticeComponent,
     JobResultsComponent,
     MyApplicationsComponent,
     DocumentsWorkspaceComponent,
@@ -67,7 +69,7 @@ export class App implements OnInit {
   paymentReturnStatus = signal<'success' | 'cancel' | null>(null);
   currentRoute = signal<'dashboard' | 'payment' | 'history'>('dashboard');
   publicAccountRoute = signal<
-    'register' | 'signin' | 'forgot' | 'reset' | null>(null);
+    'register' | 'signin' | 'forgot' | 'reset' | 'privacy' | 'terms' | null>(null);
 
   // Claimant profile search inputs remain in memory only.
   profileSkills = signal('');
@@ -245,11 +247,13 @@ export class App implements OnInit {
   }
 
   private detectPublicAccountRoute(pathname: string):
-      'register' | 'signin' | 'forgot' | 'reset' | null {
+      'register' | 'signin' | 'forgot' | 'reset' | 'privacy' | 'terms' | null {
     if (pathname === '/register') return 'register';
     if (pathname === '/sign-in') return 'signin';
     if (pathname === '/forgot-password') return 'forgot';
     if (pathname === '/reset-password') return 'reset';
+    if (pathname === '/privacy') return 'privacy';
+    if (pathname === '/terms') return 'terms';
     return null;
   }
 

@@ -188,6 +188,14 @@ export const profileToSearchText = (profile: UserProfile) => ({
     adminDistrict: profile.workPreferences?.location?.adminDistrict,
     latitude: profile.workPreferences?.location?.latitude,
     longitude: profile.workPreferences?.location?.longitude,
+    ...((profile.workPreferences?.location ?? {}) as Record<string, unknown>),
+    commuteTravelModes: Array.from(
+      ((profile.workPreferences as unknown as {commuteTravelModes?: Set<string>})
+        ?.commuteTravelModes ?? [])),
+    maximumDrivingMinutes: (profile.workPreferences as unknown as
+      {maximumDrivingMinutes?: number})?.maximumDrivingMinutes,
+    maximumTransitMinutes: (profile.workPreferences as unknown as
+      {maximumTransitMinutes?: number})?.maximumTransitMinutes,
     employmentTypes: Array.from(profile.workPreferences?.employmentTypes ?? []),
     workingPatterns: Array.from(profile.workPreferences?.workingPatterns ?? []),
     workplaceArrangements: Array.from(profile.workPreferences?.workplaceArrangements ?? []),
