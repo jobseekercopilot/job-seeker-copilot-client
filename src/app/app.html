@@ -21,7 +21,10 @@
 }
 
 <div class="app-shell min-h-screen font-sans antialiased pb-16">
-  @if (publicAccountRoute() === 'forgot' || publicAccountRoute() === 'reset') {
+  @if (publicAccountRoute() === 'privacy' || publicAccountRoute() === 'terms') {
+    <app-legal-notice [mode]="publicAccountRoute() === 'privacy' ? 'privacy' : 'terms'">
+    </app-legal-notice>
+  } @else if (publicAccountRoute() === 'forgot' || publicAccountRoute() === 'reset') {
     <app-password-recovery
       [mode]="publicAccountRoute() === 'forgot' ? 'forgot' : 'reset'">
     </app-password-recovery>
@@ -268,3 +271,8 @@
     </main>
   }
 </div>
+<footer class="public-legal-footer">
+  <span>Job Seeker Copilot</span>
+  <a href="/privacy">Privacy Policy</a>
+  <a href="/terms">Terms of Use</a>
+</footer>

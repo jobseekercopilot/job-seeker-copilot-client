@@ -118,6 +118,11 @@ export class JobCardComponent {
     return `About ${preferred.durationMinutes} min by ${label} · ${suitability}`;
   }
 
+  googleMapsCommuteAttributionRequired(): boolean {
+    return (this.job() as Job & {commuteAssessment?: CommuteAssessmentView})
+      .commuteAssessment?.providerAttribution === 'GOOGLE_MAPS';
+  }
+
   descriptionId(): string {
     return `${this.demoFocusId()}-description`;
   }

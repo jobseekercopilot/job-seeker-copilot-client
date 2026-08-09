@@ -1,0 +1,82 @@
+<main class="legal-page">
+  <a class="back-link" href="/">← Back to Job Seeker Copilot</a>
+
+  @if (mode() === 'privacy') {
+    <article>
+      <p class="eyebrow">Public notice</p>
+      <h1>Privacy Policy</h1>
+      <p class="effective-date">Effective 9 August 2026</p>
+
+      <h2>Location and commute features</h2>
+      <p>
+        When you ask Job Seeker Copilot to find a UK location or estimate a commute,
+        we may use Google Maps Platform through our server-side Google Maps gateway.
+        This processing happens only for the location or commute action you request.
+      </p>
+      <p>Depending on the action, we send Google only:</p>
+      <ul>
+        <li>the location text you type;</li>
+        <li>a selected Google place identifier;</li>
+        <li>origin and destination coordinates;</li>
+        <li>travel mode and the route options needed to calculate an estimate.</li>
+      </ul>
+      <p>
+        We do not send Google your name, email address, CV, cover letter, employment
+        history, application notes, generated documents, or other unrelated profile data.
+      </p>
+
+      <h2>What we retain</h2>
+      <p>
+        Google autocomplete suggestions and place details are kept only for the active,
+        short-lived selection session. Route distance, duration and provider responses are
+        response-only and are not stored in saved jobs, profiles, analytics or logs.
+        We may store the selected Google place identifier. Canonical postcode, display-name
+        and coordinate fields saved to your profile come from Postcodes.io or another
+        recorded non-Google source, not from Google Maps content.
+      </p>
+
+      <h2>Google terms and privacy</h2>
+      <p>
+        Google processes these requests under the
+        <a href="https://maps.google.com/help/terms_maps/" rel="noopener noreferrer">Google Maps/Google Earth Additional Terms</a>
+        and the <a href="https://policies.google.com/privacy" rel="noopener noreferrer">Google Privacy Policy</a>.
+      </p>
+
+      <h2>Your choices</h2>
+      <p>
+        You can use the supported non-Google postcode path when Google Maps is disabled,
+        and you can change or remove your saved location and commute preferences in your profile.
+      </p>
+    </article>
+  } @else {
+    <article>
+      <p class="eyebrow">Public notice</p>
+      <h1>Terms of Use</h1>
+      <p class="effective-date">Effective 9 August 2026</p>
+
+      <h2>Google Maps features</h2>
+      <p>
+        Job Seeker Copilot may use Google Maps Platform to provide location suggestions,
+        resolve a selected location, and show estimated commute distance or duration.
+        Your use of Google Maps content through this product is also subject to the
+        <a href="https://maps.google.com/help/terms_maps/" rel="noopener noreferrer">Google Maps/Google Earth Additional Terms</a>
+        and <a href="https://policies.google.com/terms" rel="noopener noreferrer">Google Terms of Service</a>.
+      </p>
+
+      <h2>Estimates and decisions</h2>
+      <p>
+        Commute information is an estimate for advisory use. Traffic, public transport,
+        route availability and approximate postcode-centroid locations can change the result.
+        Job Seeker Copilot does not guarantee journey times and does not use a commute estimate
+        as proof that a job is suitable or available.
+      </p>
+
+      <h2>Provider availability</h2>
+      <p>
+        Google-backed features are optional and may be unavailable because of provider,
+        quota or configuration limits. The supported postcode fallback remains available
+        where the product indicates it.
+      </p>
+    </article>
+  }
+</main>

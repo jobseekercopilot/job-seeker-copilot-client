@@ -169,6 +169,46 @@ describe('JobCardComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Posted date unavailable');
   });
 
+  it('attributes Google Maps commute content in the same job metadata container', () => {
+    const fixture = createFixture({
+      job: {
+        ...job,
+        commuteAssessment: {
+          status: 'WITHIN_PREFERENCE',
+          bestSuitableMode: 'DRIVE',
+          providerAttribution: 'GOOGLE_MAPS',
+          modes: [{mode: 'DRIVE', durationMinutes: 37, outcome: 'WITHIN'}],
+        },
+      } as Job,
+    });
+
+    const estimate = fixture.debugElement.query(By.css('[data-testid="commute-assessment"]'));
+    const attribution: HTMLElement = fixture.debugElement
+      .query(By.css('[data-testid="commute-google-maps-attribution"]')).nativeElement;
+
+    expect(estimate.nativeElement.textContent).toContain('About 37 min by driving');
+    expect(attribution.textContent).toContain('Google Maps');
+    expect(attribution.getAttribute('translate')).toBe('no');
+    expect(estimate.nativeElement.contains(attribution)).toBe(true);
+  });
+
+  it('does not attribute non-Google commute content to Google Maps', () => {
+    const fixture = createFixture({
+      job: {
+        ...job,
+        commuteAssessment: {
+          status: 'UNAVAILABLE',
+          providerAttribution: undefined,
+          modes: [],
+        },
+      } as Job,
+    });
+
+    expect(fixture.debugElement.query(
+      By.css('[data-testid="commute-google-maps-attribution"]'),
+    )).toBeNull();
+  });
+
   it('shows a bounded accessible description preview and restores it after expanding', () => {
     const tail = 'FINAL REQUIREMENT THAT MUST ONLY APPEAR AFTER EXPANSION';
     const description = `${'Build accessible services with a collaborative delivery team. '.repeat(12)}${tail}`;
