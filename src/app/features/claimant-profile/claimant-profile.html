@@ -73,18 +73,29 @@
                    aria-controls="profile-location-options"
                    [attr.aria-expanded]="showLocationDropdown()"
                    [attr.aria-busy]="locationLookup().status === 'loading'"
+                   [attr.aria-activedescendant]="activeLocationIndex() >= 0 ? 'profile-location-option-' + activeLocationIndex() : null"
                    [value]="localPostcode()"
                    (input)="onLocationInputChange($any($event.target).value)"
+                   (keydown)="onLocationKeydown($event)"
                    (focus)="showLocationDropdown.set(locationSuggestions().length > 0)"
                    class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
             @if (locationLookup().message) {
               <p role="status" class="text-[11px] text-slate-600 mt-1">{{ locationLookup().message }}</p>
             }
+            @if (locationLookup().attributionProvider === 'GOOGLE_MAPS') {
+              <p class="text-[11px] text-slate-500 mt-1">Suggestions provided by Google Maps</p>
+            }
             @if (showLocationDropdown() && locationSuggestions().length) {
               <div id="profile-location-options"
+                   role="listbox"
+                   aria-label="Matching UK locations"
                    class="absolute z-20 left-0 right-0 bg-white border rounded-xl shadow-lg">
-                @for (location of locationSuggestions(); track location.id) {
+                @for (location of locationSuggestions(); track location.id; let index = $index) {
                   <button type="button" (click)="selectLocation(location)"
+                          [id]="'profile-location-option-' + index"
+                          role="option"
+                          [attr.aria-selected]="activeLocationIndex() === index"
+                          (mouseenter)="activeLocationIndex.set(index)"
                           class="block w-full text-left px-3 py-2 text-xs hover:bg-slate-50">
                     <strong>{{ location.name }}</strong>
                     <span class="block text-slate-600">{{ location.postcode }}</span>
@@ -104,6 +115,41 @@
               }
             </select>
           </div>
+          <fieldset>
+            <legend class="block text-xs font-bold text-slate-700 mb-2">Travel modes</legend>
+            <div class="flex flex-wrap gap-2">
+              @for (option of commuteModeOptions; track option[0]) {
+                <label class="choice-chip">
+                  <input type="checkbox"
+                         [checked]="isSelected(localCommuteTravelModes(), option[0])"
+                         (change)="toggleSelection(localCommuteTravelModes, option[0])" />
+                  {{ option[1] }}
+                </label>
+              }
+            </div>
+          </fieldset>
+          @if (localCommuteTravelModes().includes('DRIVE')) {
+            <div>
+              <label for="profile-drive-minutes" class="block text-xs font-bold text-slate-700 mb-1">
+                Maximum driving time
+              </label>
+              <input id="profile-drive-minutes" type="number" min="5" max="180"
+                     [value]="localMaximumDrivingMinutes() ?? ''"
+                     (input)="localMaximumDrivingMinutes.set($any($event.target).value === '' ? undefined : +$any($event.target).value)"
+                     class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+          }
+          @if (localCommuteTravelModes().includes('TRANSIT')) {
+            <div>
+              <label for="profile-transit-minutes" class="block text-xs font-bold text-slate-700 mb-1">
+                Maximum public-transport time
+              </label>
+              <input id="profile-transit-minutes" type="number" min="5" max="180"
+                     [value]="localMaximumTransitMinutes() ?? ''"
+                     (input)="localMaximumTransitMinutes.set($any($event.target).value === '' ? undefined : +$any($event.target).value)"
+                     class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+          }
         </div>
       }
     </article>

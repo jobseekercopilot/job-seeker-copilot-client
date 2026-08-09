@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -15,7 +16,7 @@ import {
 import {FormsModule} from '@angular/forms';
 import {MatIconModule} from '@angular/material/icon';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
-import {firstValueFrom, Subject, switchMap} from 'rxjs';
+import {debounceTime, distinctUntilChanged, firstValueFrom, Subject, switchMap} from 'rxjs';
 import {
   EvidenceLibraryService,
   ProfileService,
@@ -36,7 +37,8 @@ import {
   idleLocationLookup,
   LocationService,
   type LocationLookupState,
-  type UKLocation,
+  type LocationOption,
+  type CanonicalLocation,
 } from '../../services/location.service';
 import {TagInputComponent} from '../../shared/tag-input/tag-input';
 
@@ -45,6 +47,26 @@ interface EvidenceSummaryRow {
   label: string;
   categories: string[];
 }
+
+type ExtendedWorkPreferences = WorkPreferences & {
+  commuteTravelModes?: Set<'DRIVE' | 'TRANSIT'>;
+  maximumDrivingMinutes?: number;
+  maximumTransitMinutes?: number;
+};
+
+type ExtendedLocation = NonNullable<WorkPreferences['location']> & {
+  locationId?: string;
+  displayName?: string;
+  countryCode?: string;
+  locationType?: string;
+  precision?: string;
+  confidence?: string;
+  googlePlaceId?: string;
+  postcodesIoPlaceId?: string;
+  displayNameSource?: string;
+  postcodeSource?: string;
+  coordinatesSource?: string;
+};
 
 @Component({
   selector: 'app-claimant-profile',
@@ -63,6 +85,7 @@ export class ClaimantProfileComponent implements OnInit {
   private readonly browserSession = inject(BrowserSessionService);
   private readonly locationService = inject(LocationService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly destroyRef = inject(DestroyRef);
   private evidenceLoadSequence = 0;
 
   readonly claimantName = input('');
@@ -87,19 +110,34 @@ export class ClaimantProfileComponent implements OnInit {
   readonly localSkills = signal<string[]>([]);
   readonly localTargetRoles = signal<string[]>([]);
   readonly localPostcode = signal('');
+  readonly localLocationId = signal<string | undefined>(undefined);
+  readonly localDisplayName = signal('');
+  readonly localCountryCode = signal('GB');
+  readonly localLocationType = signal<string | undefined>(undefined);
+  readonly localPrecision = signal<string | undefined>(undefined);
+  readonly localConfidence = signal<string | undefined>(undefined);
+  readonly localGooglePlaceId = signal<string | undefined>(undefined);
+  readonly localPostcodesIoPlaceId = signal<string | undefined>(undefined);
+  readonly localDisplayNameSource = signal<string | undefined>(undefined);
+  readonly localPostcodeSource = signal<string | undefined>(undefined);
+  readonly localCoordinatesSource = signal<string | undefined>(undefined);
   readonly localRegion = signal('');
   readonly localAdminDistrict = signal('');
   readonly localLatitude = signal<number | undefined>(undefined);
   readonly localLongitude = signal<number | undefined>(undefined);
   readonly localCommuteRange = signal<number | undefined>(undefined);
+  readonly localCommuteTravelModes = signal<string[]>([]);
+  readonly localMaximumDrivingMinutes = signal<number | undefined>(undefined);
+  readonly localMaximumTransitMinutes = signal<number | undefined>(undefined);
   readonly localEmploymentTypes = signal<string[]>([]);
   readonly localWorkingPatterns = signal<string[]>([]);
   readonly localWorkplaceArrangements = signal<string[]>([]);
   readonly localAvailableFrom = signal('');
   readonly localNoticePeriodDays = signal<number | undefined>(undefined);
 
-  readonly locationSuggestions = signal<UKLocation[]>([]);
+  readonly locationSuggestions = signal<LocationOption[]>([]);
   readonly showLocationDropdown = signal(false);
+  readonly activeLocationIndex = signal(-1);
   readonly locationLookup = signal<LocationLookupState>(idleLocationLookup);
   private readonly locationQueries = new Subject<string>();
 
@@ -108,11 +146,11 @@ export class ClaimantProfileComponent implements OnInit {
     const needsLocation = arrangements.some(value => value === 'ONSITE' || value === 'HYBRID');
     return this.localTargetRoles().length > 0
       && arrangements.length > 0
-      && (!needsLocation || Boolean(this.localPostcode().trim()));
+      && (!needsLocation || Boolean(this.localLocationId()));
   });
   readonly jobSearchPreferencesProgress = computed(() => [
     this.localTargetRoles().length > 0,
-    Boolean(this.localPostcode()),
+    Boolean(this.localLocationId()),
     this.localWorkingPatterns().length > 0
       || this.localEmploymentTypes().length > 0
       || this.localWorkplaceArrangements().length > 0,
@@ -156,15 +194,22 @@ export class ClaimantProfileComponent implements OnInit {
     ['REMOTE', 'Remote'],
   ] as const;
   readonly commuteDistanceOptions = [5, 10, 15, 25, 50];
+  readonly commuteModeOptions = [
+    ['DRIVE', 'Driving'],
+    ['TRANSIT', 'Public transport'],
+  ] as const;
 
   constructor() {
     this.locationQueries.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
       switchMap(query => this.locationService.lookup(query)),
       takeUntilDestroyed(),
     ).subscribe(state => {
       this.locationLookup.set(state);
       this.locationSuggestions.set(state.locations);
       this.showLocationDropdown.set(state.status === 'results');
+      this.activeLocationIndex.set(state.status === 'results' ? 0 : -1);
     });
 
     effect(() => {
@@ -230,6 +275,12 @@ export class ClaimantProfileComponent implements OnInit {
 
   async saveSection(): Promise<void> {
     if (this.isSaving()) return;
+    if (this.editingSection() === 'location'
+      && this.localPostcode().trim()
+      && !this.localLocationId()) {
+      this.saveError.set('Choose a location from the suggestions before saving.');
+      return;
+    }
     const update: ProfilePreferencesUpdate = {
       skills: this.localSkills(),
       aspirations: {
@@ -274,6 +325,7 @@ export class ClaimantProfileComponent implements OnInit {
 
   onLocationInputChange(query: string): void {
     this.localPostcode.set(query);
+    this.clearCanonicalLocation();
     this.localRegion.set('');
     this.localAdminDistrict.set('');
     this.localLatitude.set(undefined);
@@ -281,8 +333,34 @@ export class ClaimantProfileComponent implements OnInit {
     this.locationQueries.next(query.trim());
   }
 
-  selectLocation(location: UKLocation): void {
+  selectLocation(location: LocationOption): void {
+    if (location.sessionId && location.suggestionId) {
+      this.locationLookup.set({status: 'loading', locations: [], message: 'Confirming location…'});
+      this.showLocationDropdown.set(false);
+      this.locationService.resolve(location.sessionId, location.suggestionId).pipe(
+        takeUntilDestroyed(this.destroyRef),
+      ).subscribe({
+        next: response => {
+          if (response.resolutionStatus !== 'RESOLVED' || !response.location) {
+            this.locationLookup.set({
+              status: 'invalid',
+              locations: [],
+              message: 'Choose a more precise UK location before saving.',
+            });
+            return;
+          }
+          this.applyCanonicalLocation(response.location);
+        },
+        error: () => this.locationLookup.set({
+          status: 'unavailable',
+          locations: [],
+          message: 'Location confirmation is temporarily unavailable. Try again.',
+        }),
+      });
+      return;
+    }
     this.localPostcode.set(location.postcode ?? '');
+    this.localDisplayName.set(location.name ?? '');
     this.localRegion.set(location.region ?? '');
     this.localAdminDistrict.set((location.name ?? '').split(',')[0].trim());
     this.localLatitude.set(location.latitude);
@@ -291,6 +369,28 @@ export class ClaimantProfileComponent implements OnInit {
     this.showLocationDropdown.set(false);
     this.locationLookup.set(idleLocationLookup);
     this.locationQueries.next('');
+  }
+
+  onLocationKeydown(event: KeyboardEvent): void {
+    const suggestions = this.locationSuggestions();
+    if (event.key === 'Escape') {
+      this.showLocationDropdown.set(false);
+      this.activeLocationIndex.set(-1);
+      return;
+    }
+    if (!suggestions.length) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      this.showLocationDropdown.set(true);
+      this.activeLocationIndex.update(index => Math.min(index + 1, suggestions.length - 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      this.activeLocationIndex.update(index => Math.max(index - 1, 0));
+    } else if (event.key === 'Enter' && this.showLocationDropdown()) {
+      event.preventDefault();
+      const selected = suggestions[Math.max(0, this.activeLocationIndex())];
+      if (selected) this.selectLocation(selected);
+    }
   }
 
   toggleSelection(values: WritableSignal<string[]>, value: string): void {
@@ -316,12 +416,28 @@ export class ClaimantProfileComponent implements OnInit {
   private populate(profile: UserProfile): void {
     this.localSkills.set(profile.skills ?? []);
     this.localTargetRoles.set(profile.aspirations?.targetRoles ?? []);
-    this.localPostcode.set(profile.workPreferences?.location?.postcode ?? '');
-    this.localRegion.set(profile.workPreferences?.location?.region ?? '');
-    this.localAdminDistrict.set(profile.workPreferences?.location?.adminDistrict ?? '');
-    this.localLatitude.set(profile.workPreferences?.location?.latitude);
-    this.localLongitude.set(profile.workPreferences?.location?.longitude);
+    const preferences = profile.workPreferences as ExtendedWorkPreferences | undefined;
+    const location = preferences?.location as ExtendedLocation | undefined;
+    this.localPostcode.set(location?.postcode ?? '');
+    this.localLocationId.set(location?.locationId);
+    this.localDisplayName.set(location?.displayName ?? '');
+    this.localCountryCode.set(location?.countryCode ?? 'GB');
+    this.localRegion.set(location?.region ?? '');
+    this.localAdminDistrict.set(location?.adminDistrict ?? '');
+    this.localLatitude.set(location?.latitude);
+    this.localLongitude.set(location?.longitude);
+    this.localLocationType.set(location?.locationType);
+    this.localPrecision.set(location?.precision);
+    this.localConfidence.set(location?.confidence);
+    this.localGooglePlaceId.set(location?.googlePlaceId);
+    this.localPostcodesIoPlaceId.set(location?.postcodesIoPlaceId);
+    this.localDisplayNameSource.set(location?.displayNameSource);
+    this.localPostcodeSource.set(location?.postcodeSource);
+    this.localCoordinatesSource.set(location?.coordinatesSource);
     this.localCommuteRange.set(profile.workPreferences?.commuteRange);
+    this.localCommuteTravelModes.set(Array.from(preferences?.commuteTravelModes ?? []));
+    this.localMaximumDrivingMinutes.set(preferences?.maximumDrivingMinutes);
+    this.localMaximumTransitMinutes.set(preferences?.maximumTransitMinutes);
     this.localEmploymentTypes.set(Array.from(profile.workPreferences?.employmentTypes ?? []));
     this.localWorkingPatterns.set(Array.from(profile.workPreferences?.workingPatterns ?? []));
     this.localWorkplaceArrangements.set(Array.from(
@@ -338,16 +454,36 @@ export class ClaimantProfileComponent implements OnInit {
     const workplaceArrangements = this.localWorkplaceArrangements() as unknown as
       Set<WorkPreferencesWorkplaceArrangementsEnum>;
     return {
-      ...(this.localPostcode().trim() ? {
+      ...(this.localLocationId() && this.localPostcode().trim() ? {
         location: {
+          locationId: this.localLocationId(),
+          displayName: this.localDisplayName().trim(),
+          countryCode: this.localCountryCode(),
           postcode: this.localPostcode().trim().toUpperCase(),
           region: this.localRegion().trim(),
           adminDistrict: this.localAdminDistrict().trim(),
           latitude: this.localLatitude(),
           longitude: this.localLongitude(),
+          locationType: this.localLocationType(),
+          precision: this.localPrecision(),
+          confidence: this.localConfidence(),
+          googlePlaceId: this.localGooglePlaceId(),
+          postcodesIoPlaceId: this.localPostcodesIoPlaceId(),
+          displayNameSource: this.localDisplayNameSource(),
+          postcodeSource: this.localPostcodeSource(),
+          coordinatesSource: this.localCoordinatesSource(),
         },
       } : {}),
       ...(this.localCommuteRange() == null ? {} : {commuteRange: this.localCommuteRange()}),
+      commuteTravelModes: new Set(this.localCommuteTravelModes()) as Set<'DRIVE' | 'TRANSIT'>,
+      ...(this.localCommuteTravelModes().includes('DRIVE')
+        && this.localMaximumDrivingMinutes() != null
+        ? {maximumDrivingMinutes: this.localMaximumDrivingMinutes()}
+        : {}),
+      ...(this.localCommuteTravelModes().includes('TRANSIT')
+        && this.localMaximumTransitMinutes() != null
+        ? {maximumTransitMinutes: this.localMaximumTransitMinutes()}
+        : {}),
       employmentTypes,
       workingPatterns,
       workplaceArrangements,
@@ -355,6 +491,45 @@ export class ClaimantProfileComponent implements OnInit {
       ...(this.localNoticePeriodDays() == null
         ? {}
         : {noticePeriodDays: this.localNoticePeriodDays()}),
-    };
+    } as ExtendedWorkPreferences;
+  }
+
+  private applyCanonicalLocation(location: CanonicalLocation): void {
+    const provenance = (field: string) => location.fieldProvenance?.find(value =>
+      value.field.toUpperCase() === field.toUpperCase())?.source;
+    this.localLocationId.set(location.locationId);
+    this.localDisplayName.set(location.displayName ?? '');
+    this.localCountryCode.set(location.countryCode ?? 'GB');
+    this.localPostcode.set(location.postcode ?? location.displayName ?? '');
+    this.localRegion.set(location.region ?? '');
+    this.localAdminDistrict.set(location.locality ?? '');
+    this.localLatitude.set(location.latitude);
+    this.localLongitude.set(location.longitude);
+    this.localLocationType.set(location.locationType);
+    this.localPrecision.set(location.precision);
+    this.localConfidence.set(location.confidence);
+    this.localGooglePlaceId.set(location.providerReferences?.find(value => value.provider === 'GOOGLE_PLACES')?.externalId);
+    this.localPostcodesIoPlaceId.set(location.providerReferences?.find(value => value.provider === 'POSTCODES_IO')?.externalId);
+    this.localDisplayNameSource.set(provenance('displayName'));
+    this.localPostcodeSource.set(provenance('postcode'));
+    this.localCoordinatesSource.set(provenance('coordinates'));
+    this.locationSuggestions.set([]);
+    this.showLocationDropdown.set(false);
+    this.activeLocationIndex.set(-1);
+    this.locationLookup.set({status: 'idle', locations: [], message: 'Location confirmed.'});
+  }
+
+  private clearCanonicalLocation(): void {
+    this.localLocationId.set(undefined);
+    this.localDisplayName.set('');
+    this.localCountryCode.set('GB');
+    this.localLocationType.set(undefined);
+    this.localPrecision.set(undefined);
+    this.localConfidence.set(undefined);
+    this.localGooglePlaceId.set(undefined);
+    this.localPostcodesIoPlaceId.set(undefined);
+    this.localDisplayNameSource.set(undefined);
+    this.localPostcodeSource.set(undefined);
+    this.localCoordinatesSource.set(undefined);
   }
 }

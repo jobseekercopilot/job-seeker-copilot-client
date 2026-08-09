@@ -101,6 +101,12 @@
           <span>{{ distanceText }}</span>
         }
       </span>
+      @if (commuteSummary(); as commuteText) {
+        <span class="inline-flex items-center gap-1.5" data-testid="commute-assessment">
+          <mat-icon class="text-base">commute</mat-icon>
+          {{ commuteText }}
+        </span>
+      }
       <span class="inline-flex items-center gap-1.5">
         <mat-icon class="text-base">payments</mat-icon>
         {{ formatSalary(job().salary) }}

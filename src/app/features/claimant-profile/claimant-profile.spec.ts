@@ -141,6 +141,7 @@ describe('ClaimantProfileComponent progressive profile', () => {
   });
 
   it('stores a selected location and clears stale derived metadata before lookup', () => {
+    vi.useFakeTimers();
     const component = TestBed.createComponent(ClaimantProfileComponent).componentInstance;
     component.selectLocation({
       id: 'place-1',
@@ -154,10 +155,12 @@ describe('ClaimantProfileComponent progressive profile', () => {
     expect(component.localPostcode()).toBe('LS1');
 
     component.onLocationInputChange('Bradford');
+    vi.advanceTimersByTime(300);
     expect(component.localRegion()).toBe('');
     expect(component.localAdminDistrict()).toBe('');
     expect(component.localLatitude()).toBeUndefined();
     expect(lookup).toHaveBeenCalledWith('Bradford');
+    vi.useRealTimers();
   });
 
   it('shows a safe optimistic-concurrency message', async () => {

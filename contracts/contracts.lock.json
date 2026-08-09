@@ -12,9 +12,9 @@
       "id": "user-management-gateway",
       "version": "3.0.0",
       "sourceRepository": "jobseekercopilot/user-management-gateway",
-      "sourceCommit": "90f184fcd7ef578ddebd9a22b8ead159f9bf8338",
+      "sourceCommit": "8670964660d51e517a42559adfb51ef993afa5a2",
       "path": "contracts/user-management-gateway/3.0.0/openapi.json",
-      "sha256": "6140e0c9f18d39726dfa521913fba192e33bbda932d6304c8db210187cba9582",
+      "sha256": "b1999d8859743d1acdf0a3a07397373ede7ccf491a9634d9906da547cab766f4",
       "output": "src/app/api",
       "requiredPaths": [
         "/api/auth/csrf",
@@ -39,22 +39,24 @@
       "id": "location-gateway",
       "version": "1.0.0",
       "sourceRepository": "jobseekercopilot/location-gateway",
-      "sourceCommit": "dfef2c93389a2a95bb30201c2f6b3a29cf2fe3f6",
+      "sourceCommit": "a6772143c259f9bc4df980ae76b07bf9b34456b8",
       "path": "contracts/location-gateway/1.0.0/openapi.json",
-      "sha256": "76a7e2847118f93e885dfa5a3737fd61b877284e45c47d133377cefa2da09f60",
+      "sha256": "7dea82c35fc8058785344a6ac01cd9d0d25e271d10b59ca119c7186d7069740c",
       "output": "src/app/api/location",
       "requiredPaths": [
         "/api/locations",
-        "/api/postcodes/{postcode}"
+        "/api/postcodes/{postcode}",
+        "/api/v2/locations/autocomplete",
+        "/api/v2/locations/resolve"
       ]
     },
     {
       "id": "job-finder-gateway",
       "version": "1.8.0",
       "sourceRepository": "jobseekercopilot/job-finder-gateway",
-      "sourceCommit": "9e381a95fe36e6ca40c839a42c5ae89dcbaa8b4e",
+      "sourceCommit": "3ab53c5c088d68590398967663d4fd88b7acba6a",
       "path": "contracts/job-finder-gateway/1.8.0/openapi.json",
-      "sha256": "b21967fbf1adad4029b732bc264c81fc931f9c81b0e20aa9562069f60d3ccec0",
+      "sha256": "c7ba25fc8ba3544b4b8586be92ece2809b568664a230f3b1131d7a451950a9b1",
       "output": "src/app/api/job-finder",
       "requiredPaths": [
         "/api/jobs/search",

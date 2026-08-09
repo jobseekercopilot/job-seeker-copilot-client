@@ -19,6 +19,14 @@ interface StatusAction {
   variant?: 'primary' | 'secondary' | 'danger';
 }
 
+interface CommuteAssessmentView {
+  status?: string;
+  workplaceType?: string;
+  bestSuitableMode?: string;
+  explanationCode?: string;
+  modes?: Array<{mode?: string; durationMinutes?: number; outcome?: string}>;
+}
+
 export interface DocumentUploadRequest {
   applicationId: string;
   documentKind: UploadDocumentKind;
@@ -92,6 +100,22 @@ export class JobCardComponent {
 
   detailsId(): string {
     return `${this.demoFocusId()}-details`;
+  }
+
+  commuteSummary(): string | null {
+    const assessment = (this.job() as Job & {commuteAssessment?: CommuteAssessmentView})
+      .commuteAssessment;
+    if (!assessment) return null;
+    if (assessment.status === 'NOT_APPLICABLE') return 'Remote — no commute';
+    if (assessment.status === 'UNAVAILABLE') return 'Commute estimate unavailable';
+    if (assessment.status === 'NOT_EVALUATED') return null;
+    const preferred = assessment.modes?.find(mode =>
+      mode.mode === assessment.bestSuitableMode) ?? assessment.modes?.[0];
+    if (preferred?.durationMinutes == null) return null;
+    const label = preferred.mode === 'TRANSIT' ? 'public transport' : 'driving';
+    const suitability = assessment.status === 'WITHIN_PREFERENCE'
+      ? 'within preference' : 'above preference';
+    return `About ${preferred.durationMinutes} min by ${label} · ${suitability}`;
   }
 
   descriptionId(): string {
