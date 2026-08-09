@@ -487,6 +487,12 @@ test('pins durable generation, atomic selection and exact lifecycle contracts', 
   const saveSelections = contract.paths[
     '/api/v1/document-generation/applications/{applicationId}/document-selections'
   ].put;
+  const applicationUpload = contract.paths[
+    '/api/v1/document-generation/applications/{applicationId}/document-uploads'
+  ].post;
+  const applicationUploadStatus = contract.paths[
+    '/api/v1/document-generation/application-document-uploads/{operationId}'
+  ].get;
 
   const associations = contract.paths[
     '/api/v1/document-generation/document-versions/{documentId}/application-associations'
@@ -501,15 +507,15 @@ test('pins durable generation, atomic selection and exact lifecycle contracts', 
     '/api/v1/document-generation/document-versions/{documentId}'
   ].delete;
 
-  assert.equal(gateway.version, '2.4.0');
+  assert.equal(gateway.version, '2.6.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/document-generation-gateway');
-  assert.equal(gateway.sourceCommit, '5be87568e0fa358fac85a6cd74a32209fc432dc8');
+  assert.equal(gateway.sourceCommit, '21bf336f51f0ce9594cce32b533394314ba570c4');
   assert.equal(
     gateway.sha256,
-    '9b29a7a18fd03f2b73643ac685c64667fb840b449a06d8919b510255a4301db7',
+    '672eac3edfa20b3f6efb25d5b4966c638d0fd480b17bc1eef8b40554f607529b',
   );
   assert.equal(gateway.output, 'src/app/api/document-generation-gateway');
-  assert.equal(contract.info.version, '2.4.0');
+  assert.equal(contract.info.version, '2.6.0');
   assert.equal(start.operationId, 'startOperation');
   assert.equal(start.requestBody.required, true);
   assert.equal(
@@ -519,6 +525,20 @@ test('pins durable generation, atomic selection and exact lifecycle contracts', 
   assert.deepEqual(
     contract.components.schemas.StartGenerationRequest.required,
     ['documents'],
+  );
+  assert.deepEqual(
+    contract.components.schemas.StartGenerationRequest.properties.outputs,
+    {
+      maxItems: 2,
+      minItems: 1,
+      uniqueItems: true,
+      type: 'array',
+      items: {type: 'string', enum: ['CV', 'COVER_LETTER']},
+    },
+  );
+  assert.equal(
+    contract.components.schemas.StartGenerationRequest.properties.documents.minItems,
+    1,
   );
   assert.deepEqual(
     new Set(contract.components.schemas.DocumentEvidenceSelection.required),
@@ -540,10 +560,7 @@ test('pins durable generation, atomic selection and exact lifecycle contracts', 
     false,
   );
   assert.equal(approve.operationId, 'approveOperation');
-  assert.deepEqual(
-    contract.components.schemas.ApproveGenerationRequest.required,
-    ['coverLetterDocumentId', 'cvDocumentId'],
-  );
+  assert.equal(contract.components.schemas.ApproveGenerationRequest.required, undefined);
   assert.ok(
     contract.components.schemas.GenerationOperationResponse.properties.state.enum
       .includes('AWAITING_APPROVAL'),
@@ -600,6 +617,32 @@ test('pins durable generation, atomic selection and exact lifecycle contracts', 
   assert.equal(
     associations.responses['200'].content['*/*'].schema.$ref,
     '#/components/schemas/DocumentApplicationAssociationsResponse',
+  );
+  assert.equal(applicationUpload.operationId, 'upload');
+  assert.equal(applicationUploadStatus.operationId, 'get');
+  assert.deepEqual(
+    applicationUpload.parameters.map(({name, in: location, required}) => ({
+      name,
+      location,
+      required,
+    })),
+    [
+      {name: 'applicationId', location: 'path', required: true},
+      {name: 'jobId', location: 'query', required: true},
+      {name: 'documentType', location: 'query', required: true},
+      {name: 'fileType', location: 'query', required: true},
+      {name: 'Idempotency-Key', location: 'header', required: true},
+    ],
+  );
+  assert.equal(
+    applicationUpload.requestBody.content['multipart/form-data'].schema
+      .properties.file.format,
+    'binary',
+  );
+  assert.deepEqual(
+    contract.components.schemas.ApplicationDocumentUploadOperationResponse
+      .properties.state.enum,
+    ['RECEIVED', 'STORE_READY', 'LINKING', 'COMPLETED', 'RECOVERY_REQUIRED', 'REJECTED'],
   );
   const versionHistory = contract.components.schemas.DocumentVersionHistoryItem
     .properties;

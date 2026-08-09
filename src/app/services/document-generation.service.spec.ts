@@ -1,9 +1,10 @@
-import {HttpClient} from '@angular/common/http';
+import {HttpClient, HttpEventType, HttpResponse} from '@angular/common/http';
 import {TestBed} from '@angular/core/testing';
 import {firstValueFrom, NEVER, of, Subject, throwError} from 'rxjs';
 import {
   DocumentEvidenceSelectionPurposeEnum,
   DocumentEvidenceSelectionSectionOrderEnum,
+  ApplicationDocumentUploadControllerService,
   DocumentGenerationControllerService,
   GenerationOperationResponse,
   GenerationOperationResponseStateEnum,
@@ -36,6 +37,8 @@ describe('DocumentGenerationService', () => {
   let approveOperation: ReturnType<typeof vi.fn>;
   let cancelOperation: ReturnType<typeof vi.fn>;
   let httpPost: ReturnType<typeof vi.fn>;
+  let uploadApplicationDocument: ReturnType<typeof vi.fn>;
+  let getApplicationDocumentUpload: ReturnType<typeof vi.fn>;
 
   const job = {
     id: canonicalJobId,
@@ -88,6 +91,8 @@ describe('DocumentGenerationService', () => {
       state: 'CANCELLED',
     }));
     httpPost = vi.fn();
+    uploadApplicationDocument = vi.fn();
+    getApplicationDocumentUpload = vi.fn();
 
     TestBed.configureTestingModule({
       providers: [
@@ -108,6 +113,13 @@ describe('DocumentGenerationService', () => {
             getOperation,
             approveOperation,
             cancelOperation,
+          },
+        },
+        {
+          provide: ApplicationDocumentUploadControllerService,
+          useValue: {
+            upload: uploadApplicationDocument,
+            get: getApplicationDocumentUpload,
           },
         },
         {provide: HttpClient, useValue: {post: httpPost}},
@@ -248,6 +260,7 @@ describe('DocumentGenerationService', () => {
       savedJobId,
       expect.stringMatching(/^browser-/),
       {
+        outputs: new Set(['CV', 'COVER_LETTER']),
         documents: [
           {
             purpose: DocumentEvidenceSelectionPurposeEnum.Cv,
@@ -591,6 +604,7 @@ describe('DocumentGenerationService', () => {
       savedJobId,
       'browser-stable-key',
       {
+        outputs: new Set(['CV', 'COVER_LETTER']),
         documents: [
           {
             purpose: DocumentEvidenceSelectionPurposeEnum.Cv,
@@ -651,6 +665,7 @@ describe('DocumentGenerationService', () => {
       savedJobId,
       'browser-stable-key',
       {
+        outputs: new Set(['CV', 'COVER_LETTER']),
         documents: [
           {
             purpose: DocumentEvidenceSelectionPurposeEnum.Cv,
@@ -756,6 +771,7 @@ describe('DocumentGenerationService', () => {
       savedJobId,
       'browser-stable-key',
       {
+        outputs: new Set(['CV', 'COVER_LETTER']),
         documents: [
           expect.objectContaining({entryIds: evidence.cv.entryIds}),
           expect.objectContaining({entryIds: evidence.coverLetter.entryIds}),
@@ -910,6 +926,167 @@ describe('DocumentGenerationService', () => {
       expect.any(FormData),
       {observe: 'response'},
     );
+  });
+
+  it('generates and approves only the explicitly selected CV output', async () => {
+    getOperation.mockReturnValue(of({
+      operationId,
+      state: GenerationOperationResponseStateEnum.AwaitingApproval,
+      cvDocumentId,
+    }));
+    approveOperation.mockReturnValue(of({
+      operationId,
+      state: GenerationOperationResponseStateEnum.Completed,
+      applicationId,
+      cvDocumentId,
+      downloads: {},
+    }));
+
+    const result = await firstValueFrom(
+      TestBed.inject(DocumentGenerationService).generate(job, evidence, ['CV']),
+    );
+
+    expect(result).toEqual({
+      applicationId,
+      cvDocumentId,
+      downloads: {cv: {}, coverLetter: {}},
+    });
+    expect(startOperation).toHaveBeenCalledWith(
+      savedJobId,
+      expect.stringMatching(/^browser-/),
+      {
+        outputs: new Set(['CV']),
+        documents: [{
+          purpose: DocumentEvidenceSelectionPurposeEnum.Cv,
+          entryIds: evidence.cv.entryIds,
+          sectionOrder: evidence.cv.sectionOrder,
+        }],
+      },
+      'body',
+      false,
+      {transferCache: false},
+    );
+    expect(approveOperation).toHaveBeenCalledWith(
+      operationId,
+      {cvDocumentId},
+      'body',
+      false,
+      {transferCache: false},
+    );
+  });
+
+  it('reports byte upload separately from server checking and completion', async () => {
+    const file = new File(['safe-pdf'], 'existing-cv.pdf', {type: 'application/pdf'});
+    uploadApplicationDocument.mockReturnValue(of(
+      {type: HttpEventType.UploadProgress, loaded: file.size, total: file.size},
+      new HttpResponse({
+        status: 200,
+        body: {
+          operationId,
+          applicationId,
+          jobId: canonicalJobId,
+          documentType: 'CV',
+          fileType: 'PDF',
+          state: 'COMPLETED',
+          documentId: cvDocumentId,
+        },
+      }),
+    ));
+    const progress = vi.fn();
+
+    const operation = await firstValueFrom(
+      TestBed.inject(DocumentGenerationService).uploadApplicationDocument({
+        applicationId,
+        jobId: canonicalJobId,
+        documentType: 'CV',
+        file,
+        idempotencyKey: 'browser-upload-stable',
+      }, progress),
+    );
+
+    expect(operation.state).toBe('COMPLETED');
+    expect(uploadApplicationDocument).toHaveBeenCalledWith(
+      applicationId,
+      canonicalJobId,
+      'CV',
+      'PDF',
+      'browser-upload-stable',
+      file,
+      'events',
+      true,
+      {transferCache: false},
+    );
+    expect(progress.mock.calls.map(([value]) => value.phase)).toEqual([
+      'UPLOADING',
+      'UPLOADING',
+      'CHECKING',
+      'COMPLETED',
+    ]);
+    expect(getApplicationDocumentUpload).not.toHaveBeenCalled();
+  });
+
+  it('polls a linking upload by exact operation identity without re-uploading bytes', async () => {
+    vi.useFakeTimers();
+    const file = new File(['safe-docx'], 'letter.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    uploadApplicationDocument.mockReturnValue(of(new HttpResponse({
+      status: 202,
+      body: {
+        operationId,
+        applicationId,
+        jobId: canonicalJobId,
+        documentType: 'COVER_LETTER',
+        fileType: 'DOCX',
+        state: 'LINKING',
+      },
+    })));
+    getApplicationDocumentUpload.mockReturnValue(of({
+      operationId,
+      applicationId,
+      jobId: canonicalJobId,
+      documentType: 'COVER_LETTER',
+      fileType: 'DOCX',
+      state: 'COMPLETED',
+      documentId: coverLetterDocumentId,
+    }));
+    const progress = vi.fn();
+
+    const result = firstValueFrom(
+      TestBed.inject(DocumentGenerationService).uploadApplicationDocument({
+        applicationId,
+        jobId: canonicalJobId,
+        documentType: 'COVER_LETTER',
+        file,
+        idempotencyKey: 'browser-upload-letter',
+      }, progress),
+    );
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await expect(result).resolves.toMatchObject({state: 'COMPLETED'});
+    expect(uploadApplicationDocument).toHaveBeenCalledOnce();
+    expect(getApplicationDocumentUpload).toHaveBeenCalledWith(
+      operationId,
+      'body',
+      false,
+      {transferCache: false},
+    );
+    expect(progress.mock.calls.map(([value]) => value.phase)).toContain('LINKING');
+  });
+
+  it('rejects a file over 10 MiB before any upload request', () => {
+    const file = new File([new Uint8Array((10 * 1024 * 1024) + 1)], 'large.pdf', {
+      type: 'application/pdf',
+    });
+
+    expect(() => TestBed.inject(DocumentGenerationService).uploadApplicationDocument({
+      applicationId,
+      jobId: canonicalJobId,
+      documentType: 'CV',
+      file,
+      idempotencyKey: 'browser-upload-large',
+    }, vi.fn())).toThrow('The document must be between 1 byte and 10 MiB.');
+    expect(uploadApplicationDocument).not.toHaveBeenCalled();
   });
 
   function completedOperation(): GenerationOperationResponse {

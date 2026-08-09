@@ -17,6 +17,8 @@ const FAILURE_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
 const OPERATION_STATES = new Set([
   'CREATED',
   'SNAPSHOTS_RESOLVED',
+  'APPLICATION_SAVED',
+  'OUTPUT_READY',
   'ESTIMATED',
   'CREDIT_RESERVED',
   'GENERATION_IN_PROGRESS',
@@ -53,6 +55,15 @@ const EVIDENCE_SECTIONS = new Set([
   'OTHER',
 ]);
 const MAX_MULTIPART_BYTES = (25 * 1024 * 1024) + (64 * 1024);
+const MAX_APPLICATION_UPLOAD_REQUEST_BYTES = 11 * 1024 * 1024;
+const APPLICATION_UPLOAD_STATES = new Set([
+  'RECEIVED',
+  'STORE_READY',
+  'LINKING',
+  'COMPLETED',
+  'RECOVERY_REQUIRED',
+  'REJECTED',
+]);
 const MULTIPART_CONTENT_TYPE =
   /^multipart\/form-data;\s*boundary=(?:"[^"\r\n;]{1,200}"|[^\s\r\n;]{1,200})$/i;
 
@@ -92,12 +103,13 @@ interface DocumentEvidenceSelectionBody {
 }
 
 interface StartGenerationBody {
+  outputs?: ('CV' | 'COVER_LETTER')[];
   documents: DocumentEvidenceSelectionBody[];
 }
 
 interface ApproveGenerationBody {
-  cvDocumentId: string;
-  coverLetterDocumentId: string;
+  cvDocumentId?: string;
+  coverLetterDocumentId?: string;
 }
 
 type DocumentSelection =
@@ -150,14 +162,40 @@ function exactObjectKeys(
 }
 
 function startGenerationBody(value: unknown): StartGenerationBody | undefined {
-  if (!exactObjectKeys(value, ['documents']) || !Array.isArray(value['documents'])) {
+  if (
+    !value
+    || typeof value !== 'object'
+    || Array.isArray(value)
+  ) {
     return undefined;
   }
-  if (value['documents'].length !== 2) return undefined;
+  const source = value as Record<string, unknown>;
+  if (
+    !Object.keys(source).every(key => ['documents', 'outputs'].includes(key))
+    || !Object.hasOwn(source, 'documents')
+    || !Array.isArray(source['documents'])
+  ) {
+    return undefined;
+  }
+  const documentCandidates = source['documents'] as unknown[];
+  if (documentCandidates.length < 1 || documentCandidates.length > 2) return undefined;
 
-  const expectedPurposes = ['CV', 'COVER_LETTER'] as const;
+  const outputs = source['outputs'];
+  if (
+    outputs !== undefined
+    && (
+      !Array.isArray(outputs)
+      || outputs.length < 1
+      || outputs.length > 2
+      || !outputs.every(output => typeof output === 'string' && DOCUMENT_TYPES.has(output))
+      || new Set(outputs).size !== outputs.length
+    )
+  ) {
+    return undefined;
+  }
+
   const documents: DocumentEvidenceSelectionBody[] = [];
-  for (const [index, candidate] of value['documents'].entries()) {
+  for (const candidate of documentCandidates) {
     if (!exactObjectKeys(candidate, ['purpose', 'entryIds', 'sectionOrder'])) {
       return undefined;
     }
@@ -165,7 +203,8 @@ function startGenerationBody(value: unknown): StartGenerationBody | undefined {
     const entryIds = candidate['entryIds'];
     const sectionOrder = candidate['sectionOrder'];
     if (
-      purpose !== expectedPurposes[index]
+      typeof purpose !== 'string'
+      || !DOCUMENT_TYPES.has(purpose)
       || !Array.isArray(entryIds)
       || entryIds.length < 1
       || entryIds.length > 50
@@ -186,27 +225,55 @@ function startGenerationBody(value: unknown): StartGenerationBody | undefined {
       sectionOrder: [...sectionOrder] as string[],
     });
   }
-  return {documents};
-}
-
-function approveGenerationBody(value: unknown): ApproveGenerationBody | undefined {
-  if (!exactObjectKeys(value, ['cvDocumentId', 'coverLetterDocumentId'])) {
-    return undefined;
-  }
-  const cvDocumentId = value['cvDocumentId'];
-  const coverLetterDocumentId = value['coverLetterDocumentId'];
+  const purposes = documents.map(document => document.purpose);
+  if (new Set(purposes).size !== purposes.length) return undefined;
+  const requestedOutputs = outputs as ('CV' | 'COVER_LETTER')[] | undefined;
   if (
-    typeof cvDocumentId !== 'string'
-    || !validUuid(cvDocumentId)
-    || typeof coverLetterDocumentId !== 'string'
-    || !validUuid(coverLetterDocumentId)
-    || cvDocumentId.toLowerCase() === coverLetterDocumentId.toLowerCase()
+    requestedOutputs
+    && (
+      requestedOutputs.length !== purposes.length
+      || requestedOutputs.some((output, index) => output !== purposes[index])
+    )
   ) {
     return undefined;
   }
   return {
-    cvDocumentId: cvDocumentId.toLowerCase(),
-    coverLetterDocumentId: coverLetterDocumentId.toLowerCase(),
+    ...(requestedOutputs ? {outputs: [...requestedOutputs]} : {}),
+    documents,
+  };
+}
+
+function approveGenerationBody(value: unknown): ApproveGenerationBody | undefined {
+  if (
+    !value
+    || typeof value !== 'object'
+    || Array.isArray(value)
+    || !Object.keys(value).every(key => ['cvDocumentId', 'coverLetterDocumentId'].includes(key))
+    || Object.keys(value).length < 1
+  ) {
+    return undefined;
+  }
+  const source = value as Record<string, unknown>;
+  const cvDocumentId = source['cvDocumentId'];
+  const coverLetterDocumentId = source['coverLetterDocumentId'];
+  if (
+    (cvDocumentId !== undefined
+      && (typeof cvDocumentId !== 'string' || !validUuid(cvDocumentId)))
+    || (coverLetterDocumentId !== undefined
+      && (typeof coverLetterDocumentId !== 'string' || !validUuid(coverLetterDocumentId)))
+    || (typeof cvDocumentId === 'string'
+      && typeof coverLetterDocumentId === 'string'
+      && cvDocumentId.toLowerCase() === coverLetterDocumentId.toLowerCase())
+  ) {
+    return undefined;
+  }
+  return {
+    ...(typeof cvDocumentId === 'string'
+      ? {cvDocumentId: cvDocumentId.toLowerCase()}
+      : {}),
+    ...(typeof coverLetterDocumentId === 'string'
+      ? {coverLetterDocumentId: coverLetterDocumentId.toLowerCase()}
+      : {}),
   };
 }
 
@@ -1006,6 +1073,117 @@ async function boundedRequestBody(
   return Buffer.concat(chunks, receivedBytes);
 }
 
+function declaredRequestLength(
+  request: Request,
+  maximumBytes: number,
+): number | undefined {
+  const declared = request.get('Content-Length')?.trim();
+  if (!declared) return undefined;
+  if (
+    !/^\d+$/.test(declared)
+    || !Number.isSafeInteger(Number(declared))
+    || Number(declared) > maximumBytes
+  ) {
+    throw new RequestTooLargeError('Upload exceeds the allowed size');
+  }
+  return Number(declared);
+}
+
+async function* boundedRequestStream(
+  request: Request,
+  maximumBytes: number,
+): AsyncGenerator<Buffer> {
+  let receivedBytes = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    receivedBytes += buffer.length;
+    if (receivedBytes > maximumBytes) {
+      throw new RequestTooLargeError('Upload exceeds the allowed size');
+    }
+    yield buffer;
+  }
+}
+
+function safeApplicationUploadOperation(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  const allowedKeys = new Set([
+    'operationId',
+    'applicationId',
+    'jobId',
+    'documentType',
+    'fileType',
+    'state',
+    'documentStoreState',
+    'documentId',
+    'applicationVersion',
+    'failureCode',
+    'failureMessage',
+    'createdAt',
+    'updatedAt',
+  ]);
+  if (
+    Object.keys(source).some(key => !allowedKeys.has(key))
+    || typeof source['operationId'] !== 'string'
+    || !validUuid(source['operationId'])
+    || typeof source['applicationId'] !== 'string'
+    || !validUuid(source['applicationId'])
+    || typeof source['jobId'] !== 'string'
+    || source['jobId'].length < 1
+    || source['jobId'].length > 2_048
+    || typeof source['documentType'] !== 'string'
+    || !DOCUMENT_TYPES.has(source['documentType'])
+    || typeof source['fileType'] !== 'string'
+    || !ARTIFACT_FORMATS.has(source['fileType'])
+    || typeof source['state'] !== 'string'
+    || !APPLICATION_UPLOAD_STATES.has(source['state'])
+  ) {
+    return undefined;
+  }
+
+  const safe: Record<string, unknown> = {
+    operationId: source['operationId'].toLowerCase(),
+    applicationId: source['applicationId'].toLowerCase(),
+    jobId: source['jobId'],
+    documentType: source['documentType'],
+    fileType: source['fileType'],
+    state: source['state'],
+  };
+  if (
+    typeof source['documentStoreState'] === 'string'
+    && FAILURE_CODE.test(source['documentStoreState'])
+  ) {
+    safe['documentStoreState'] = source['documentStoreState'];
+  }
+  if (typeof source['documentId'] === 'string' && validUuid(source['documentId'])) {
+    safe['documentId'] = source['documentId'].toLowerCase();
+  }
+  if (
+    typeof source['applicationVersion'] === 'number'
+    && Number.isSafeInteger(source['applicationVersion'])
+    && source['applicationVersion'] >= 0
+  ) {
+    safe['applicationVersion'] = source['applicationVersion'];
+  }
+  if (typeof source['failureCode'] === 'string' && FAILURE_CODE.test(source['failureCode'])) {
+    safe['failureCode'] = source['failureCode'];
+  }
+  if (
+    typeof source['failureMessage'] === 'string'
+    && source['failureMessage'].length <= 512
+    && !/[\r\n]/.test(source['failureMessage'])
+  ) {
+    safe['failureMessage'] = source['failureMessage'];
+  }
+  for (const key of ['createdAt', 'updatedAt']) {
+    const timestamp = safeTimestamp(source[key]);
+    if (timestamp) safe[key] = timestamp;
+  }
+  return safe;
+}
+
 function safeFileName(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const normalised = [...value.trim()]
@@ -1197,6 +1375,81 @@ export function registerDocumentGenerationRoutes(
           : 'Document generation is currently unavailable',
       );
     }
+  };
+
+  const sendApplicationUploadFailure = (
+    response: Response,
+    status: number,
+  ): void => {
+    if (status === 401 || status === 403) {
+      sendFailure(
+        response,
+        status,
+        'APPLICATION_UPLOAD_AUTH_REQUIRED',
+        'Your session is not authorised to upload this application document',
+      );
+      return;
+    }
+    if (status === 404) {
+      sendFailure(
+        response,
+        status,
+        'APPLICATION_UPLOAD_NOT_FOUND',
+        'The application or upload operation was not found for this session',
+      );
+      return;
+    }
+    if (status === 409) {
+      sendFailure(
+        response,
+        status,
+        'APPLICATION_UPLOAD_CONFLICT',
+        'The application or upload request changed; refresh before retrying',
+      );
+      return;
+    }
+    if (status === 413) {
+      sendFailure(
+        response,
+        status,
+        'APPLICATION_UPLOAD_TOO_LARGE',
+        'The document must be 10 MiB or smaller',
+      );
+      return;
+    }
+    sendFailure(
+      response,
+      status,
+      'APPLICATION_UPLOAD_REJECTED',
+      status >= 500
+        ? 'Application document upload is currently unavailable'
+        : 'The application document could not be accepted',
+    );
+  };
+
+  const sendSafeApplicationUpload = (
+    response: Response,
+    status: number,
+    body: string,
+  ): void => {
+    if (status < 200 || status >= 300) {
+      sendApplicationUploadFailure(response, status);
+      return;
+    }
+    const safe = safeApplicationUploadOperation(parsedJson(body));
+    if (!safe) {
+      sendFailure(
+        response,
+        502,
+        'INVALID_DOWNSTREAM_RESPONSE',
+        'The document service returned an invalid upload status',
+      );
+      return;
+    }
+    response
+      .status(status)
+      .setHeader('Cache-Control', 'private, no-store')
+      .json(safe);
   };
 
   const proxyOperation = async (
@@ -1800,6 +2053,138 @@ export function registerDocumentGenerationRoutes(
       'DELETE',
       true,
     );
+  });
+
+  app.post('/api/v1/document-generation/applications/:applicationId/document-uploads', async (request, response) => {
+    const applicationId = request.params['applicationId'];
+    const jobId = request.query['jobId'];
+    const documentType = request.query['documentType'];
+    const fileType = request.query['fileType'];
+    const idempotencyKey = request.get('Idempotency-Key')?.trim();
+    if (!validUuid(applicationId)) {
+      sendFailure(response, 400, 'INVALID_APPLICATION_ID', 'The application identifier is invalid');
+      return;
+    }
+    if (typeof jobId !== 'string' || !jobId.trim() || jobId.length > 2_048) {
+      sendFailure(response, 400, 'INVALID_JOB_ID', 'The canonical job identifier is invalid');
+      return;
+    }
+    if (typeof documentType !== 'string' || !DOCUMENT_TYPES.has(documentType)) {
+      sendFailure(response, 400, 'INVALID_DOCUMENT_TYPE', 'The upload document type is invalid');
+      return;
+    }
+    if (typeof fileType !== 'string' || !ARTIFACT_FORMATS.has(fileType)) {
+      sendFailure(response, 400, 'INVALID_FILE_TYPE', 'Only PDF and DOCX uploads are supported');
+      return;
+    }
+    if (!idempotencyKey || !IDEMPOTENCY_KEY.test(idempotencyKey)) {
+      sendFailure(response, 400, 'INVALID_IDEMPOTENCY_KEY', 'A valid idempotency key is required');
+      return;
+    }
+    const contentType = multipartType(request);
+    if (!contentType) {
+      sendFailure(response, 415, 'INVALID_CONTENT_TYPE', 'A multipart document upload is required');
+      return;
+    }
+    const credentials = jobFinderCredentials(request.headers, config, true, false);
+    if ('status' in credentials) {
+      sendFailure(response, credentials.status, credentials.error, credentials.message);
+      return;
+    }
+
+    const correlationId = requestCorrelationId(request);
+    response.setHeader('X-Correlation-ID', correlationId);
+    response.setHeader('Cache-Control', 'private, no-store');
+    try {
+      const contentLength = declaredRequestLength(
+        request,
+        MAX_APPLICATION_UPLOAD_REQUEST_BYTES,
+      );
+      const init: RequestInit & {duplex: 'half'} = {
+        method: 'POST',
+        headers: {
+          ...credentials.headers,
+          'Content-Type': contentType,
+          'Idempotency-Key': idempotencyKey,
+          'X-Correlation-ID': correlationId,
+          ...(contentLength === undefined
+            ? {}
+            : {'Content-Length': String(contentLength)}),
+        },
+        body: boundedRequestStream(
+          request,
+          MAX_APPLICATION_UPLOAD_REQUEST_BYTES,
+        ) as unknown as BodyInit,
+        duplex: 'half',
+      };
+      const {body, response: upstream} = await fetchTextWithTimeout(
+        `${config.origin}/api/v1/document-generation/applications/${applicationId.toLowerCase()}/document-uploads?jobId=${encodeURIComponent(jobId.trim())}&documentType=${documentType}&fileType=${fileType}`,
+        init,
+        config.timeoutMs,
+        fetchImplementation,
+      );
+      sendSafeApplicationUpload(response, upstream.status, body);
+    } catch (error: unknown) {
+      if (error instanceof RequestTooLargeError) {
+        sendApplicationUploadFailure(response, 413);
+        return;
+      }
+      const category = downstreamFailureCategory(error);
+      console.error('BFF downstream request failed', {
+        category,
+        correlationId,
+        service: 'application-document-upload',
+      });
+      sendFailure(
+        response,
+        category === 'timeout' ? 504 : 503,
+        category === 'timeout' ? 'DOWNSTREAM_TIMEOUT' : 'SERVICE_UNAVAILABLE',
+        category === 'timeout'
+          ? 'The upload outcome is still being checked; retry with the same request'
+          : 'Application document upload is currently unavailable',
+      );
+    }
+  });
+
+  app.get('/api/v1/document-generation/application-document-uploads/:operationId', async (request, response) => {
+    const operationId = request.params['operationId'];
+    if (!validUuid(operationId)) {
+      sendFailure(response, 400, 'INVALID_OPERATION_ID', 'The upload operation identifier is invalid');
+      return;
+    }
+    const correlationId = requestCorrelationId(request);
+    response.setHeader('X-Correlation-ID', correlationId);
+    response.setHeader('Cache-Control', 'private, no-store');
+    try {
+      const payload = await callJson(
+        config,
+        config.origin,
+        `/api/v1/document-generation/application-document-uploads/${operationId.toLowerCase()}`,
+        request,
+        'GET',
+        false,
+        fetchImplementation,
+        {'X-Correlation-ID': correlationId},
+      );
+      if (!payload) {
+        sendFailure(response, 502, 'INVALID_DOWNSTREAM_RESPONSE', 'The document service returned an invalid upload status');
+        return;
+      }
+      sendSafeApplicationUpload(response, payload.status, payload.body);
+    } catch (error: unknown) {
+      const category = downstreamFailureCategory(error);
+      console.error('BFF downstream request failed', {
+        category,
+        correlationId,
+        service: 'application-document-upload-status',
+      });
+      sendFailure(
+        response,
+        category === 'timeout' ? 504 : 503,
+        category === 'timeout' ? 'DOWNSTREAM_TIMEOUT' : 'SERVICE_UNAVAILABLE',
+        'The upload status is currently unavailable',
+      );
+    }
   });
 
   app.post('/api/v1/document-generation/applications/:applicationId/replace', async (request, response) => {

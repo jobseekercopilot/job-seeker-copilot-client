@@ -15,6 +15,8 @@ import { finalize, Observable, Subscription } from 'rxjs';
 import { DocumentUploadRequest, JobCardComponent } from '../job-card/job-card.component';
 import { JobService } from '../../services/job.service';
 import {
+  ApplicationDocumentUploadProgress,
+  ApplicationDocumentUploadRequest,
   DocumentGenerationError,
   DocumentGenerationResponse,
   DocumentGenerationService,
@@ -28,6 +30,7 @@ import {
   JobDescriptionCompletenessEnum,
 } from '../../api/job-finder';
 import {
+  ApplicationDocumentUploadOperationResponse,
   DownloadFileResponse,
   DocumentEvidenceSelectionSectionOrderEnum,
 } from '../../api/document-generation-gateway';
@@ -59,6 +62,8 @@ type StatusUpdateTarget =
   | 'WITHDRAWN';
 type SortOption = 'MOST_RELEVANT' | 'CLOSEST' | 'HIGHEST_SALARY' | 'NEWEST_POSTED' | 'OLDEST_POSTED' | 'COMPANY_AZ' | 'JOB_TITLE_AZ';
 type EvidencePurpose = 'CV' | 'COVER_LETTER';
+type DocumentChoice = 'GENERATE' | 'UPLOAD' | 'OMIT';
+type DocumentEntryPoint = 'ADD' | 'GENERATE';
 type EvidenceSection = DocumentEvidenceSelectionSectionOrderEnum;
 type GenerationAdvertiserType = `${JobAdvertiserTypeEnum}`;
 type GenerationJob = Job;
@@ -104,6 +109,20 @@ interface EvidenceMatch {
   explanation: string;
 }
 
+interface PendingApplicationUpload {
+  request: ApplicationDocumentUploadRequest;
+}
+
+interface ApplicationUploadViewState {
+  phase: ApplicationDocumentUploadProgress['phase'];
+  fileName: string;
+  loadedBytes?: number;
+  totalBytes?: number;
+  percent?: number;
+  message?: string;
+  canRetry?: boolean;
+}
+
 const MATCH_STOP_WORDS = new Set([
   'about', 'after', 'again', 'against', 'also', 'among', 'and', 'any', 'are',
   'because', 'been', 'before', 'being', 'between', 'both', 'build', 'but',
@@ -140,6 +159,9 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   private readonly resumedGenerationIds = new Set<string>();
   private readonly generationSubscriptions = new Map<string, Subscription>();
   private readonly cancellationSubscriptions = new Map<string, Subscription>();
+  private readonly applicationUploadSubscriptions = new Map<string, Subscription>();
+  private readonly pendingApplicationUploads = new Map<string, Map<EvidencePurpose, PendingApplicationUpload>>();
+  private readonly generationOutputsByJob = new Map<string, EvidencePurpose[]>();
   private readonly localApplicationMutationSequence = new Map<string, number>();
   private destroyed = false;
 
@@ -253,6 +275,19 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   loadingJobDescriptionIds = signal<Set<string>>(new Set());
   jobDescriptionErrors = signal<Record<string, string | undefined>>({});
   evidenceSelectionJob = signal<Job | null>(null);
+  documentChoiceJob = signal<Job | null>(null);
+  documentChoiceEntryPoint = signal<DocumentEntryPoint>('ADD');
+  documentChoices = signal<Record<EvidencePurpose, DocumentChoice | null>>({
+    CV: null,
+    COVER_LETTER: null,
+  });
+  documentChoiceFiles = signal<Record<EvidencePurpose, File | null>>({
+    CV: null,
+    COVER_LETTER: null,
+  });
+  documentChoiceError = signal<string | null>(null);
+  requestedGenerationOutputs = signal<EvidencePurpose[]>(['CV', 'COVER_LETTER']);
+  applicationUploadStates = signal<Record<string, Partial<Record<EvidencePurpose, ApplicationUploadViewState>>>>({});
   evidenceEntries = signal<EvidenceEntry[]>([]);
   evidenceLoading = signal(false);
   evidenceSelectionError = signal<string | null>(null);
@@ -275,6 +310,19 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   readonly Math = Math;
   readonly futureFilterSections = ['Status', 'Date Posted', 'Salary', 'Location', 'Remote / On-site'];
   readonly evidencePurposes: EvidencePurpose[] = ['CV', 'COVER_LETTER'];
+  readonly activeEvidencePurposes = computed(() => this.requestedGenerationOutputs());
+  readonly canContinueDocumentChoice = computed(() => {
+    const choices = this.documentChoices();
+    const files = this.documentChoiceFiles();
+    const allowed = this.documentChoiceEntryPoint() === 'ADD'
+      ? (choice: DocumentChoice | null) => choice === 'UPLOAD' || choice === 'OMIT'
+      : (choice: DocumentChoice | null) => choice !== null;
+    return this.evidencePurposes.every(purpose =>
+      allowed(choices[purpose])
+      && (choices[purpose] !== 'UPLOAD' || this.validApplicationUploadFile(files[purpose])))
+      && (this.documentChoiceEntryPoint() !== 'GENERATE'
+        || this.evidencePurposes.some(purpose => choices[purpose] === 'GENERATE'));
+  });
   readonly sortOptions: { value: SortOption; label: string }[] = [
     { value: 'MOST_RELEVANT', label: 'Most relevant' },
     { value: 'CLOSEST', label: 'Closest to me' },
@@ -366,8 +414,10 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     && this.generationJobDescription().trim().length >= 200
     && this.generationAdvertiserName().trim().length > 0
     && this.generationAdvertiserType() !== 'UNKNOWN'
-    && this.validEvidenceSelection(this.cvEvidenceIds(), this.cvSectionOrder())
-    && this.validEvidenceSelection(this.coverLetterEvidenceIds(), this.coverLetterSectionOrder()));
+    && this.activeEvidencePurposes().every(purpose => this.validEvidenceSelection(
+      purpose === 'CV' ? this.cvEvidenceIds() : this.coverLetterEvidenceIds(),
+      purpose === 'CV' ? this.cvSectionOrder() : this.coverLetterSectionOrder(),
+    )));
 
   activeJobs = computed(() => {
     const state = this.activeRoleState();
@@ -439,8 +489,12 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     for (const subscription of this.cancellationSubscriptions.values()) {
       subscription.unsubscribe();
     }
+    for (const subscription of this.applicationUploadSubscriptions.values()) {
+      subscription.unsubscribe();
+    }
     this.generationSubscriptions.clear();
     this.cancellationSubscriptions.clear();
+    this.applicationUploadSubscriptions.clear();
     this.activeGenerationIds.clear();
   }
 
@@ -1263,6 +1317,137 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     return Boolean(active && this.jobStateKey(active) === this.jobStateKey(job));
   }
 
+  isDocumentChoiceJob(job: Job): boolean {
+    const active = this.documentChoiceJob();
+    return Boolean(active && this.jobStateKey(active) === this.jobStateKey(job));
+  }
+
+  hasApplicationUploadState(job: Job): boolean {
+    return Boolean(Object.keys(this.applicationUploadStates()[this.jobStateKey(job)] ?? {}).length);
+  }
+
+  applicationUploadState(
+    job: Job,
+    purpose: EvidencePurpose,
+  ): ApplicationUploadViewState | undefined {
+    return this.applicationUploadStates()[this.jobStateKey(job)]?.[purpose];
+  }
+
+  prepareApplicationDocuments(job: Job, entryPoint: DocumentEntryPoint): void {
+    const jobId = this.jobStateKey(job);
+    if (!jobId || this.creatingApplicationIds().has(jobId)) return;
+    if (job.applicationId) {
+      this.openDocumentChoice(job, entryPoint);
+      return;
+    }
+    this.createTrackedApplication(job, entryPoint);
+  }
+
+  chooseDocumentAction(purpose: EvidencePurpose, choice: DocumentChoice): void {
+    if (this.documentChoiceEntryPoint() === 'ADD' && choice === 'GENERATE') return;
+    this.documentChoices.update(choices => ({...choices, [purpose]: choice}));
+    if (choice !== 'UPLOAD') {
+      this.documentChoiceFiles.update(files => ({...files, [purpose]: null}));
+    }
+    this.documentChoiceError.set(null);
+  }
+
+  chooseDocumentFile(purpose: EvidencePurpose, event: Event): void {
+    const input = event.target instanceof HTMLInputElement ? event.target : null;
+    const file = input?.files?.item(0) ?? null;
+    this.documentChoiceFiles.update(files => ({...files, [purpose]: file}));
+    this.documentChoiceError.set(
+      file && !this.validApplicationUploadFile(file)
+        ? 'Choose a non-empty PDF or Microsoft Word .docx file no larger than 10 MiB.'
+        : null,
+    );
+  }
+
+  closeDocumentChoice(): void {
+    this.documentChoiceJob.set(null);
+    this.documentChoiceError.set(null);
+    this.documentChoices.set({CV: null, COVER_LETTER: null});
+    this.documentChoiceFiles.set({CV: null, COVER_LETTER: null});
+  }
+
+  continueDocumentChoice(): void {
+    const job = this.documentChoiceJob();
+    if (!job || !job.applicationId || !this.canContinueDocumentChoice()) {
+      this.documentChoiceError.set(
+        this.documentChoiceEntryPoint() === 'GENERATE'
+          ? 'Choose an action for both documents and select at least one document to generate.'
+          : 'Choose Upload or Not now for both documents and select each upload file.',
+      );
+      return;
+    }
+    const jobId = this.jobStateKey(job);
+    const choices = this.documentChoices();
+    const files = this.documentChoiceFiles();
+    const outputs = this.evidencePurposes.filter(purpose => choices[purpose] === 'GENERATE');
+    const uploads = new Map<EvidencePurpose, PendingApplicationUpload>();
+    for (const purpose of this.evidencePurposes) {
+      const file = files[purpose];
+      if (choices[purpose] !== 'UPLOAD' || !file) continue;
+      uploads.set(purpose, {
+        request: {
+          applicationId: job.applicationId,
+          jobId,
+          documentType: purpose,
+          file,
+          idempotencyKey: `browser-upload-${crypto.randomUUID()}`,
+        },
+      });
+    }
+    if (uploads.size) {
+      this.pendingApplicationUploads.set(jobId, uploads);
+    }
+    this.requestedGenerationOutputs.set(outputs);
+    this.closeDocumentChoice();
+    for (const purpose of uploads.keys()) {
+      this.startApplicationUpload(job, purpose);
+    }
+    if (outputs.length) {
+      this.openEvidenceSelection(job);
+    } else if (!uploads.size) {
+      this.notify.emit({
+        message: 'Application saved. You can add documents later.',
+        type: 'success',
+      });
+    }
+  }
+
+  retryApplicationUpload(job: Job, purpose: EvidencePurpose): void {
+    this.startApplicationUpload(job, purpose);
+  }
+
+  skipApplicationUpload(job: Job, purpose: EvidencePurpose): void {
+    const jobId = this.jobStateKey(job);
+    this.applicationUploadSubscriptions.get(`${jobId}:${purpose}`)?.unsubscribe();
+    this.applicationUploadSubscriptions.delete(`${jobId}:${purpose}`);
+    const pending = this.pendingApplicationUploads.get(jobId);
+    pending?.delete(purpose);
+    if (pending?.size === 0) this.pendingApplicationUploads.delete(jobId);
+    this.applicationUploadStates.update(states => {
+      const jobStates = {...states[jobId]};
+      delete jobStates[purpose];
+      return {...states, [jobId]: jobStates};
+    });
+    this.notify.emit({
+      message: `${this.documentPurposeLabel(purpose)} upload skipped. Existing documents were not changed.`,
+      type: 'info',
+    });
+  }
+
+  documentPurposeLabel(purpose: EvidencePurpose): string {
+    return purpose === 'CV' ? 'CV' : 'Cover letter';
+  }
+
+  generationActionLabel(): string {
+    const outputs = this.activeEvidencePurposes();
+    const names = outputs.map(purpose => this.documentPurposeLabel(purpose));
+    return `Generate ${names.join(' and ')} (${outputs.length} AI Credit${outputs.length === 1 ? '' : 's'})`;
+  }
+
   evidenceSelectorDomId(job: Job, suffix: string): string {
     const jobKey = this.jobStateKey(job)
       .toLowerCase()
@@ -1307,7 +1492,9 @@ export class JobResultsComponent implements OnInit, OnDestroy {
           ? 'Wait for the complete provider advert to finish loading.'
           : confirmationRequired
             ? 'Review and confirm the complete job advert before generating.'
-            : 'Choose at least one entry confirmed by you for both documents.',
+            : `Choose at least one entry confirmed by you for ${this.activeEvidencePurposes()
+                .map(purpose => this.documentPurposeLabel(purpose).toLowerCase())
+                .join(' and ')}.`,
       );
       return;
     }
@@ -1347,20 +1534,29 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.generationJobDescriptionConfirmed.set(false);
     this.generationJobDescriptionEdited.set(false);
     this.resetGenerationJobParties();
-    this.generateDocuments(generationJob, evidence);
+    this.generateDocuments(generationJob, evidence, this.activeEvidencePurposes());
   }
 
   private generateDocuments(
     job: Job,
     evidence: Parameters<DocumentGenerationService['generate']>[1],
+    outputs: EvidencePurpose[] = ['CV', 'COVER_LETTER'],
   ): void {
     const jobId = this.jobStateKey(job);
     if (!jobId || this.activeGenerationIds.has(jobId)) return;
-    this.markGenerationProcessing(jobId, 'Generating CV & Cover Letter...');
+    this.generationOutputsByJob.set(jobId, [...outputs]);
+    this.markGenerationProcessing(
+      jobId,
+      outputs.length === 2
+        ? 'Generating CV & Cover Letter...'
+        : `Generating ${this.documentPurposeLabel(outputs[0] ?? 'CV')}...`,
+    );
     this.subscribeToGeneration(
       jobId,
       job,
-      () => this.documentGenerationService.generate(job, evidence),
+      () => outputs.length === 2
+        ? this.documentGenerationService.generate(job, evidence)
+        : this.documentGenerationService.generate(job, evidence, outputs),
     );
   }
 
@@ -1482,6 +1678,10 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         continue;
       }
       this.rememberPendingEvidence(pending);
+      this.generationOutputsByJob.set(
+        pending.canonicalJobId,
+        pending.outputs?.length ? [...pending.outputs] : ['CV', 'COVER_LETTER'],
+      );
       this.resumedGenerationIds.add(pending.canonicalJobId);
       this.markGenerationProcessing(
         pending.canonicalJobId,
@@ -1570,6 +1770,10 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     response: DocumentGenerationResponse,
   ): void {
     const current = this.currentJob(jobId) ?? sourceJob;
+    const outputs = this.generationOutputsByJob.get(jobId) ?? ['CV', 'COVER_LETTER'];
+    const outcome = outputs.length === 2
+      ? 'CV and cover letter'
+      : this.documentPurposeLabel(outputs[0] ?? 'CV');
     this.generationDownloads.update(downloads => ({
       ...downloads,
       [jobId]: response.downloads,
@@ -1577,8 +1781,8 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.generatedDocumentIds.update(documentIds => ({
       ...documentIds,
       [jobId]: {
-        cvDocumentId: response.cvDocumentId,
-        coverLetterDocumentId: response.coverLetterDocumentId,
+        cvDocumentId: response.cvDocumentId ?? current.cvDocumentId,
+        coverLetterDocumentId: response.coverLetterDocumentId ?? current.coverLetterDocumentId,
       },
     }));
     this.updateJobLocally(jobId, {
@@ -1587,10 +1791,11 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       cvDocumentId: response.cvDocumentId ?? current.cvDocumentId,
       coverLetterDocumentId: response.coverLetterDocumentId ?? current.coverLetterDocumentId,
     });
+    this.generationOutputsByJob.delete(jobId);
     this.clearEvidenceDraft(jobId);
-    this.finishGeneration(jobId, 'CV and cover letter generated successfully.');
+    this.finishGeneration(jobId, `${outcome} generated successfully.`);
     this.notify.emit({
-      message: 'CV and cover letter generated successfully.',
+      message: `${outcome} generated successfully.`,
       type: 'success',
     });
     this.applicationChanged.emit();
@@ -1766,6 +1971,20 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   }
 
   trackApplication(job: Job): void {
+    this.prepareApplicationDocuments(job, 'ADD');
+  }
+
+  private openDocumentChoice(job: Job, entryPoint: DocumentEntryPoint): void {
+    this.persistEvidenceDraft();
+    this.closeEvidenceSelection();
+    this.documentChoiceJob.set(job);
+    this.documentChoiceEntryPoint.set(entryPoint);
+    this.documentChoices.set({CV: null, COVER_LETTER: null});
+    this.documentChoiceFiles.set({CV: null, COVER_LETTER: null});
+    this.documentChoiceError.set(null);
+  }
+
+  private createTrackedApplication(job: Job, entryPoint: DocumentEntryPoint): void {
     const jobId = this.jobStateKey(job);
     if (!jobId || job.applicationId || this.creatingApplicationIds().has(jobId)) return;
     this.creatingApplicationIds.update(ids => new Set(ids).add(jobId));
@@ -1778,6 +1997,13 @@ export class JobResultsComponent implements OnInit, OnDestroy {
           type: 'success',
         });
         this.applicationChanged.emit();
+        this.openDocumentChoice({
+          ...job,
+          applicationId: record.id,
+          applicationStatus: record.status,
+          cvDocumentId: record.cvDocumentId,
+          coverLetterDocumentId: record.coverLetterDocumentId,
+        }, entryPoint);
       },
       error: () => {
         this.creatingApplicationIds.update(ids => {
@@ -1799,6 +2025,130 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         });
       },
     });
+  }
+
+  private validApplicationUploadFile(file: File | null): boolean {
+    if (!file || file.size < 1 || file.size > 10 * 1024 * 1024) return false;
+    const name = file.name.toLowerCase();
+    return (name.endsWith('.pdf') && (!file.type || file.type === 'application/pdf'))
+      || (name.endsWith('.docx') && (
+        !file.type
+        || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ));
+  }
+
+  private startApplicationUpload(job: Job, purpose: EvidencePurpose): void {
+    const jobId = this.jobStateKey(job);
+    const pending = this.pendingApplicationUploads.get(jobId)?.get(purpose);
+    const subscriptionKey = `${jobId}:${purpose}`;
+    if (!pending || this.applicationUploadSubscriptions.has(subscriptionKey)) return;
+    const updateProgress = (progress: ApplicationDocumentUploadProgress): void => {
+      this.setApplicationUploadState(jobId, purpose, {
+        phase: progress.phase,
+        fileName: pending.request.file.name,
+        loadedBytes: progress.loadedBytes,
+        totalBytes: progress.totalBytes,
+        percent: progress.percent,
+        message: progress.phase === 'LINKING'
+          ? 'File checked. Linking it to your application…'
+          : progress.phase === 'CHECKING'
+            ? 'Upload complete. Checking the file…'
+            : undefined,
+      });
+    };
+    let operation: Observable<ApplicationDocumentUploadOperationResponse>;
+    try {
+      operation = this.documentGenerationService.uploadApplicationDocument(
+        pending.request,
+        updateProgress,
+      );
+    } catch (error) {
+      this.rejectApplicationUpload(jobId, purpose, pending.request.file.name, error);
+      return;
+    }
+    const subscription = operation.pipe(finalize(() => {
+      this.applicationUploadSubscriptions.delete(subscriptionKey);
+    })).subscribe({
+      next: result => {
+        if (result.state !== 'COMPLETED' || !result.documentId) {
+          this.rejectApplicationUpload(
+            jobId,
+            purpose,
+            pending.request.file.name,
+            result.failureMessage || 'The file could not be linked safely. Retry it or skip this document.',
+          );
+          return;
+        }
+        const current = this.currentJob(jobId) ?? job;
+        const patch = purpose === 'CV'
+          ? {cvDocumentId: result.documentId}
+          : {coverLetterDocumentId: result.documentId};
+        this.updateJobLocally(jobId, patch);
+        this.generatedDocumentIds.update(documentIds => ({
+          ...documentIds,
+          [jobId]: {
+            cvDocumentId: purpose === 'CV'
+              ? result.documentId
+              : documentIds[jobId]?.cvDocumentId ?? current.cvDocumentId,
+            coverLetterDocumentId: purpose === 'COVER_LETTER'
+              ? result.documentId
+              : documentIds[jobId]?.coverLetterDocumentId ?? current.coverLetterDocumentId,
+          },
+        }));
+        this.pendingApplicationUploads.get(jobId)?.delete(purpose);
+        this.setApplicationUploadState(jobId, purpose, {
+          phase: 'COMPLETED',
+          fileName: pending.request.file.name,
+          percent: 100,
+          message: `${this.documentPurposeLabel(purpose)} uploaded and linked.`,
+        });
+        this.notify.emit({
+          message: `${this.documentPurposeLabel(purpose)} uploaded successfully.`,
+          type: 'success',
+        });
+        this.applicationChanged.emit();
+      },
+      error: error => this.rejectApplicationUpload(
+        jobId,
+        purpose,
+        pending.request.file.name,
+        error,
+      ),
+    });
+    if (!subscription.closed) {
+      this.applicationUploadSubscriptions.set(subscriptionKey, subscription);
+    }
+  }
+
+  private rejectApplicationUpload(
+    jobId: string,
+    purpose: EvidencePurpose,
+    fileName: string,
+    error: unknown,
+  ): void {
+    const message = typeof error === 'string'
+      ? error
+      : error instanceof Error
+        ? error.message
+        : 'The upload did not complete. Retry it or skip this document.';
+    this.setApplicationUploadState(jobId, purpose, {
+      phase: 'ERROR',
+      fileName,
+      message,
+      canRetry: true,
+    });
+    this.notify.emit({message, type: 'error'});
+  }
+
+  private setApplicationUploadState(
+    jobId: string,
+    purpose: EvidencePurpose,
+    state: ApplicationUploadViewState,
+  ): void {
+    this.applicationUploadStates.update(states => ({
+      ...states,
+      [jobId]: {...states[jobId], [purpose]: state},
+    }));
   }
 
   updateApplicationStatus(job: Job, status: StatusUpdateTarget): void {
