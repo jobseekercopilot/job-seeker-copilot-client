@@ -14,7 +14,7 @@
       </button>
       <div class="flex-shrink-0 flex items-center gap-2">
         @if (specialistLabel(); as label) {
-          <span class="specialist-badge" data-testid="specialist-job-badge">{{ label }}</span>
+          <span class="source-badge" data-testid="specialist-job-badge">{{ label }}</span>
         }
         @for (label of sourceLabels(); track label) {
           <span class="source-badge hidden sm:inline-flex">{{ label }}</span>
@@ -157,11 +157,11 @@
         }
       </div>
       @if (isApprenticeship() && job().apprenticeshipDetails; as details) {
-        <section class="apprenticeship-details mt-4 rounded-lg p-4"
+        <section class="mt-4 rounded-lg border p-4"
                  data-testid="apprenticeship-details"
                  aria-labelledby="apprenticeship-details-title">
           <h4 id="apprenticeship-details-title" class="m-0">Apprenticeship details</h4>
-          <dl class="apprenticeship-facts mt-3 grid gap-3 sm:grid-cols-2">
+          <dl class="mt-3 mb-0 grid gap-3 sm:grid-cols-2">
             @if (details.courseTitle) {
               <div><dt>Training course</dt><dd>{{ details.courseTitle }}</dd></div>
             }
