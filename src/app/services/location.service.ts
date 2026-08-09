@@ -29,18 +29,18 @@ export interface CanonicalLocation {
   locationType?: string;
   precision?: string;
   confidence?: string;
-  providerReferences?: Array<{provider: string; externalId: string}>;
-  fieldProvenance?: Array<{field: string; source: string}>;
+  providerReferences?: {provider: string; externalId: string}[];
+  fieldProvenance?: {field: string; source: string}[];
 }
 
 interface AutocompleteResponse {
   sessionId: string;
-  suggestions?: Array<{
+  suggestions?: {
     suggestionId: string;
     primaryText: string;
     secondaryText?: string;
     precisionHint?: string;
-  }>;
+  }[];
   attribution?: {required: boolean; provider?: string};
 }
 
