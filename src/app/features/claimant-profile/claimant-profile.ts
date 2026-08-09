@@ -495,8 +495,9 @@ export class ClaimantProfileComponent implements OnInit {
   }
 
   private applyCanonicalLocation(location: CanonicalLocation): void {
+    const normaliseField = (field: string) => field.replace(/[^A-Z0-9]/gi, '').toUpperCase();
     const provenance = (field: string) => location.fieldProvenance?.find(value =>
-      value.field.toUpperCase() === field.toUpperCase())?.source;
+      normaliseField(value.field) === normaliseField(field))?.source;
     this.localLocationId.set(location.locationId);
     this.localDisplayName.set(location.displayName ?? '');
     this.localCountryCode.set(location.countryCode ?? 'GB');
