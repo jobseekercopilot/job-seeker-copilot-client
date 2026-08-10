@@ -187,11 +187,11 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
   assert.equal(
     gateway.sourceCommit,
-    'd1234d2a0b576f915941c17bafdeafe663bb04a7',
+    '40767ce9e06c30e319c7faf02ac4c7821f98e9a2',
   );
   assert.equal(
     gateway.sha256,
-    '257df9fd5909da77a897907ed4465aedca668bb41b09c935d873f14cb11af56c',
+    '3476b6c3948375637635c6f9b3e01e518b0bf162c8aa8e8aba0ea15dfbbcb1b8',
   );
   assert.equal(
     gateway.path,
@@ -245,6 +245,26 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
     contract.components.schemas.CreateTrackedApplicationRequest
       .properties.userId,
     undefined,
+  );
+  assert.deepEqual(
+    Object.keys(
+      contract.components.schemas.CreateTrackedApplicationRequest.properties,
+    ).filter(field => [
+      'listingUrl',
+      'applyUrl',
+      'attributionLabel',
+      'attributionSourceUrl',
+      'licenceUrl',
+      'disclaimer',
+    ].includes(field)),
+    [
+      'listingUrl',
+      'applyUrl',
+      'attributionLabel',
+      'attributionSourceUrl',
+      'licenceUrl',
+      'disclaimer',
+    ],
   );
   assert.deepEqual(
     contract.paths['/api/jobs/applications'].post.security ?? contract.security,
