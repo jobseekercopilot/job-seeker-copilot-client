@@ -359,6 +359,7 @@
     @for (entry of filteredEntries(); track entry.entryId) {
       @let revision = latest(entry);
       <article class="evidence-card rounded-xl border border-slate-200 p-4"
+               data-testid="evidence-card"
                [class.archived]="entry.lifecycle === 'ARCHIVED'">
         <div class="flex justify-between gap-3">
           <div>
