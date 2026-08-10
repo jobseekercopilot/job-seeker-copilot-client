@@ -434,13 +434,17 @@ export class DocumentGenerationService {
         sectionOrder: [...selection.sectionOrder],
       };
     });
+    const serializableOutputs = outputs.map(output => output === 'CV'
+      ? StartGenerationRequestOutputsEnum.Cv
+      : StartGenerationRequestOutputsEnum.CoverLetter);
     return this.api.startOperation(
       attempt.savedJobId,
       attempt.idempotencyKey,
       {
-        outputs: new Set(outputs.map(output => output === 'CV'
-          ? StartGenerationRequestOutputsEnum.Cv
-          : StartGenerationRequestOutputsEnum.CoverLetter)),
+        // OpenAPI Generator models unique arrays as Set<T>, but Angular's JSON
+        // encoder serializes a native Set as {}. Keep the generated type at the
+        // boundary while sending the JSON array required by the wire contract.
+        outputs: serializableOutputs as unknown as Set<StartGenerationRequestOutputsEnum>,
         documents,
       },
       'body',

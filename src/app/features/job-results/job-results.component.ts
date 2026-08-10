@@ -1405,6 +1405,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.closeDocumentChoice();
     for (const purpose of uploads.keys()) {
       this.startApplicationUpload(job, purpose);
+      break;
     }
     if (outputs.length) {
       this.openEvidenceSelection(job);
@@ -1422,11 +1423,11 @@ export class JobResultsComponent implements OnInit, OnDestroy {
 
   skipApplicationUpload(job: Job, purpose: EvidencePurpose): void {
     const jobId = this.jobStateKey(job);
-    this.applicationUploadSubscriptions.get(`${jobId}:${purpose}`)?.unsubscribe();
-    this.applicationUploadSubscriptions.delete(`${jobId}:${purpose}`);
     const pending = this.pendingApplicationUploads.get(jobId);
     pending?.delete(purpose);
     if (pending?.size === 0) this.pendingApplicationUploads.delete(jobId);
+    this.applicationUploadSubscriptions.get(`${jobId}:${purpose}`)?.unsubscribe();
+    this.applicationUploadSubscriptions.delete(`${jobId}:${purpose}`);
     this.applicationUploadStates.update(states => {
       const jobStates = {...states[jobId]};
       delete jobStates[purpose];
@@ -2068,6 +2069,10 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     }
     const subscription = operation.pipe(finalize(() => {
       this.applicationUploadSubscriptions.delete(subscriptionKey);
+      const next = this.evidencePurposes.find(candidate =>
+        this.pendingApplicationUploads.get(jobId)?.has(candidate)
+        && this.applicationUploadState(job, candidate)?.phase !== 'ERROR');
+      if (next) this.startApplicationUpload(job, next);
     })).subscribe({
       next: result => {
         if (result.state !== 'COMPLETED' || !result.documentId) {
