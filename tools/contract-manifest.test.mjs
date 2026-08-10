@@ -178,6 +178,8 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
     await readFile(resolve(rootDir, gateway.path), 'utf8'),
   );
   const savedJob = contract.components.schemas.SavedJobResponse.properties;
+  const documentReference =
+    contract.components.schemas.DocumentVersionReference.properties;
   const targetRoleResults =
     contract.components.schemas.TargetRoleJobResults;
 
@@ -286,10 +288,10 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
       .applicationUsedCoverLetterState.enum,
     ['UNKNOWN', 'SELECTED', 'OMITTED'],
   );
-  assert.ok(
-    contract.components.schemas.DocumentVersionReference.properties
-      .evidenceProvenance,
-  );
+  assert.equal(documentReference.sourceType.type, 'string');
+  assert.equal(documentReference.originalContentSha256.type, 'string');
+  assert.equal(documentReference.selectedAt.format, 'date-time');
+  assert.ok(documentReference.evidenceProvenance);
   assert.ok(
     contract.components.schemas.DocumentEvidenceProvenance.properties
       .evidenceSnapshotDigest,
@@ -396,6 +398,14 @@ test('rejects unsafe or incomplete Job Finder saved-job drift', async (context) 
       (contract) => {
         delete contract.components.schemas.DocumentEvidenceProvenance
           .properties.evidenceSnapshotDigest;
+      },
+      /must expose canonical application identity, version and exact non-sensitive evidence provenance/,
+    ],
+    [
+      'missing application source provenance',
+      (contract) => {
+        delete contract.components.schemas.DocumentVersionReference
+          .properties.originalContentSha256;
       },
       /must expose canonical application identity, version and exact non-sensitive evidence provenance/,
     ],
