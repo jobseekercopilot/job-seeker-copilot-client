@@ -260,7 +260,7 @@ describe('DocumentGenerationService', () => {
       savedJobId,
       expect.stringMatching(/^browser-/),
       {
-        outputs: new Set(['CV', 'COVER_LETTER']),
+        outputs: ['CV', 'COVER_LETTER'],
         documents: [
           {
             purpose: DocumentEvidenceSelectionPurposeEnum.Cv,
@@ -604,7 +604,7 @@ describe('DocumentGenerationService', () => {
       savedJobId,
       'browser-stable-key',
       {
-        outputs: new Set(['CV', 'COVER_LETTER']),
+        outputs: ['CV', 'COVER_LETTER'],
         documents: [
           {
             purpose: DocumentEvidenceSelectionPurposeEnum.Cv,
@@ -665,7 +665,7 @@ describe('DocumentGenerationService', () => {
       savedJobId,
       'browser-stable-key',
       {
-        outputs: new Set(['CV', 'COVER_LETTER']),
+        outputs: ['CV', 'COVER_LETTER'],
         documents: [
           {
             purpose: DocumentEvidenceSelectionPurposeEnum.Cv,
@@ -771,7 +771,7 @@ describe('DocumentGenerationService', () => {
       savedJobId,
       'browser-stable-key',
       {
-        outputs: new Set(['CV', 'COVER_LETTER']),
+        outputs: ['CV', 'COVER_LETTER'],
         documents: [
           expect.objectContaining({entryIds: evidence.cv.entryIds}),
           expect.objectContaining({entryIds: evidence.coverLetter.entryIds}),
@@ -955,7 +955,7 @@ describe('DocumentGenerationService', () => {
       savedJobId,
       expect.stringMatching(/^browser-/),
       {
-        outputs: new Set(['CV']),
+        outputs: ['CV'],
         documents: [{
           purpose: DocumentEvidenceSelectionPurposeEnum.Cv,
           entryIds: evidence.cv.entryIds,

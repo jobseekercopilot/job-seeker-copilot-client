@@ -890,6 +890,71 @@ describe('JobResultsComponent', () => {
     });
   });
 
+  it('serialises two uploads for one application before linking the second document', () => {
+    const applicationId = '10000000-0000-4000-8000-000000000005';
+    const cvDocumentId = '20000000-0000-4000-8000-000000000005';
+    const coverDocumentId = '20000000-0000-4000-8000-000000000006';
+    const cvOperation = new Subject<any>();
+    const coverOperation = new Subject<any>();
+    currentResponse = singleRoleResponse([job('Dual upload role', {
+      id: 'dual-upload-role',
+      canonicalJobId: 'canonical-dual-upload-role',
+      applicationId,
+    })]);
+    documentGenerationService.uploadApplicationDocument.mockImplementation(
+      (request: any) => request.documentType === 'CV' ? cvOperation : coverOperation,
+    );
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+    const cvFile = new File(['safe cv'], 'existing-cv.pdf', {type: 'application/pdf'});
+    const coverFile = new File(['safe cover'], 'existing-cover.pdf', {type: 'application/pdf'});
+
+    fixture.componentInstance.prepareApplicationDocuments(selectedJob, 'ADD');
+    fixture.componentInstance.chooseDocumentAction('CV', 'UPLOAD');
+    fixture.componentInstance.chooseDocumentAction('COVER_LETTER', 'UPLOAD');
+    fixture.componentInstance.documentChoiceFiles.set({CV: cvFile, COVER_LETTER: coverFile});
+    fixture.componentInstance.continueDocumentChoice();
+
+    expect(documentGenerationService.uploadApplicationDocument).toHaveBeenCalledOnce();
+    expect(documentGenerationService.uploadApplicationDocument.mock.calls[0][0])
+      .toMatchObject({applicationId, documentType: 'CV', file: cvFile});
+
+    cvOperation.next({
+      operationId: '30000000-0000-4000-8000-000000000005',
+      applicationId,
+      jobId: 'canonical-dual-upload-role',
+      documentType: 'CV',
+      fileType: 'PDF',
+      state: 'COMPLETED',
+      documentId: cvDocumentId,
+    });
+    cvOperation.complete();
+
+    expect(documentGenerationService.uploadApplicationDocument).toHaveBeenCalledTimes(2);
+    expect(documentGenerationService.uploadApplicationDocument.mock.calls[1][0])
+      .toMatchObject({applicationId, documentType: 'COVER_LETTER', file: coverFile});
+
+    coverOperation.next({
+      operationId: '30000000-0000-4000-8000-000000000006',
+      applicationId,
+      jobId: 'canonical-dual-upload-role',
+      documentType: 'COVER_LETTER',
+      fileType: 'PDF',
+      state: 'COMPLETED',
+      documentId: coverDocumentId,
+    });
+    coverOperation.complete();
+
+    expect(fixture.componentInstance.jobs()[0]).toMatchObject({
+      cvDocumentId,
+      coverLetterDocumentId: coverDocumentId,
+    });
+    expect(fixture.componentInstance.applicationUploadState(selectedJob, 'CV')?.phase)
+      .toBe('COMPLETED');
+    expect(fixture.componentInstance.applicationUploadState(selectedJob, 'COVER_LETTER')?.phase)
+      .toBe('COMPLETED');
+  });
+
   it('retries one failed mixed upload with the same identity and can skip it independently', () => {
     const applicationId = '10000000-0000-4000-8000-000000000003';
     const existingCvId = '20000000-0000-4000-8000-000000000003';
