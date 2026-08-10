@@ -70,7 +70,7 @@
                     class="source-chip inline-flex items-center gap-2 border px-3 py-1.5 text-sm font-medium transition-colors"
                     [class.source-chip-active]="selectedPublisher() === option.label">
               <span>{{ option.label }}</span>
-              <span class="text-xs opacity-80">({{ option.count }})</span>
+              <span class="text-xs">({{ option.count }})</span>
             </button>
           }
         </div>
@@ -97,7 +97,7 @@
                   [class.role-tab-active]="selectedTargetRole() === group.targetRole"
                   [attr.aria-current]="selectedTargetRole() === group.targetRole ? 'true' : null">
             <span>{{ group.targetRole }}</span>
-            <span class="text-xs opacity-80">
+            <span class="text-xs">
               @if (group.loading && !group.searched) {
                 (Searching…)
               } @else if (group.error && group.jobs.length === 0) {

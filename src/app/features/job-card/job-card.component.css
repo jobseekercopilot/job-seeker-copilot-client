@@ -211,7 +211,7 @@
 
 .source-badge {
   background: var(--color-soft-grey);
-  color: var(--text-secondary);
+  color: #4b5563;
 }
 
 .status-new {

@@ -168,6 +168,33 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-search"]')).toBeNull();
   });
 
+  it('exposes public account content through one main landmark', () => {
+    status.set('anonymous');
+    user.set(null);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelectorAll('[role="main"]')).toHaveLength(1);
+    expect(fixture.nativeElement.querySelector('app-landing-auth[role="main"]')).not.toBeNull();
+  });
+
+  it('announces toast messages through an atomic live region', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.componentInstance.toastMessage.set('Profile saved.');
+    fixture.componentInstance.toastType.set('success');
+    fixture.detectChanges();
+
+    const toast = fixture.nativeElement.querySelector('#toast-notification') as HTMLElement;
+    expect(toast.getAttribute('role')).toBe('status');
+    expect(toast.getAttribute('aria-live')).toBe('polite');
+    expect(toast.getAttribute('aria-atomic')).toBe('true');
+
+    fixture.componentInstance.toastType.set('error');
+    fixture.detectChanges();
+    expect(toast.getAttribute('role')).toBe('alert');
+    expect(toast.getAttribute('aria-live')).toBe('assertive');
+  });
+
   it('makes the Privacy Policy and Terms publicly reachable without restoring a session', async () => {
     window.history.pushState({}, '', '/privacy');
     const fixture = TestBed.createComponent(App);
