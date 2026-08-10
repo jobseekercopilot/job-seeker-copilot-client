@@ -110,6 +110,73 @@ describe('ApplicationTrackerService', () => {
     );
   });
 
+  it('preserves the approved NHS source metadata when starting an application', () => {
+    const listingUrl = 'https://beta.jobs.nhs.uk/candidate/jobadvert/C123';
+    const job: Job = {
+      canonicalJobId: 'nhs_jobs:C123',
+      primarySource: 'NHS_JOBS',
+      externalJobId: 'C123',
+      title: 'Clinical Coder',
+      companyName: 'Example NHS Trust',
+      sources: [{
+        integrationProvider: 'NHS_JOBS',
+        provider: 'NHS_JOBS',
+        publisher: 'NHS Jobs',
+        externalJobId: 'C123',
+        listingUrl,
+        applyUrl: listingUrl,
+      }],
+    };
+
+    TestBed.inject(ApplicationTrackerService).createApplication(job).subscribe();
+
+    expect(createApplication).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'NHS_JOBS',
+        listingUrl,
+        applyUrl: listingUrl,
+        attributionLabel: 'Vacancy source: NHS Jobs',
+        attributionSourceUrl: 'https://www.jobs.nhs.uk/',
+        licenceUrl: 'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/',
+        disclaimer: 'NHS Jobs does not endorse Job Seeker Copilot.',
+      }),
+      'body',
+      false,
+      {transferCache: false},
+    );
+  });
+
+  it('preserves apprenticeship listing provenance when starting an application', () => {
+    const listingUrl = 'https://www.findapprenticeship.service.gov.uk/apprenticeship/reference/1000270243';
+    const job: Job = {
+      canonicalJobId: 'apprenticeships:1000270243',
+      primarySource: 'APPRENTICESHIPS',
+      externalJobId: '1000270243',
+      title: 'Apprentice Maintenance Engineer',
+      companyName: 'Example Engineering Ltd',
+      sources: [{
+        integrationProvider: 'APPRENTICESHIPS',
+        provider: 'APPRENTICESHIPS',
+        publisher: 'Find an apprenticeship',
+        externalJobId: '1000270243',
+        listingUrl,
+      }],
+    };
+
+    TestBed.inject(ApplicationTrackerService).createApplication(job).subscribe();
+
+    expect(createApplication).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'APPRENTICESHIPS',
+        listingUrl,
+        attributionLabel: 'Vacancy source: Find an apprenticeship',
+      }),
+      'body',
+      false,
+      {transferCache: false},
+    );
+  });
+
   it('describes a newly saved application without inventing generated documents', () => {
     const service = TestBed.inject(ApplicationTrackerService);
     const [event] = service.eventsForApplication({

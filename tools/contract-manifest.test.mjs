@@ -181,19 +181,19 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
   const targetRoleResults =
     contract.components.schemas.TargetRoleJobResults;
 
-  assert.equal(gateway.version, '1.9.0');
+  assert.equal(gateway.version, '1.10.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
   assert.equal(
     gateway.sourceCommit,
-    'fac0dc9814fade281d65f839db8d5c052d9c4b59',
+    '07e4eefd7c309345096723d4184e180782d5d882',
   );
   assert.equal(
     gateway.sha256,
-    '427dd5da8cb0a25cd00e5c47bcc787ca4034a5208d16947571d1b9ad9d7688bc',
+    '5b0decbef7dea4e3bd36904d2e63c723c7c66b10ad83fb376072d13d20ffd627',
   );
   assert.equal(
     gateway.path,
-    'contracts/job-finder-gateway/1.9.0/openapi.json',
+    'contracts/job-finder-gateway/1.10.0/openapi.json',
   );
   assert.equal(gateway.output, 'src/app/api/job-finder');
   assert.deepEqual(
@@ -212,7 +212,7 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
     '/api/jobs/applications',
     '/api/jobs/applications/{applicationId}/status',
   ]);
-  assert.equal(contract.info.version, '1.9.0');
+  assert.equal(contract.info.version, '1.10.0');
   assert.deepEqual(
     contract.components.schemas.Job.properties.specialistType.enum,
     ['STANDARD', 'NHS', 'APPRENTICESHIP'],
@@ -243,6 +243,26 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
     contract.components.schemas.CreateTrackedApplicationRequest
       .properties.userId,
     undefined,
+  );
+  assert.deepEqual(
+    Object.keys(
+      contract.components.schemas.CreateTrackedApplicationRequest.properties,
+    ).filter(field => [
+      'listingUrl',
+      'applyUrl',
+      'attributionLabel',
+      'attributionSourceUrl',
+      'licenceUrl',
+      'disclaimer',
+    ].includes(field)),
+    [
+      'listingUrl',
+      'applyUrl',
+      'attributionLabel',
+      'attributionSourceUrl',
+      'licenceUrl',
+      'disclaimer',
+    ],
   );
   assert.deepEqual(
     contract.paths['/api/jobs/applications'].post.security ?? contract.security,

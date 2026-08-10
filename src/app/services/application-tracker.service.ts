@@ -71,16 +71,17 @@ export class ApplicationTrackerService {
   }
 
   createApplication(job: Job): Observable<TrackedApplication> {
+    const provider = this.required(
+      job.primarySource
+        ?? job.provider
+        ?? job.sources?.[0]?.provider
+        ?? job.sources?.[0]?.integrationProvider,
+      'Job provider',
+    );
     const request: CreateTrackedApplicationRequest = {
       jobId: this.required(job.canonicalJobId ?? job.id, 'Job identifier'),
       canonicalJobId: this.required(job.canonicalJobId ?? job.id, 'Canonical job identifier'),
-      provider: this.required(
-        job.primarySource
-          ?? job.provider
-          ?? job.sources?.[0]?.provider
-          ?? job.sources?.[0]?.integrationProvider,
-        'Job provider',
-      ),
+      provider,
       externalJobId: this.required(
         job.externalJobId ?? job.sources?.[0]?.externalJobId ?? job.id,
         'External job identifier',
@@ -88,6 +89,7 @@ export class ApplicationTrackerService {
       jobTitle: this.required(job.jobTitle ?? job.title, 'Job title'),
       companyName: this.required(job.companyName ?? job.company, 'Company name'),
       location: job.canonicalLocation?.displayName ?? job.location,
+      ...this.sourceMetadata(job, provider),
     };
 
     return this.browserSession.ensureCsrf().pipe(
@@ -99,6 +101,34 @@ export class ApplicationTrackerService {
       )),
       map(record => ({...record, applicationId: record.id})),
     );
+  }
+
+  private sourceMetadata(
+    job: Job,
+    provider: string,
+  ): Partial<CreateTrackedApplicationRequest> {
+    const source = job.sources?.find(candidate =>
+      candidate.provider === provider || candidate.integrationProvider === provider
+    ) ?? job.sources?.[0];
+    const listingUrl = source?.listingUrl ?? job.sourceUrl ?? job.url;
+    const applyUrl = source?.applyUrl;
+    if (provider === 'NHS_JOBS') {
+      return {
+        listingUrl: this.required(listingUrl, 'NHS Jobs listing URL'),
+        ...(applyUrl ? {applyUrl} : {}),
+        attributionLabel: 'Vacancy source: NHS Jobs',
+        attributionSourceUrl: 'https://www.jobs.nhs.uk/',
+        licenceUrl: 'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/',
+        disclaimer: 'NHS Jobs does not endorse Job Seeker Copilot.',
+      };
+    }
+    return {
+      ...(listingUrl ? {listingUrl} : {}),
+      ...(applyUrl ? {applyUrl} : {}),
+      ...(source?.publisher?.trim()
+        ? {attributionLabel: `Vacancy source: ${source.publisher.trim()}`}
+        : {}),
+    };
   }
 
   updateStatus(
