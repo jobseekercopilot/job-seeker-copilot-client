@@ -88,7 +88,8 @@ current residual findings.
 
 The normal application enables credential-only registration, progressive
 profile management, a versioned Evidence Library, Job Search, Application
-Tracking, fixture-backed document generation, storage and export. Evidence can
+Tracking, document generation, storage and export. Generation is fixture-backed
+by default and can use the separately authorised real OpenAI overlay. Evidence can
 be drafted, reviewed, confirmed, hidden, archived, restored or superseded;
 migrated history remains review-required until the claimant confirms it.
 Reporting and payment use the same session-derived boundary pattern. Versioned User Management, Job Finder and Document
