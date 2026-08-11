@@ -528,6 +528,7 @@ export class EvidenceLibraryComponent implements OnInit {
         break;
       case 'PROJECT':
         request.projectRole = text(this.projectRole());
+        request.organisationContext = text(this.organisationContext());
         request.description = text(this.description());
         request.achievements = text(this.achievements());
         setRange();

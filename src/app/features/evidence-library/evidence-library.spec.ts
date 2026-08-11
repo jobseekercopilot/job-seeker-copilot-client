@@ -84,6 +84,7 @@ describe('EvidenceLibraryComponent', () => {
     component.category.set('PROJECT');
     component.heading.set('Public service redesign');
     component.projectRole.set('Delivery lead');
+    component.organisationContext.set('Independent project');
     component.description.set('Redesigned a bounded public service workflow.');
     component.demonstratedSkills.set('Discovery, Delivery');
     component.supportingLinks.set('https://example.test/project');
@@ -94,6 +95,7 @@ describe('EvidenceLibraryComponent', () => {
       category: 'PROJECT',
       heading: 'Public service redesign',
       projectRole: 'Delivery lead',
+      organisationContext: 'Independent project',
       demonstratedSkills: ['Discovery', 'Delivery'],
       supportingLinks: ['https://example.test/project'],
     }), 'body', false, {transferCache: false});

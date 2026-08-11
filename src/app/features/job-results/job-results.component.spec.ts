@@ -1516,6 +1516,44 @@ describe('JobResultsComponent', () => {
     expect(fixture.componentInstance.evidenceSelectionDrafts()[selectedJob.id!]).toBeUndefined();
   });
 
+  it('keeps a partial application saved and offers the missing document for retry', () => {
+    evidenceEntries = [
+      evidenceEntry(
+        '50000000-0000-4000-8000-000000000001',
+        'PROJECT',
+        'Portfolio project',
+        1,
+      ),
+    ];
+    documentGenerationService.generate.mockReturnValueOnce(of({
+      applicationId: 'application-partial',
+      coverLetterDocumentId: 'cover-partial',
+      downloads: {coverLetter: {}},
+    } as any));
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    const [project] = fixture.componentInstance.eligibleEvidence();
+    fixture.componentInstance.toggleEvidence('CV', project);
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', project);
+    confirmGenerationAdvert(fixture);
+    fixture.componentInstance.confirmEvidenceGeneration();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.jobs().find(job =>
+      fixture.componentInstance.jobStateKey(job) === selectedJob.id))
+      .toEqual(expect.objectContaining({
+        applicationId: 'application-partial',
+        applicationStatus: 'SAVED',
+        coverLetterDocumentId: 'cover-partial',
+      }));
+    expect(fixture.componentInstance.generationMessages()[selectedJob.id!])
+      .toContain('Cover letter ready; CV failed');
+    expect(fixture.componentInstance.evidenceSelectionDrafts()[selectedJob.id!])
+      .toBeDefined();
+  });
+
   it('reconciles retained drafts against evidence that is still eligible', () => {
     const project = evidenceEntry(
       '50000000-0000-4000-8000-000000000001',
