@@ -576,7 +576,11 @@ export class DocumentGenerationService {
           ) {
             return throwError(() => new DocumentGenerationError(
               'FAILED',
-              'The generation operation is missing its document references.',
+              operation.coverLetterDocumentId
+                ? 'Cover letter saved, but CV generation failed. Your evidence is kept.'
+                : operation.cvDocumentId
+                  ? 'CV saved, but cover-letter generation failed. Your evidence is kept.'
+                  : 'Document generation produced no documents. Your evidence is kept.',
             ));
           }
           approvalAvailable = false;
