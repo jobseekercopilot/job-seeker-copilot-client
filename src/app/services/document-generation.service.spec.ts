@@ -282,7 +282,7 @@ describe('DocumentGenerationService', () => {
     expect(TestBed.inject(DocumentGenerationService).pendingGenerations()).toEqual([]);
   });
 
-  it('reports partial success when the cover letter is stored but the CV failed', async () => {
+  it('approves and returns the successful cover letter when the CV failed', async () => {
     getOperation.mockReturnValue(of({
       operationId,
       state: 'AWAITING_APPROVAL',
@@ -290,13 +290,29 @@ describe('DocumentGenerationService', () => {
       failureCode: 'PARTIAL_GENERATION',
       failureMessage: 'At least one selected output remains missing.',
     }));
+    approveOperation.mockReturnValue(of({
+      operationId,
+      state: 'COMPLETED',
+      applicationId,
+      coverLetterDocumentId,
+      failureCode: 'PARTIAL_GENERATION',
+      failureMessage: 'At least one selected output remains missing.',
+    }));
 
     await expect(firstValueFrom(
       TestBed.inject(DocumentGenerationService).generate(job, evidence),
-    )).rejects.toThrow(
-      'Cover letter saved, but CV generation failed.',
+    )).resolves.toMatchObject({
+      applicationId,
+      coverLetterDocumentId,
+    });
+    expect(approveOperation).toHaveBeenCalledWith(
+      operationId,
+      {coverLetterDocumentId},
+      'body',
+      false,
+      {transferCache: false},
     );
-    expect(approveOperation).not.toHaveBeenCalled();
+    expect(localStorage.getItem(`jsc-document-generation-v1:${ownerId}`)).toBeNull();
   });
 
   it('removes transient application enrichment from the canonical saved-job snapshot', async () => {

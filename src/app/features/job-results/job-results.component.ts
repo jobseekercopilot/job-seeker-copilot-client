@@ -1764,9 +1764,20 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   ): void {
     const current = this.currentJob(jobId) ?? sourceJob;
     const outputs = this.generationOutputsByJob.get(jobId) ?? ['CV', 'COVER_LETTER'];
-    const outcome = outputs.length === 2
-      ? 'CV and cover letter'
-      : this.documentPurposeLabel(outputs[0] ?? 'CV');
+    const generatedOutputs = outputs.filter(output => output === 'CV'
+      ? Boolean(response.cvDocumentId)
+      : Boolean(response.coverLetterDocumentId));
+    const missingOutputs = outputs.filter(output => !generatedOutputs.includes(output));
+    const mergedCvDocumentId = response.cvDocumentId ?? current.cvDocumentId;
+    const mergedCoverLetterDocumentId = response.coverLetterDocumentId
+      ?? current.coverLetterDocumentId;
+    const generatedNames = generatedOutputs
+      .map(output => this.documentPurposeLabel(output));
+    const outcome = generatedNames.join(' and ');
+    const partial = missingOutputs.length > 0;
+    const message = partial
+      ? `${outcome} ready; ${this.documentPurposeLabel(missingOutputs[0] ?? 'CV')} failed. Retry it.`
+      : `${outcome} generated successfully.`;
     this.generationDownloads.update(downloads => ({
       ...downloads,
       [jobId]: response.downloads,
@@ -1774,22 +1785,24 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.generatedDocumentIds.update(documentIds => ({
       ...documentIds,
       [jobId]: {
-        cvDocumentId: response.cvDocumentId ?? current.cvDocumentId,
-        coverLetterDocumentId: response.coverLetterDocumentId ?? current.coverLetterDocumentId,
+        cvDocumentId: mergedCvDocumentId,
+        coverLetterDocumentId: mergedCoverLetterDocumentId,
       },
     }));
     this.updateJobLocally(jobId, {
       applicationId: response.applicationId,
-      applicationStatus: 'DOCUMENTS_GENERATED',
-      cvDocumentId: response.cvDocumentId ?? current.cvDocumentId,
-      coverLetterDocumentId: response.coverLetterDocumentId ?? current.coverLetterDocumentId,
+      applicationStatus: mergedCvDocumentId && mergedCoverLetterDocumentId
+        ? 'DOCUMENTS_GENERATED'
+        : 'SAVED',
+      cvDocumentId: mergedCvDocumentId,
+      coverLetterDocumentId: mergedCoverLetterDocumentId,
     });
     this.generationOutputsByJob.delete(jobId);
-    this.clearEvidenceDraft(jobId);
-    this.finishGeneration(jobId, `${outcome} generated successfully.`);
+    if (!partial) this.clearEvidenceDraft(jobId);
+    this.finishGeneration(jobId, message);
     this.notify.emit({
-      message: `${outcome} generated successfully.`,
-      type: 'success',
+      message,
+      type: partial ? 'info' : 'success',
     });
     this.applicationChanged.emit();
   }

@@ -570,17 +570,10 @@ export class DocumentGenerationService {
           && this.isApprovalRecoveryState(operation.state)
         ) {
           const outputs = this.attemptOutputs(attempt);
-          if (
-            (outputs.includes('CV') && !operation.cvDocumentId)
-            || (outputs.includes('COVER_LETTER') && !operation.coverLetterDocumentId)
-          ) {
+          if (!operation.cvDocumentId && !operation.coverLetterDocumentId) {
             return throwError(() => new DocumentGenerationError(
               'FAILED',
-              operation.coverLetterDocumentId
-                ? 'Cover letter saved, but CV generation failed. Your evidence is kept.'
-                : operation.cvDocumentId
-                  ? 'CV saved, but cover-letter generation failed. Your evidence is kept.'
-                  : 'Document generation produced no documents. Your evidence is kept.',
+              'Document generation produced no documents. Your evidence is kept.',
             ));
           }
           approvalAvailable = false;
@@ -1265,11 +1258,16 @@ export class DocumentGenerationService {
     operation: GenerationOperationResponse,
     requestedOutputs: DocumentKind[] = ['CV', 'COVER_LETTER'],
   ): DocumentGenerationResponse {
+    const missingRequestedOutput =
+      (requestedOutputs.includes('CV') && !operation.cvDocumentId)
+      || (requestedOutputs.includes('COVER_LETTER') && !operation.coverLetterDocumentId);
+    const partialGeneration = operation.failureCode?.trim().toUpperCase()
+      === 'PARTIAL_GENERATION';
     if (
       operation.state !== 'COMPLETED'
       || !operation.applicationId
-      || (requestedOutputs.includes('CV') && !operation.cvDocumentId)
-      || (requestedOutputs.includes('COVER_LETTER') && !operation.coverLetterDocumentId)
+      || (!operation.cvDocumentId && !operation.coverLetterDocumentId)
+      || (missingRequestedOutput && !partialGeneration)
     ) {
       throw this.operationError(operation);
     }

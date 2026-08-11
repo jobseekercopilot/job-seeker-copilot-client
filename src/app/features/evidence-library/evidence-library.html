@@ -162,7 +162,7 @@
                  (ngModelChange)="projectRole.set($event)" class="field-control" />
         </label>
       }
-      @if (category() === 'OTHER') {
+      @if (category() === 'OTHER' || category() === 'PROJECT') {
         <label class="field-label">Context (optional)
           <input name="otherContext" maxlength="200" [ngModel]="organisationContext()"
                  (ngModelChange)="organisationContext.set($event)" class="field-control" />
