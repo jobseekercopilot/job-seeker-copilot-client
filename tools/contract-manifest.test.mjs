@@ -183,19 +183,19 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
   const targetRoleResults =
     contract.components.schemas.TargetRoleJobResults;
 
-  assert.equal(gateway.version, '1.10.0');
+  assert.equal(gateway.version, '1.12.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
   assert.equal(
     gateway.sourceCommit,
-    '40767ce9e06c30e319c7faf02ac4c7821f98e9a2',
+    '7a8a93126e048a8c5af0676cb4db7e454d577459',
   );
   assert.equal(
     gateway.sha256,
-    '3476b6c3948375637635c6f9b3e01e518b0bf162c8aa8e8aba0ea15dfbbcb1b8',
+    '6bfa8e70ac94bbac6ab4265360276189092c94b259b6c26a275e0e8617fd029f',
   );
   assert.equal(
     gateway.path,
-    'contracts/job-finder-gateway/1.10.0/openapi.json',
+    'contracts/job-finder-gateway/1.12.0/openapi.json',
   );
   assert.equal(gateway.output, 'src/app/api/job-finder');
   assert.deepEqual(
@@ -214,7 +214,7 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
     '/api/jobs/applications',
     '/api/jobs/applications/{applicationId}/status',
   ]);
-  assert.equal(contract.info.version, '1.10.0');
+  assert.equal(contract.info.version, '1.12.0');
   assert.deepEqual(
     contract.components.schemas.Job.properties.specialistType.enum,
     ['STANDARD', 'NHS', 'APPRENTICESHIP'],
@@ -273,6 +273,33 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
   assert.equal(
     contract.paths['/api/jobs/applications'].get.parameters,
     undefined,
+  );
+  assert.deepEqual(
+    contract.paths['/api/jobs/applications/{applicationId}/status'].patch
+      .parameters.find(({name}) => name === 'Idempotency-Key'),
+    {
+      name: 'Idempotency-Key',
+      in: 'header',
+      description: 'Required replay-safe command key when status is APPLIED',
+      required: false,
+      schema: {
+        maxLength: 128,
+        minLength: 1,
+        pattern: '[A-Za-z0-9][A-Za-z0-9._:-]{0,127}',
+        type: 'string',
+      },
+    },
+  );
+  assert.deepEqual(
+    contract.components.schemas.UpdateApplicationStatusRequest
+      .properties.expectedVersion,
+    {
+      minimum: 0,
+      type: 'integer',
+      description: 'Record version last observed by the caller; required when status is APPLIED',
+      format: 'int64',
+      example: 3,
+    },
   );
   assert.ok(
     contract.components.schemas.ApplicationRecordResponse.properties
@@ -408,6 +435,14 @@ test('rejects unsafe or incomplete Job Finder saved-job drift', async (context) 
           .properties.originalContentSha256;
       },
       /must expose canonical application identity, version and exact non-sensitive evidence provenance/,
+    ],
+    [
+      'missing applied expected version',
+      (contract) => {
+        delete contract.components.schemas.UpdateApplicationStatusRequest
+          .properties.expectedVersion;
+      },
+      /must preserve the observed non-negative record version contract/,
     ],
   ];
 

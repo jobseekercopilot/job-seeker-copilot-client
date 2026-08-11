@@ -35,6 +35,11 @@ type DateField = 'startDate' | 'endDate' | 'issueDate' | 'expiryDate';
 
 @Component({
   selector: 'app-evidence-library',
+  host: {
+    'data-testid': 'evidence-library',
+    'data-demo-focus': 'app-evidence-library',
+    'data-demo-focus-id': 'evidence-library',
+  },
   imports: [CommonModule, FormsModule, MatIconModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './evidence-library.html',

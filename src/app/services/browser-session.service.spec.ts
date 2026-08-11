@@ -78,6 +78,19 @@ describe('browser session security', () => {
     request.flush({jobs: [], totalResults: 0});
   });
 
+  it('sends the in-memory CSRF value on a payment mutation', () => {
+    const state = TestBed.inject(BrowserSessionState);
+    state.acceptBootstrap({headerName: 'X-CSRF-Token', token: '0123456789-secure-csrf-value'});
+    const httpClient = TestBed.inject(HttpClient);
+    httpClient.post('/api/v1/payment/checkout', {pricingPlanId: 'starter'}).subscribe();
+    const request = TestBed.inject(HttpTestingController)
+      .expectOne('/api/v1/payment/checkout');
+    expect(request.request.withCredentials).toBe(true);
+    expect(request.request.headers.get('X-CSRF-Token'))
+      .toBe('0123456789-secure-csrf-value');
+    request.flush({sessionId: 'fixture-session'});
+  });
+
   it('re-bootstraps a stale in-memory CSRF value before a write workflow', () => {
     const state = TestBed.inject(BrowserSessionState);
     state.acceptBootstrap({headerName: 'X-CSRF-Token', token: '0123456789-stale-csrf-value'});

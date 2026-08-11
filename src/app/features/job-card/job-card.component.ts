@@ -41,6 +41,8 @@ export interface DocumentUploadRequest {
     'data-demo-focus': 'app-job-card',
     '[attr.data-demo-focus-id]': 'demoFocusId()',
     '[attr.data-demo-focus-group]': 'demoFocusGroup()',
+    '[attr.data-job-reference]': 'jobReference()',
+    '[attr.data-job-provider]': 'jobProvider()',
     'data-demo-focus-overlay-owner': 'true'
   },
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -92,6 +94,16 @@ export class JobCardComponent {
   demoFocusGroup(): string {
     const job = this.job();
     return `job-card-${this.slug(job.applicationId ?? job.canonicalJobId ?? job.id ?? `${job.title ?? 'role'}-${job.company ?? 'company'}`)}`;
+  }
+
+  jobReference(): string | null {
+    const job = this.job();
+    return job.canonicalJobId ?? job.id ?? null;
+  }
+
+  jobProvider(): string | null {
+    const job = this.job();
+    return job.primarySource ?? job.provider ?? null;
   }
 
   statusMenuId(): string {

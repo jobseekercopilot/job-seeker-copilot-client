@@ -612,7 +612,7 @@ export class MyApplicationsComponent implements OnInit {
     }
 
     this.updatingStatuses.update(updating => ({ ...updating, [applicationId]: status }));
-    this.applicationTracker.updateStatus(applicationId, status).pipe(
+    this.applicationTracker.updateStatus(applicationId, status, application.version).pipe(
       finalize(() => this.updatingStatuses.update(updating => ({
         ...updating,
         [applicationId]: undefined,

@@ -112,12 +112,13 @@
                     <select [id]="'cv-selection-' + applicationId(application)"
                             [value]="panel.cvSelection"
                             (change)="selectionChanged(application, 'CV', $event)">
-                      <option value="">No CV selected</option>
+                      <option value="" [selected]="!panel.cvSelection">No CV selected</option>
                       @if (panel.cvSelection && !hasDocumentOption(application, 'CV', panel.cvSelection)) {
-                        <option [value]="panel.cvSelection" disabled>Previously selected CV is unavailable</option>
+                        <option [value]="panel.cvSelection" selected disabled>Previously selected CV is unavailable</option>
                       }
                       @for (option of documentOptions(application, 'CV'); track option.documentId) {
-                        <option [value]="option.documentId">{{ optionLabel(option) }}</option>
+                        <option [value]="option.documentId"
+                                [selected]="panel.cvSelection === option.documentId">{{ optionLabel(option) }}</option>
                       }
                     </select>
                     <small>Selecting “No CV selected” records that the CV is deliberately omitted.</small>
@@ -127,15 +128,16 @@
                     <select [id]="'cover-selection-' + applicationId(application)"
                             [value]="panel.coverLetterSelection"
                             (change)="selectionChanged(application, 'COVER_LETTER', $event)">
-                      <option value="">No cover letter selected</option>
+                      <option value="" [selected]="!panel.coverLetterSelection">No cover letter selected</option>
                       @if (panel.coverLetterSelection
                         && !hasDocumentOption(application, 'COVER_LETTER', panel.coverLetterSelection)) {
-                        <option [value]="panel.coverLetterSelection" disabled>
+                        <option [value]="panel.coverLetterSelection" selected disabled>
                           Previously selected cover letter is unavailable
                         </option>
                       }
                       @for (option of documentOptions(application, 'COVER_LETTER'); track option.documentId) {
-                        <option [value]="option.documentId">{{ optionLabel(option) }}</option>
+                        <option [value]="option.documentId"
+                                [selected]="panel.coverLetterSelection === option.documentId">{{ optionLabel(option) }}</option>
                       }
                     </select>
                     <small>Selecting “No cover letter selected” records that it is deliberately omitted.</small>

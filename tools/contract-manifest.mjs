@@ -49,6 +49,30 @@ function validateJobFinderContract(document) {
     }
   }
 
+  const statusParameters = document.paths?.[
+    '/api/jobs/applications/{applicationId}/status'
+  ]?.patch?.parameters ?? [];
+  const idempotencyKey = statusParameters.find(({name}) =>
+    name?.toLowerCase() === 'idempotency-key');
+  if (idempotencyKey?.in !== 'header'
+      || idempotencyKey.schema?.minLength !== 1
+      || idempotencyKey.schema?.maxLength !== 128
+      || idempotencyKey.schema?.pattern !== '[A-Za-z0-9][A-Za-z0-9._:-]{0,127}') {
+    throw new Error(
+      'job-finder-gateway applied status must preserve the bounded Idempotency-Key header contract',
+    );
+  }
+  const expectedVersion = document.components?.schemas
+    ?.UpdateApplicationStatusRequest?.properties?.expectedVersion;
+  if (expectedVersion?.type !== 'integer'
+      || expectedVersion.format !== 'int64'
+      || expectedVersion.minimum !== 0
+      || !expectedVersion.description?.includes('required when status is APPLIED')) {
+    throw new Error(
+      'job-finder-gateway applied status must preserve the observed non-negative record version contract',
+    );
+  }
+
   const createApplication =
     document.components?.schemas?.CreateTrackedApplicationRequest;
   if (!createApplication ||

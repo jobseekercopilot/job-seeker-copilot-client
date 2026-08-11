@@ -1,10 +1,8 @@
 # Payment BFF identity boundary
 
-The `/api/v1/payment` prefix remains beta-disabled. Express registers the stable
-`404 FEATURE_NOT_AVAILABLE` middleware before every retained payment handler,
-so no profile or payment dependency call occurs in the current beta.
-
-The retained proxy is prepared for a future, separately approved enablement:
+The `/api/v1/payment` prefix is exposed only through the same-origin Express
+BFF. Its explicit route allowlist covers wallet, pricing, transaction history,
+fixture purchase and checkout:
 
 1. It ignores browser `Authorization`, `X-User-Id`, and other identity
    selectors.
@@ -16,12 +14,16 @@ The retained proxy is prepared for a future, separately approved enablement:
    `X-Payment-Owner` to Payment Gateway.
 
 Missing, invalid, expired, forged, or malformed sessions fail closed before
-Payment Gateway is called. The BFF service token must contain at least 32 UTF-8
-bytes; it is read only by the SSR process and must be supplied through the
-runtime secret store. Missing or weak token configuration fails closed if the
-retained handler is ever invoked, but does not prevent the beta-disabled client
-from starting.
+Payment Gateway is called. Payment mutations additionally require the
+UMG-issued CSRF cookie to match the browser's in-memory `X-CSRF-Token` value.
+The BFF accepts only bounded JSON responses and never relays downstream cookies
+or a response that reflects its service token.
 
-Enabling payment also requires the remaining Payment epic controls, operational
-secret wiring, and explicit product approval. This boundary alone is not
-approval for live Stripe or payment UI.
+The BFF service token must contain at least 32 UTF-8 bytes; it is read only by
+the SSR process and must be supplied through the runtime secret store. Missing
+or weak token configuration fails closed without preventing unrelated product
+capabilities from starting.
+
+`demo-purchase` is the deterministic fixture route. Live Stripe checkout still
+requires deliberate runtime credential/configuration selection; enabling this
+BFF boundary does not itself make a paid provider call.

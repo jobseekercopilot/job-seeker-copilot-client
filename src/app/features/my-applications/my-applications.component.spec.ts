@@ -314,6 +314,53 @@ describe('MyApplicationsComponent authoritative refreshes', () => {
     expect(documentSelections.saveSelections).not.toHaveBeenCalled();
   });
 
+  it('rehydrates persisted selections after approved options load asynchronously', () => {
+    const response = new Subject<TrackedApplication[]>();
+    applicationResponses = [response];
+    const applicationId = '77777777-7777-4777-8777-777777777777';
+    const cvId = '55555555-5555-4555-8555-555555555555';
+    const coverId = '66666666-6666-4666-8666-666666666666';
+    const cvFamilyId = '11111111-1111-4111-8111-111111111111';
+    const coverFamilyId = '22222222-2222-4222-8222-222222222222';
+    documentLifecycle.allFamilies.mockReturnValue(of([
+      {documentFamilyId: cvFamilyId, jobId: 'job-1', documentType: DocumentFamilySummaryDocumentTypeEnum.Cv},
+      {documentFamilyId: coverFamilyId, jobId: 'job-1', documentType: DocumentFamilySummaryDocumentTypeEnum.CoverLetter},
+    ]));
+    documentLifecycle.history.mockImplementation((familyId: string) => of({versions: [{
+      documentId: familyId === cvFamilyId ? cvId : coverId,
+      version: 1,
+      lifecycle: 'APPROVED',
+      retention: 'AVAILABLE',
+      current: true,
+    }]}));
+    const application = {
+      id: applicationId,
+      applicationId,
+      canonicalJobId: 'job-1',
+      jobTitle: 'Java Software Developer',
+      companyName: 'Northstar Digital Labs',
+      status: 'DOCUMENTS_GENERATED',
+      version: 3,
+      cvDocumentReference: {documentId: cvId},
+      coverLetterDocumentReference: {documentId: coverId},
+    } as TrackedApplication;
+    const fixture = TestBed.createComponent(MyApplicationsComponent);
+    fixture.detectChanges();
+    response.next([application]);
+    fixture.detectChanges();
+
+    const details = fixture.nativeElement.querySelector(
+      '[data-testid="application-documents"]',
+    ) as HTMLDetailsElement;
+    details.open = true;
+    details.dispatchEvent(new Event('toggle'));
+    fixture.detectChanges();
+
+    const selections = details.querySelectorAll('select');
+    expect(selections[0].value).toBe(cvId);
+    expect(selections[1].value).toBe(coverId);
+  });
+
   it('saves both slots atomically and reuses the idempotency key for a retry', () => {
     applicationResponses = [new Subject<TrackedApplication[]>()];
     const applicationId = '77777777-7777-4777-8777-777777777777';

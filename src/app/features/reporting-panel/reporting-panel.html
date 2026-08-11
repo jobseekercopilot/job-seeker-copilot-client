@@ -1,4 +1,4 @@
-<section class="reporting-panel">
+<section class="reporting-panel" data-testid="reporting-panel">
   <div class="reporting-header">
     <div>
       <h2>Your job search progress</h2>
@@ -14,7 +14,7 @@
   }
 
   @if (summary(); as report) {
-    <article class="reporting-card summary-card">
+    <article class="reporting-card summary-card" data-testid="reporting-summary">
       <div class="summary-total">
         <span>Applications</span>
         <strong>{{ report.applicationSummary?.total ?? 0 }}</strong>
@@ -48,7 +48,7 @@
       </div>
     </article>
 
-    <article class="reporting-card timeline-card">
+    <article class="reporting-card timeline-card" data-testid="reporting-activity">
       <h3>Recent activity</h3>
       @if (displayActivity().length > 0) {
         <ol>

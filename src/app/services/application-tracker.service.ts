@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, map, switchMap } from 'rxjs';
+import { Observable, map, switchMap, throwError } from 'rxjs';
 import {
   ApplicationRecordResponse,
   CreateTrackedApplicationRequest,
@@ -60,6 +60,7 @@ export interface ApplicationEvent {
 export class ApplicationTrackerService {
   private readonly api = inject(JobApplicationsService);
   private readonly browserSession = inject(BrowserSessionService);
+  private readonly appliedIdempotencyKeys = new Map<string, string>();
 
   listApplications(): Observable<TrackedApplication[]> {
     return this.api.getApplications('body', false, {transferCache: false}).pipe(
@@ -134,16 +135,38 @@ export class ApplicationTrackerService {
   updateStatus(
     applicationId: string,
     status: ApplicationStatusUpdate,
+    expectedVersion?: number,
   ): Observable<TrackedApplication> {
+    if (status === 'APPLIED'
+        && (!Number.isSafeInteger(expectedVersion) || (expectedVersion ?? -1) < 0)) {
+      return throwError(() => new Error(
+        'The current application version is required before marking it as applied.',
+      ));
+    }
+    const idempotencyScope = `${applicationId}:${expectedVersion}`;
+    const idempotencyKey = status === 'APPLIED'
+      ? this.appliedIdempotencyKeys.get(idempotencyScope)
+        ?? crypto.randomUUID()
+      : undefined;
+    if (idempotencyKey) {
+      this.appliedIdempotencyKeys.set(idempotencyScope, idempotencyKey);
+    }
     return this.browserSession.ensureCsrf().pipe(
       switchMap(() => this.api.updateApplicationStatus(
         applicationId,
-        {status: status as UpdateApplicationStatusRequest['status']},
+        {
+          status: status as UpdateApplicationStatusRequest['status'],
+          ...(expectedVersion === undefined ? {} : {expectedVersion}),
+        },
+        idempotencyKey,
         'body',
         false,
         {transferCache: false},
       )),
-      map(record => ({...record, applicationId: record.id})),
+      map(record => {
+        if (idempotencyKey) this.appliedIdempotencyKeys.delete(idempotencyScope);
+        return {...record, applicationId: record.id};
+      }),
     );
   }
 

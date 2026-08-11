@@ -1,10 +1,14 @@
+import type {Express, Request, Response} from 'express';
 import {DownstreamTimeoutError, fetchTextWithTimeout} from './bff-boundary';
+import {jobFinderCredentials} from './job-finder-proxy';
 import {callUserManagement} from './user-management-proxy';
 
 type BrowserHeaders = Record<string, string | string[] | undefined>;
 
 const MINIMUM_SERVICE_TOKEN_BYTES = 32;
 const MAXIMUM_OWNER_LENGTH = 128;
+const MAXIMUM_RESPONSE_BYTES = 1_048_576;
+const PRICING_PLAN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export class PaymentAuthenticationError extends Error {
   constructor() {
@@ -32,6 +36,15 @@ export interface PaymentProxyOptions {
   fetchImplementation?: typeof fetch;
   method: 'GET' | 'POST';
   path: string;
+  paymentGatewayOrigin: string;
+  serviceToken: string | undefined;
+  timeoutMs: number;
+  userManagementOrigin: string;
+}
+
+export interface PaymentRouteConfig {
+  accessCookieName: string;
+  csrfCookieName: string;
   paymentGatewayOrigin: string;
   serviceToken: string | undefined;
   timeoutMs: number;
@@ -118,9 +131,30 @@ export async function callTrustedPaymentGateway(
     fetchImplementation,
   );
 
+  const contentType = response.headers
+    .get('content-type')
+    ?.split(';', 1)[0]
+    .trim()
+    .toLowerCase();
+  if (
+    Buffer.byteLength(body) > MAXIMUM_RESPONSE_BYTES
+    || (contentType !== 'application/json'
+      && contentType !== 'application/problem+json')
+    || body.includes(serviceToken)
+  ) {
+    return {
+      body: JSON.stringify({
+        error: 'INVALID_DOWNSTREAM_RESPONSE',
+        message: 'Payment returned an invalid response',
+      }),
+      contentType: 'application/json',
+      status: 502,
+    };
+  }
+
   return {
     body,
-    contentType: response.headers.get('content-type') || 'application/json',
+    contentType,
     status: response.status,
   };
 }
@@ -154,4 +188,141 @@ export function paymentProxyFailure(error: unknown): {
       message: 'Payment service is currently unavailable',
     },
   };
+}
+
+function failure(
+  response: Response,
+  status: number,
+  error: string,
+  message: string,
+): void {
+  response
+    .status(status)
+    .setHeader('Cache-Control', 'private, no-store')
+    .json({error, message});
+}
+
+function pricingPlanBody(value: unknown): {pricingPlanId: string} | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const keys = Object.keys(value);
+  const pricingPlanId = (value as Record<string, unknown>)['pricingPlanId'];
+  return keys.length === 1
+    && keys[0] === 'pricingPlanId'
+    && typeof pricingPlanId === 'string'
+    && PRICING_PLAN_ID.test(pricingPlanId)
+    ? {pricingPlanId}
+    : undefined;
+}
+
+function transactionsPath(request: Request): string | undefined {
+  if (Object.keys(request.query).some(key => key !== 'limit')) return undefined;
+  const limit = request.query['limit'];
+  if (Array.isArray(limit) || (limit !== undefined && typeof limit !== 'string')) {
+    return undefined;
+  }
+  const normalised = limit ?? '20';
+  return /^[1-9]\d?$|^100$/.test(normalised)
+    ? `/api/v1/payment/transactions?limit=${normalised}`
+    : undefined;
+}
+
+async function proxyPayment(
+  request: Request,
+  response: Response,
+  config: PaymentRouteConfig,
+  method: 'GET' | 'POST',
+  path: string,
+  body: unknown,
+  fetchImplementation: typeof fetch,
+): Promise<void> {
+  if (method === 'POST') {
+    const credentials = jobFinderCredentials(
+      request.headers,
+      {
+        accessCookieName: config.accessCookieName,
+        csrfCookieName: config.csrfCookieName,
+        origin: config.paymentGatewayOrigin,
+        timeoutMs: config.timeoutMs,
+      },
+      true,
+      true,
+    );
+    if ('error' in credentials) {
+      failure(response, credentials.status, credentials.error, credentials.message);
+      return;
+    }
+  }
+
+  try {
+    const result = await callTrustedPaymentGateway({
+      browserHeaders: request.headers,
+      body,
+      fetchImplementation,
+      method,
+      path,
+      paymentGatewayOrigin: config.paymentGatewayOrigin,
+      serviceToken: config.serviceToken,
+      timeoutMs: config.timeoutMs,
+      userManagementOrigin: config.userManagementOrigin,
+    });
+    response.status(result.status);
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.type(result.contentType).send(result.body);
+  } catch (error) {
+    const mapped = paymentProxyFailure(error);
+    failure(response, mapped.status, mapped.body.error, mapped.body.message);
+  }
+}
+
+export function registerPaymentRoutes(
+  app: Express,
+  config: PaymentRouteConfig,
+  fetchImplementation: typeof fetch = fetch,
+): void {
+  app.get('/api/v1/payment/wallet', (request, response) => {
+    if (Object.keys(request.query).length > 0) {
+      failure(response, 400, 'INVALID_REQUEST', 'Payment request is invalid');
+      return;
+    }
+    void proxyPayment(
+      request, response, config, 'GET', '/api/v1/payment/wallet',
+      undefined, fetchImplementation,
+    );
+  });
+  app.get('/api/v1/payment/pricing', (request, response) => {
+    if (Object.keys(request.query).length > 0) {
+      failure(response, 400, 'INVALID_REQUEST', 'Payment request is invalid');
+      return;
+    }
+    void proxyPayment(
+      request, response, config, 'GET', '/api/v1/payment/pricing',
+      undefined, fetchImplementation,
+    );
+  });
+  app.get('/api/v1/payment/transactions', (request, response) => {
+    const path = transactionsPath(request);
+    if (!path) {
+      failure(response, 400, 'INVALID_REQUEST', 'Payment request is invalid');
+      return;
+    }
+    void proxyPayment(
+      request, response, config, 'GET', path, undefined, fetchImplementation,
+    );
+  });
+  for (const path of [
+    '/api/v1/payment/demo-purchase',
+    '/api/v1/payment/checkout',
+  ]) {
+    app.post(path, (request, response) => {
+      const body = pricingPlanBody(request.body);
+      if (!body || Object.keys(request.query).length > 0) {
+        failure(response, 400, 'INVALID_REQUEST', 'Payment request is invalid');
+        return;
+      }
+      void proxyPayment(
+        request, response, config, 'POST', path, body, fetchImplementation,
+      );
+    });
+  }
 }

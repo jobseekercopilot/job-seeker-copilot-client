@@ -84,7 +84,11 @@
                    (focus)="showLocationDropdown.set(locationSuggestions().length > 0)"
                    class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
             @if (locationLookup().message) {
-              <p role="status" class="text-[11px] text-slate-600 mt-1">{{ locationLookup().message }}</p>
+              <p data-testid="profile-location-status"
+                 [attr.role]="locationLookup().status === 'unavailable'
+                   || locationLookup().status === 'rate-limited'
+                   || locationLookup().status === 'invalid' ? 'alert' : 'status'"
+                 class="text-[11px] text-slate-600 mt-1">{{ locationLookup().message }}</p>
             }
             @if (locationLookup().attributionProvider === 'GOOGLE_MAPS') {
               <p class="text-[11px] text-slate-500 mt-1">Suggestions provided by Google Maps</p>

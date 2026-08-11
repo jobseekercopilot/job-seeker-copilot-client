@@ -6,13 +6,12 @@
 |---|---|---|---|---:|
 | Angular UI plus Express SSR/same-origin BFF | Job seeker's browser | User Management, Location, Job Finder, Document Generation/Store and Reporting | No server database; HttpOnly cookies and in-memory UI state | 3000 |
 
-Reporting routes are registered on `develop`; payment routes remain fail-closed. See the central [product overview](https://docs.jobseekercopilot.com/product/overview/), [frontend/gateway guide](https://docs.jobseekercopilot.com/services/frontend-gateways/), and [user journeys](https://docs.jobseekercopilot.com/journeys/account-authentication/).
+Reporting and payment routes are registered through session-derived BFF boundaries. See the central [product overview](https://docs.jobseekercopilot.com/product/overview/), [frontend/gateway guide](https://docs.jobseekercopilot.com/services/frontend-gateways/), and [user journeys](https://docs.jobseekercopilot.com/journeys/account-authentication/).
 
 Angular 21 browser application with an Express SSR/BFF layer. The BFF proxies
 authentication, profile, location, Job Search, Application Tracking and
-document-generation and reporting requests through secure session-derived
-boundaries. Payments remain explicitly unavailable until their equivalent
-secure integration is enabled.
+document-generation, reporting and payment requests through secure
+session-derived boundaries.
 
 Private beta is a release stage for this normal application. Reproducible
 builds, browser token custody and the client session lifecycle are in place;
@@ -39,6 +38,7 @@ Runtime configuration is supplied to the SSR process, not committed:
 | `USER_MANAGEMENT_GATEWAY_URL` | `http://localhost:8083` | Auth/profile gateway |
 | `JOB_FINDER_GATEWAY_URL` | `http://localhost:8080` | Job Finder gateway |
 | `LOCATION_GATEWAY_URL` | `http://location-gateway:8081` | Location gateway |
+| `PAYMENT_GATEWAY_URL` | `http://localhost:8098` | Payment gateway; server-side only |
 | `BFF_SESSION_COOKIE_PROFILE` | `local` | UMG-owned fixed local/production access and CSRF cookie names; production deployment must explicitly select `production` |
 | `NG_ALLOWED_HOSTS` | local/container hosts | Comma-separated SSR hosts |
 | `BFF_JSON_BODY_LIMIT_BYTES` | `65536` | Maximum parsed JSON request body (max 1 MiB) |
@@ -46,7 +46,7 @@ Runtime configuration is supplied to the SSR process, not committed:
 | `BFF_REQUEST_TIMEOUT_MS` | `15000` | Node request timeout (max 120 seconds) |
 | `BFF_HEADERS_TIMEOUT_MS` | `10000` | Node header timeout; cannot exceed request timeout |
 | `BFF_KEEP_ALIVE_TIMEOUT_MS` | `5000` | Node idle keep-alive timeout (max 60 seconds) |
-| `BFF_TO_PAYMENT_GATEWAY_TOKEN` | none | Server-only payment service identity; required if the disabled payment route is deliberately enabled |
+| `BFF_TO_PAYMENT_GATEWAY_TOKEN` | none | Server-only payment service identity; at least 32 UTF-8 bytes and required for payment calls |
 
 Never place provider or production credentials in Angular environment files;
 browser bundles cannot keep a secret.
@@ -91,8 +91,7 @@ profile management, a versioned Evidence Library, Job Search, Application
 Tracking, fixture-backed document generation, storage and export. Evidence can
 be drafted, reviewed, confirmed, hidden, archived, restored or superseded;
 migrated history remains review-required until the claimant confirms it.
-Reporting uses the same session-derived boundary. Payments remain fail-closed
-until that integration is approved. Versioned User Management, Job Finder and Document
+Reporting and payment use the same session-derived boundary pattern. Versioned User Management, Job Finder and Document
 Generation contracts are generated reproducibly. See
 [ADR 0001](docs/adr/0001-reproducible-api-clients.md) and the
 [browser-session ADR](docs/adr/0002-browser-session-client.md), plus the
@@ -110,16 +109,15 @@ contract, automated evidence and release checklist. The
 registration and sign-in boundaries and password handling rules.
 
 Express registers explicit auth/profile/evidence, location, Job Search, saved
-job, application, document-generation/document-read and reporting routes. The
-remaining fail-closed capability prefix is `/api/v1/payment`, which returns the
-stable `404 FEATURE_NOT_AVAILABLE` response before the retained payment proxy
-can run.
+job, application, document-generation/document-read, reporting and payment
+routes.
 
-The retained payment proxy is hardened for its future enablement: it resolves
+The payment proxy resolves
 the stable owner through UMG's HttpOnly browser session profile, ignores browser
 `Authorization` and `X-User-Id`, and sends only the dedicated service token plus
 `X-Payment-Owner` to Payment Gateway. Missing configuration or an unvalidated
-session fails closed. This preparation does not enable the route. See the
+session fails closed. Payment mutations additionally require matching CSRF
+credentials, and live Stripe remains an explicit runtime choice. See the
 [payment identity boundary](docs/payment-identity-boundary.md).
 
 ## Browser session security

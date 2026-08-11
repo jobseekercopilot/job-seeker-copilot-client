@@ -166,6 +166,24 @@ describe('ClaimantProfileComponent progressive profile', () => {
     vi.useRealTimers();
   });
 
+  it('announces unavailable location lookup feedback as an alert', () => {
+    const fixture = TestBed.createComponent(ClaimantProfileComponent);
+    fixture.detectChanges();
+    fixture.componentInstance.startEditing('location');
+    fixture.componentInstance.locationLookup.set({
+      status: 'unavailable',
+      locations: [],
+      message: 'Location search is temporarily unavailable. Try again.',
+    });
+    fixture.detectChanges();
+
+    const status = fixture.nativeElement.querySelector(
+      '[data-testid="profile-location-status"]',
+    ) as HTMLElement;
+    expect(status.getAttribute('role')).toBe('alert');
+    expect(status.textContent).toContain('temporarily unavailable');
+  });
+
   it('preserves underscore-separated canonical field provenance when selecting a location', () => {
     resolve.mockReturnValue(of({
       resolutionStatus: 'RESOLVED',
