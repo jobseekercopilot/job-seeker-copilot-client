@@ -1,5 +1,5 @@
 import {TestBed} from '@angular/core/testing';
-import {of} from 'rxjs';
+import {Observable, of, throwError} from 'rxjs';
 import {
   ApplicationRecordResponse,
   JobApplicationsService,
@@ -16,7 +16,8 @@ describe('ApplicationTrackerService', () => {
     id: '00000000-0000-0000-0000-000000000001',
     status: 'APPLIED',
   }));
-  const updateApplicationStatus = vi.fn(() => of({
+  const updateApplicationStatus = vi.fn<(...args: unknown[]) => Observable<unknown>>();
+  updateApplicationStatus.mockReturnValue(of({
     id: '00000000-0000-0000-0000-000000000001',
     status: 'INTERVIEW',
   }));
@@ -206,10 +207,50 @@ describe('ApplicationTrackerService', () => {
     expect(updateApplicationStatus).toHaveBeenCalledWith(
       '00000000-0000-0000-0000-000000000001',
       {status: 'INTERVIEW'},
+      undefined,
       'body',
       false,
       {transferCache: false},
     );
+  });
+
+  it('reuses the applied idempotency key after a failed attempt', () => {
+    updateApplicationStatus
+      .mockReturnValueOnce(throwError(() => new Error('connection lost')))
+      .mockReturnValueOnce(of({
+        id: '00000000-0000-0000-0000-000000000001',
+        status: 'APPLIED',
+      }));
+    const service = TestBed.inject(ApplicationTrackerService);
+
+    service.updateStatus(
+      '00000000-0000-0000-0000-000000000001',
+      UpdateApplicationStatusRequestStatusEnum.Applied,
+      7,
+    ).subscribe({error: () => undefined});
+    service.updateStatus(
+      '00000000-0000-0000-0000-000000000001',
+      UpdateApplicationStatusRequestStatusEnum.Applied,
+      7,
+    ).subscribe();
+
+    const firstKey = updateApplicationStatus.mock.calls[0][2];
+    const retryKey = updateApplicationStatus.mock.calls[1][2];
+    expect(updateApplicationStatus.mock.calls[0][1]).toEqual({
+      status: 'APPLIED',
+      expectedVersion: 7,
+    });
+    expect(firstKey).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(retryKey).toBe(firstKey);
+  });
+
+  it('rejects applying without an observed application version', () => {
+    TestBed.inject(ApplicationTrackerService).updateStatus(
+      '00000000-0000-0000-0000-000000000001',
+      UpdateApplicationStatusRequestStatusEnum.Applied,
+    ).subscribe({error: error => expect(error.message).toContain('version')});
+
+    expect(updateApplicationStatus).not.toHaveBeenCalled();
   });
 
   it('reports an accepted withdrawal as processing rather than completed', () => {

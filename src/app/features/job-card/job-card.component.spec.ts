@@ -40,11 +40,15 @@ describe('JobCardComponent', () => {
   });
 
   it('shows the generate button before generation', () => {
-    const fixture = createFixture();
+    const fixture = createFixture({
+      job: {...job, canonicalJobId: 'reed:123', primarySource: 'REED'},
+    });
     expandCard(fixture);
 
     expect(fixture.nativeElement.textContent).toContain('Generate CV & Cover Letter');
     expect(fixture.nativeElement.textContent).toContain('Not saved');
+    expect(fixture.nativeElement.getAttribute('data-job-reference')).toBe('reed:123');
+    expect(fixture.nativeElement.getAttribute('data-job-provider')).toBe('REED');
   });
 
   it('shows a saved job accurately and still allows document generation', () => {

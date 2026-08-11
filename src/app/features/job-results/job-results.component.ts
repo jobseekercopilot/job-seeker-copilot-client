@@ -499,7 +499,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   }
 
   trackByJobId(index: number, job: Job): string {
-    return this.jobStateKey(job) || String(index);
+    return job.id ?? job.canonicalJobId ?? String(index);
   }
 
   jobStateKey(job: Job): string {
@@ -1349,18 +1349,14 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     if (choice !== 'UPLOAD') {
       this.documentChoiceFiles.update(files => ({...files, [purpose]: null}));
     }
-    this.documentChoiceError.set(null);
+    this.refreshDocumentChoiceValidation();
   }
 
   chooseDocumentFile(purpose: EvidencePurpose, event: Event): void {
     const input = event.target instanceof HTMLInputElement ? event.target : null;
     const file = input?.files?.item(0) ?? null;
     this.documentChoiceFiles.update(files => ({...files, [purpose]: file}));
-    this.documentChoiceError.set(
-      file && !this.validApplicationUploadFile(file)
-        ? 'Choose a non-empty PDF or Microsoft Word .docx file no larger than 10 MiB.'
-        : null,
-    );
+    this.refreshDocumentChoiceValidation();
   }
 
   closeDocumentChoice(): void {
@@ -1421,18 +1417,14 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.startApplicationUpload(job, purpose);
   }
 
+  chooseReplacementApplicationUpload(job: Job, purpose: EvidencePurpose): void {
+    this.clearPendingApplicationUpload(job, purpose);
+    this.openDocumentChoice(this.currentJob(this.jobStateKey(job)) ?? job, 'ADD');
+    this.chooseDocumentAction(purpose, 'UPLOAD');
+  }
+
   skipApplicationUpload(job: Job, purpose: EvidencePurpose): void {
-    const jobId = this.jobStateKey(job);
-    const pending = this.pendingApplicationUploads.get(jobId);
-    pending?.delete(purpose);
-    if (pending?.size === 0) this.pendingApplicationUploads.delete(jobId);
-    this.applicationUploadSubscriptions.get(`${jobId}:${purpose}`)?.unsubscribe();
-    this.applicationUploadSubscriptions.delete(`${jobId}:${purpose}`);
-    this.applicationUploadStates.update(states => {
-      const jobStates = {...states[jobId]};
-      delete jobStates[purpose];
-      return {...states, [jobId]: jobStates};
-    });
+    this.clearPendingApplicationUpload(job, purpose);
     this.notify.emit({
       message: `${this.documentPurposeLabel(purpose)} upload skipped. Existing documents were not changed.`,
       type: 'info',
@@ -2038,6 +2030,19 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       ));
   }
 
+  private refreshDocumentChoiceValidation(): void {
+    const choices = this.documentChoices();
+    const files = this.documentChoiceFiles();
+    const invalid = this.evidencePurposes.some(purpose =>
+      choices[purpose] === 'UPLOAD'
+      && files[purpose] !== null
+      && !this.validApplicationUploadFile(files[purpose]),
+    );
+    this.documentChoiceError.set(invalid
+      ? 'Choose a non-empty PDF or Microsoft Word .docx file no larger than 10 MiB.'
+      : null);
+  }
+
   private startApplicationUpload(job: Job, purpose: EvidencePurpose): void {
     const jobId = this.jobStateKey(job);
     const pending = this.pendingApplicationUploads.get(jobId)?.get(purpose);
@@ -2081,6 +2086,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
             purpose,
             pending.request.file.name,
             result.failureMessage || 'The file could not be linked safely. Retry it or skip this document.',
+            result.state === 'RECOVERY_REQUIRED',
           );
           return;
         }
@@ -2130,6 +2136,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     purpose: EvidencePurpose,
     fileName: string,
     error: unknown,
+    canRetry = true,
   ): void {
     const message = typeof error === 'string'
       ? error
@@ -2140,9 +2147,23 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       phase: 'ERROR',
       fileName,
       message,
-      canRetry: true,
+      canRetry,
     });
     this.notify.emit({message, type: 'error'});
+  }
+
+  private clearPendingApplicationUpload(job: Job, purpose: EvidencePurpose): void {
+    const jobId = this.jobStateKey(job);
+    const pending = this.pendingApplicationUploads.get(jobId);
+    pending?.delete(purpose);
+    if (pending?.size === 0) this.pendingApplicationUploads.delete(jobId);
+    this.applicationUploadSubscriptions.get(`${jobId}:${purpose}`)?.unsubscribe();
+    this.applicationUploadSubscriptions.delete(`${jobId}:${purpose}`);
+    this.applicationUploadStates.update(states => {
+      const jobStates = {...states[jobId]};
+      delete jobStates[purpose];
+      return {...states, [jobId]: jobStates};
+    });
   }
 
   private setApplicationUploadState(
@@ -2169,7 +2190,11 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     }
 
     this.updatingApplicationStatuses.update(updating => ({ ...updating, [jobId]: status }));
-    this.applicationTracker.updateStatus(job.applicationId, status).pipe(
+    this.applicationTracker.updateStatus(
+      job.applicationId,
+      status,
+      job.applicationVersion,
+    ).pipe(
       finalize(() => {
         this.updatingApplicationStatuses.update(updating => ({
           ...updating,
@@ -2345,6 +2370,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   private applyApplicationRecord(jobId: string, record: ApplicationRecordResponse): void {
     this.updateJobLocally(jobId, {
       applicationId: record.id,
+      applicationVersion: record.version,
       applicationStatus: record.status,
       cvDocumentId: record.cvDocumentId,
       coverLetterDocumentId: record.coverLetterDocumentId,
@@ -2397,6 +2423,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     return {
       ...job,
       applicationId: current.applicationId,
+      applicationVersion: current.applicationVersion,
       applicationStatus: current.applicationStatus,
       cvDocumentId: current.cvDocumentId,
       coverLetterDocumentId: current.coverLetterDocumentId,

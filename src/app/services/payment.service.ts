@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 export interface WalletSummaryResponse {
@@ -59,46 +59,29 @@ export interface CheckoutResponse {
 export class PaymentService {
   private readonly http = inject(HttpClient);
 
-  wallet(userId: string, token = ''): Observable<WalletSummaryResponse> {
-    return this.http.get<WalletSummaryResponse>('/api/v1/payment/wallet', {
-      headers: this.headers(userId, token),
-    });
+  wallet(_userId: string, _token = ''): Observable<WalletSummaryResponse> {
+    return this.http.get<WalletSummaryResponse>('/api/v1/payment/wallet');
   }
 
-  transactions(userId: string, token = '', limit = 20): Observable<TransactionsResponse> {
-    return this.http.get<TransactionsResponse>(`/api/v1/payment/transactions?limit=${limit}`, {
-      headers: this.headers(userId, token),
-    });
+  transactions(_userId: string, _token = '', limit = 20): Observable<TransactionsResponse> {
+    return this.http.get<TransactionsResponse>(`/api/v1/payment/transactions?limit=${limit}`);
   }
 
   pricing(): Observable<PricingPlansResponse> {
     return this.http.get<PricingPlansResponse>('/api/v1/payment/pricing');
   }
 
-  demoPurchase(userId: string, pricingPlanId: string, token = ''): Observable<DemoPurchaseResponse> {
+  demoPurchase(_userId: string, pricingPlanId: string, _token = ''): Observable<DemoPurchaseResponse> {
     return this.http.post<DemoPurchaseResponse>(
       '/api/v1/payment/demo-purchase',
       { pricingPlanId },
-      { headers: this.headers(userId, token) },
     );
   }
 
-  checkout(userId: string, pricingPlanId: string, token = ''): Observable<CheckoutResponse> {
+  checkout(_userId: string, pricingPlanId: string, _token = ''): Observable<CheckoutResponse> {
     return this.http.post<CheckoutResponse>(
       '/api/v1/payment/checkout',
       { pricingPlanId },
-      { headers: this.headers(userId, token) },
     );
-  }
-
-  private headers(userId: string, token: string): HttpHeaders {
-    let headers = new HttpHeaders();
-    if (userId) {
-      headers = headers.set('X-User-Id', userId);
-    }
-    if (token) {
-      headers = headers.set('Authorization', token.startsWith('Bearer ') ? token : `Bearer ${token}`);
-    }
-    return headers;
   }
 }

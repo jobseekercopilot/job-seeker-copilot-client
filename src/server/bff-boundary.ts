@@ -4,6 +4,8 @@ import { isIP } from 'node:net';
 export interface BffConfig {
   userManagementGatewayOrigin: string;
   jobFinderGatewayOrigin: string;
+  paymentGatewayOrigin: string;
+  paymentGatewayServiceToken: string | undefined;
   reportingGatewayOrigin: string;
   sessionAccessCookieName: string;
   sessionCsrfCookieName: string;
@@ -137,6 +139,13 @@ export function loadBffConfig(environment: RuntimeEnvironment = process.env): Bf
       'JOB_FINDER_GATEWAY_URL',
       'http://localhost:8080',
     ),
+    paymentGatewayOrigin: parseOrigin(
+      environment,
+      'PAYMENT_GATEWAY_URL',
+      'http://localhost:8098',
+    ),
+    paymentGatewayServiceToken:
+      environment['BFF_TO_PAYMENT_GATEWAY_TOKEN'],
     reportingGatewayOrigin: parseOrigin(
       environment,
       "REPORTING_GATEWAY_URL",

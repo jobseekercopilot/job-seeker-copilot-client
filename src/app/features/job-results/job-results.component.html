@@ -319,6 +319,9 @@
                           @if (upload.canRetry) {
                             <button type="button" (click)="retryApplicationUpload(job, purpose)">Retry</button>
                           }
+                          <button type="button" (click)="chooseReplacementApplicationUpload(job, purpose)">
+                            Choose another file
+                          </button>
                           <button type="button" (click)="skipApplicationUpload(job, purpose)">Skip</button>
                         </span>
                       }

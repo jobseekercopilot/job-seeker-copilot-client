@@ -8,10 +8,6 @@ import express from 'express';
 import { join } from 'node:path';
 import { LocationGateway } from './app/gateways/location-gateway';
 import {
-  UNAVAILABLE_API_PREFIXES,
-  rejectUnavailableCapability,
-} from './server/unavailable-capabilities';
-import {
   downstreamFailureResponse,
   jsonBodyErrorHandler,
   loadBffConfig,
@@ -24,6 +20,7 @@ import {installGracefulShutdown} from './server/graceful-shutdown';
 import {registerJobFinderRoutes} from './server/job-finder-proxy';
 import {registerDocumentGenerationRoutes} from './server/document-generation-proxy';
 import {registerReportingRoutes} from './server/reporting-proxy';
+import {registerPaymentRoutes} from './server/payment-proxy';
 import {
   documentGenerationMode,
   jobSearchProviderMode,
@@ -244,9 +241,14 @@ registerReportingRoutes(app, {
   timeoutMs: bffConfig.downstreamTimeoutMs,
 });
 
-// Payments remain fail-closed until its BFF integration derives identity from
-// the HttpOnly session and enforces CSRF for mutations.
-app.use(UNAVAILABLE_API_PREFIXES, rejectUnavailableCapability);
+registerPaymentRoutes(app, {
+  accessCookieName: bffConfig.sessionAccessCookieName,
+  csrfCookieName: bffConfig.sessionCsrfCookieName,
+  paymentGatewayOrigin: bffConfig.paymentGatewayOrigin,
+  serviceToken: bffConfig.paymentGatewayServiceToken,
+  timeoutMs: bffConfig.downstreamTimeoutMs,
+  userManagementOrigin: bffConfig.userManagementGatewayOrigin,
+});
 
 app.use((req, res, next) => {
   setAppShellCacheHeaders(res, req.method, req.path);

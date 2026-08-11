@@ -144,6 +144,44 @@ describe('JobResultsComponent', () => {
     ]);
   });
 
+  it('preserves expanded job details across immutable card refreshes', () => {
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+    const initialCard = jobCards(fixture)[0];
+
+    initialCard.componentInstance.toggle();
+    fixture.detectChanges();
+
+    expect(initialCard.componentInstance.expanded()).toBe(true);
+
+    const refreshedJob = {
+      ...selectedJob,
+      canonicalJobId: selectedJob.canonicalJobId ?? 'canonical-refreshed-job',
+      applicationId: 'application-refreshed-job',
+    };
+    expect(fixture.componentInstance.trackByJobId(0, refreshedJob))
+      .toBe(fixture.componentInstance.trackByJobId(0, selectedJob));
+
+    const stateKey = Object.keys(fixture.componentInstance.roleStates())[0];
+    fixture.componentInstance.roleStates.update(states => {
+      const state = states[stateKey];
+      const page = state.pages[state.currentPage];
+      return {
+        ...states,
+        [stateKey]: {
+          ...state,
+          pages: {
+            ...state.pages,
+            [state.currentPage]: {...page, jobs: [refreshedJob, ...page.jobs.slice(1)]},
+          },
+        },
+      };
+    });
+    fixture.detectChanges();
+    expect(jobCards(fixture)[0].componentInstance).toBe(initialCard.componentInstance);
+    expect(jobCards(fixture)[0].componentInstance.expanded()).toBe(true);
+  });
+
   it('shows jobs for the selected target role', () => {
     const fixture = createFixture();
 
@@ -837,6 +875,30 @@ describe('JobResultsComponent', () => {
     expect(fixture.nativeElement.textContent).not.toContain('Cover letter evidence');
   });
 
+  it('keeps an invalid upload explanation visible while the other document choice changes', () => {
+    const applicationId = '10000000-0000-4000-8000-000000000012';
+    currentResponse = singleRoleResponse([job('Invalid upload role', {
+      id: 'invalid-upload-role',
+      canonicalJobId: 'canonical-invalid-upload-role',
+      applicationId,
+    })]);
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+    const input = document.createElement('input');
+    const unsupported = new File(['plain text'], 'cv.txt', {type: 'text/plain'});
+    Object.defineProperty(input, 'files', {value: {item: () => unsupported}});
+
+    fixture.componentInstance.prepareApplicationDocuments(selectedJob, 'ADD');
+    fixture.componentInstance.chooseDocumentAction('CV', 'UPLOAD');
+    fixture.componentInstance.chooseDocumentFile('CV', {target: input} as unknown as Event);
+    expect(fixture.componentInstance.documentChoiceError()).toContain('non-empty PDF');
+
+    fixture.componentInstance.chooseDocumentAction('COVER_LETTER', 'OMIT');
+
+    expect(fixture.componentInstance.documentChoiceError()).toContain('non-empty PDF');
+    expect(fixture.componentInstance.canContinueDocumentChoice()).toBe(false);
+  });
+
   it('supports an upload-only Add path without generation or AI Credit use', () => {
     const applicationId = '10000000-0000-4000-8000-000000000002';
     const documentId = '20000000-0000-4000-8000-000000000002';
@@ -1005,6 +1067,45 @@ describe('JobResultsComponent', () => {
     });
     fixture.componentInstance.skipApplicationUpload(selectedJob, 'COVER_LETTER');
     expect(fixture.componentInstance.applicationUploadState(selectedJob, 'COVER_LETTER')).toBeUndefined();
+  });
+
+  it('does not retry a permanent safety rejection and lets the user choose a replacement', () => {
+    const applicationId = '10000000-0000-4000-8000-000000000013';
+    currentResponse = singleRoleResponse([job('Rejected upload role', {
+      id: 'rejected-upload-role',
+      canonicalJobId: 'canonical-rejected-upload-role',
+      applicationId,
+    })]);
+    documentGenerationService.uploadApplicationDocument.mockReturnValue(of({
+      operationId: '30000000-0000-4000-8000-000000000013',
+      applicationId,
+      jobId: 'canonical-rejected-upload-role',
+      documentType: 'CV',
+      fileType: 'PDF',
+      state: 'REJECTED',
+      failureMessage: 'The uploaded document did not pass secure processing.',
+    }));
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+    const file = new File(['plausible header but unsafe content'], 'unsafe.pdf', {
+      type: 'application/pdf',
+    });
+
+    fixture.componentInstance.prepareApplicationDocuments(selectedJob, 'ADD');
+    fixture.componentInstance.chooseDocumentAction('CV', 'UPLOAD');
+    fixture.componentInstance.chooseDocumentAction('COVER_LETTER', 'OMIT');
+    fixture.componentInstance.documentChoiceFiles.set({CV: file, COVER_LETTER: null});
+    fixture.componentInstance.continueDocumentChoice();
+
+    expect(fixture.componentInstance.applicationUploadState(selectedJob, 'CV')).toMatchObject({
+      phase: 'ERROR',
+      canRetry: false,
+      message: 'The uploaded document did not pass secure processing.',
+    });
+    fixture.componentInstance.chooseReplacementApplicationUpload(selectedJob, 'CV');
+    expect(fixture.componentInstance.applicationUploadState(selectedJob, 'CV')).toBeUndefined();
+    expect(fixture.componentInstance.isDocumentChoiceJob(selectedJob)).toBe(true);
+    expect(fixture.componentInstance.documentChoices()).toEqual({CV: 'UPLOAD', COVER_LETTER: null});
   });
 
   it('selects or clears every eligible entry independently for each document', () => {

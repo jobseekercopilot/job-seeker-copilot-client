@@ -8,6 +8,7 @@ import {sanitiseProviderLinksJson} from '../shared/provider-content-policy';
 
 const ACCESS_TOKEN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const CSRF_TOKEN = /^[A-Za-z0-9._~+/=-]+$/;
+const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PROVIDER_JOB_ID = /^[A-Za-z0-9._~:+@=-]{1,512}$/;
 const JOB_PROVIDERS = new Set(['ADZUNA', 'APPRENTICESHIPS', 'JSEARCH', 'NHS_JOBS', 'REED']);
@@ -132,6 +133,18 @@ export function jobFinderCredentials(
     Accept: 'application/json',
     Authorization: `Bearer ${accessToken}`,
   };
+  const idempotencyKey = browserHeaders['idempotency-key'];
+  if (requiresCsrf && idempotencyKey !== undefined) {
+    if (typeof idempotencyKey !== 'string'
+        || !IDEMPOTENCY_KEY.test(idempotencyKey)) {
+      return {
+        error: 'REQUEST_FORBIDDEN',
+        message: 'A valid idempotency key is required',
+        status: 403,
+      };
+    }
+    headers['Idempotency-Key'] = idempotencyKey;
+  }
   if (includeJsonBody) headers['Content-Type'] = 'application/json';
   return {headers};
 }

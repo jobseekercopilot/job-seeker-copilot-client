@@ -1,10 +1,6 @@
 import express from 'express';
 import type {Server} from 'node:http';
 import {
-  UNAVAILABLE_API_PREFIXES,
-  rejectUnavailableCapability,
-} from './unavailable-capabilities';
-import {
   jobFinderCredentials,
   type JobFinderProxyConfig,
   registerJobFinderRoutes,
@@ -125,6 +121,46 @@ describe('Job Finder session credentials', () => {
       status: 403,
     });
   });
+
+  it('forwards one bounded idempotency key on a state-changing route', () => {
+    const result = jobFinderCredentials({
+      cookie: [
+        `jsc-access-local=${ACCESS_TOKEN}`,
+        `jsc-csrf-local=${CSRF_TOKEN}`,
+      ].join('; '),
+      'x-csrf-token': CSRF_TOKEN,
+      'idempotency-key': 'browser-apply-1',
+    }, LOCAL_CONFIG, true, true);
+
+    expect(result).toEqual({
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'browser-apply-1',
+      },
+    });
+  });
+
+  it.each([
+    ['blank', ''],
+    ['unsafe characters', 'apply key'],
+    ['too long', `a${'b'.repeat(128)}`],
+    ['duplicate', ['browser-1', 'browser-2']],
+  ])('rejects a %s idempotency key', (_case, idempotencyKey) => {
+    expect(jobFinderCredentials({
+      cookie: [
+        `jsc-access-local=${ACCESS_TOKEN}`,
+        `jsc-csrf-local=${CSRF_TOKEN}`,
+      ].join('; '),
+      'x-csrf-token': CSRF_TOKEN,
+      'idempotency-key': idempotencyKey,
+    }, LOCAL_CONFIG, true, true)).toEqual({
+      error: 'REQUEST_FORBIDDEN',
+      message: 'A valid idempotency key is required',
+      status: 403,
+    });
+  });
 });
 
 describe('Job Finder route allowlist', () => {
@@ -146,7 +182,6 @@ describe('Job Finder route allowlist', () => {
     const app = express();
     app.use(express.json());
     registerJobFinderRoutes(app, config, fetchImplementation);
-    app.use(UNAVAILABLE_API_PREFIXES, rejectUnavailableCapability);
     server = app.listen(0, '127.0.0.1');
     await new Promise<void>(resolve => server?.once('listening', resolve));
     const address = server.address();
@@ -523,7 +558,11 @@ describe('Job Finder route allowlist', () => {
       `${origin}/api/jobs/applications/${SAVED_JOB_ID.toUpperCase()}/status`,
       {
         method: 'PATCH',
-        headers: {...sessionHeaders(), 'Content-Type': 'application/json'},
+        headers: {
+          ...sessionHeaders(),
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'browser-apply-1',
+        },
         body: '{"status":"INTERVIEW"}',
       },
     );
@@ -546,6 +585,10 @@ describe('Job Finder route allowlist', () => {
     }
     expect(upstream.mock.calls[0][1]?.body).toBe(JSON.stringify(browserPayload));
     expect(upstream.mock.calls[2][1]?.body).toBe('{"status":"INTERVIEW"}');
+    expect(upstream.mock.calls[2][1]?.headers).toHaveProperty(
+      'Idempotency-Key',
+      'browser-apply-1',
+    );
   });
 
   it('requires CSRF for application creation and status changes', async () => {

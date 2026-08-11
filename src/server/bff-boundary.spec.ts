@@ -16,6 +16,8 @@ describe('BFF runtime configuration', () => {
     expect(loadBffConfig({})).toEqual({
       userManagementGatewayOrigin: 'http://localhost:8083',
       jobFinderGatewayOrigin: 'http://localhost:8080',
+      paymentGatewayOrigin: 'http://localhost:8098',
+      paymentGatewayServiceToken: undefined,
       reportingGatewayOrigin: 'http://localhost:8095',
       sessionAccessCookieName: 'jsc-access-local',
       sessionCsrfCookieName: 'jsc-csrf-local',
@@ -37,6 +39,8 @@ describe('BFF runtime configuration', () => {
     const config = loadBffConfig({
       USER_MANAGEMENT_GATEWAY_URL: 'https://gateway.example.test:8443',
       JOB_FINDER_GATEWAY_URL: 'https://jobs.example.test:9443',
+      PAYMENT_GATEWAY_URL: 'https://payments.example.test:9666',
+      BFF_TO_PAYMENT_GATEWAY_TOKEN: 'payment-service-token',
       REPORTING_GATEWAY_URL: 'https://reports.example.test:9555',
       BFF_SESSION_COOKIE_PROFILE: 'production',
       NG_ALLOWED_HOSTS: 'client.example.test, client.example.test,::1',
@@ -51,6 +55,8 @@ describe('BFF runtime configuration', () => {
 
     expect(config.userManagementGatewayOrigin).toBe('https://gateway.example.test:8443');
     expect(config.jobFinderGatewayOrigin).toBe('https://jobs.example.test:9443');
+    expect(config.paymentGatewayOrigin).toBe('https://payments.example.test:9666');
+    expect(config.paymentGatewayServiceToken).toBe('payment-service-token');
     expect(config.reportingGatewayOrigin).toBe('https://reports.example.test:9555');
     expect(config.sessionAccessCookieName).toBe('__Host-jsc-access');
     expect(config.sessionCsrfCookieName).toBe('__Host-jsc-csrf');
@@ -67,6 +73,7 @@ describe('BFF runtime configuration', () => {
     [{USER_MANAGEMENT_GATEWAY_URL: 'https://gateway.test#'}, 'USER_MANAGEMENT_GATEWAY_URL'],
     [{JOB_FINDER_GATEWAY_URL: 'https://jobs.test/api'}, 'JOB_FINDER_GATEWAY_URL'],
     [{JOB_FINDER_GATEWAY_URL: 'https://user:secret@jobs.test'}, 'JOB_FINDER_GATEWAY_URL'],
+    [{PAYMENT_GATEWAY_URL: 'https://payments.test/api'}, 'PAYMENT_GATEWAY_URL'],
     [{REPORTING_GATEWAY_URL: 'https://reports.test/api'}, 'REPORTING_GATEWAY_URL'],
     [{BFF_SESSION_COOKIE_PROFILE: 'preview'}, 'BFF_SESSION_COOKIE_PROFILE'],
     [{NG_ALLOWED_HOSTS: '*'}, 'NG_ALLOWED_HOSTS'],

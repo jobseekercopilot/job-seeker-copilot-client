@@ -3,7 +3,10 @@ import {
   PaymentProxyConfigurationError,
   callTrustedPaymentGateway,
   paymentProxyFailure,
+  registerPaymentRoutes,
 } from './payment-proxy';
+import express from 'express';
+import type {Server} from 'node:http';
 
 const SERVICE_TOKEN = 'bff-payment-gateway-test-token-000000000001';
 
@@ -150,4 +153,104 @@ describe('trusted payment BFF proxy', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     },
   );
+});
+
+describe('payment BFF routes', () => {
+  let server: Server | undefined;
+
+  afterEach(async () => {
+    if (server) {
+      await new Promise<void>((resolve, reject) =>
+        server?.close(error => error ? reject(error) : resolve()));
+    }
+    server = undefined;
+    vi.restoreAllMocks();
+  });
+
+  async function start(fetchImplementation: typeof fetch): Promise<string> {
+    const app = express();
+    app.use(express.json());
+    registerPaymentRoutes(app, {
+      accessCookieName: 'jsc-access-local',
+      csrfCookieName: 'jsc-csrf-local',
+      paymentGatewayOrigin: 'https://payment.example.test',
+      serviceToken: SERVICE_TOKEN,
+      timeoutMs: 100,
+      userManagementOrigin: 'https://users.example.test',
+    }, fetchImplementation);
+    server = app.listen(0, '127.0.0.1');
+    await new Promise<void>(resolve => server?.once('listening', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Server did not bind');
+    }
+    return `http://127.0.0.1:${address.port}`;
+  }
+
+  it('serves wallet through the session-derived owner boundary', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(profileResponse())
+      .mockResolvedValueOnce(new Response(
+        '{"userId":"session-owner-123","balanceTokens":120000}',
+        {status: 200, headers: {'Content-Type': 'application/json'}},
+      ));
+    const origin = await start(fetchMock as typeof fetch);
+
+    const response = await fetch(`${origin}/api/v1/payment/wallet`, {
+      headers: {Cookie: 'jsc-access-local=session-cookie'},
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(await response.json()).toEqual({
+      userId: 'session-owner-123',
+      balanceTokens: 120000,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a payment mutation without matching CSRF before downstream calls', async () => {
+    const fetchMock = vi.fn();
+    const origin = await start(fetchMock as typeof fetch);
+
+    const response = await fetch(`${origin}/api/v1/payment/checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'jsc-access-local=aaa.bbb.ccc; jsc-csrf-local=csrf-token-123',
+      },
+      body: '{"pricingPlanId":"starter"}',
+    });
+
+    expect(response.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('forwards one validated payment mutation without browser identity selectors', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(profileResponse())
+      .mockResolvedValueOnce(new Response('{"sessionId":"fixture-session"}', {
+        status: 200,
+        headers: {'Content-Type': 'application/json'},
+      }));
+    const origin = await start(fetchMock as typeof fetch);
+
+    const response = await fetch(`${origin}/api/v1/payment/checkout`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer attacker-selected',
+        'Content-Type': 'application/json',
+        Cookie: 'jsc-access-local=aaa.bbb.ccc; jsc-csrf-local=csrf-token-123',
+        'X-CSRF-Token': 'csrf-token-123',
+        'X-User-Id': 'victim-456',
+      },
+      body: '{"pricingPlanId":"starter"}',
+    });
+
+    expect(response.status).toBe(200);
+    const paymentInit = fetchMock.mock.calls[1][1];
+    expect(paymentInit.headers['X-Payment-Owner']).toBe('session-owner-123');
+    expect(paymentInit.headers['Authorization']).toBeUndefined();
+    expect(paymentInit.headers['X-User-Id']).toBeUndefined();
+  });
 });
