@@ -503,7 +503,7 @@ describe('JobResultsComponent', () => {
       .toContain('No job matches found based on your current profile.');
   });
 
-  it('renders authoritative application enrichment on initial load and reload without listing applications', () => {
+  it('renders authoritative application enrichment on initial load and reload', () => {
     currentResponse = singleRoleResponse([
       job('persisted role', {
         id: 'canonical-job-1',
@@ -547,7 +547,39 @@ describe('JobResultsComponent', () => {
     });
     expect(reloadedFixture.nativeElement.textContent).toContain('Documents prepared');
     expect(reloadedFixture.nativeElement.textContent).toContain('Upload CV');
-    expect(applicationTracker.listApplications).not.toHaveBeenCalled();
+    expect(applicationTracker.listApplications).toHaveBeenCalledTimes(2);
+  });
+
+  it('reconciles persisted application status when a fresh provider response has no application state', () => {
+    currentResponse = singleRoleResponse([
+      job('persisted role', {
+        id: 'canonical-job-1',
+        canonicalJobId: 'canonical-job-1',
+        primarySource: 'REED',
+        externalJobId: 'reed-123',
+      }),
+    ]);
+    applicationTracker.listApplications.mockReturnValue(of([{
+      id: 'application-1',
+      canonicalJobId: 'canonical-job-1',
+      version: 5,
+      status: 'INTERVIEW',
+      cvDocumentId: 'cv-1',
+      coverLetterDocumentId: 'letter-1',
+      updatedAt: '2026-08-12T12:00:00Z',
+    }]));
+
+    const fixture = createFixture();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.jobs()[0]).toMatchObject({
+      applicationId: 'application-1',
+      applicationVersion: 5,
+      applicationStatus: 'INTERVIEW',
+      cvDocumentId: 'cv-1',
+      coverLetterDocumentId: 'letter-1',
+    });
+    expect(fixture.nativeElement.textContent).toContain('Interview');
   });
 
   it('reconciles a newer tracked status without rerunning the provider search', () => {

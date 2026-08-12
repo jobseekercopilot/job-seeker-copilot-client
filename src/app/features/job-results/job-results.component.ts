@@ -163,6 +163,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   private readonly pendingApplicationUploads = new Map<string, Map<EvidencePurpose, PendingApplicationUpload>>();
   private readonly generationOutputsByJob = new Map<string, EvidencePurpose[]>();
   private readonly localApplicationMutationSequence = new Map<string, number>();
+  private readonly persistedApplicationsByJobId = new Map<string, ApplicationRecordResponse>();
   private destroyed = false;
 
   // Inputs from the parent App component (profile signals)
@@ -477,7 +478,17 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   ));
 
   ngOnInit(): void {
-    // Auto-trigger search when the component initialises (profile is already loaded)
+    this.applicationTracker.listApplications().subscribe({
+      next: records => {
+        for (const record of records) {
+          const jobId = record.canonicalJobId ?? record.jobId;
+          if (!jobId) continue;
+          this.persistedApplicationsByJobId.set(jobId, record);
+          this.applyApplicationRecord(jobId, record);
+        }
+      },
+      error: () => undefined,
+    });
     this.search();
   }
 
@@ -722,24 +733,19 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       if (this.roleKey(this.selectedTargetRole()) === roleKey) {
         this.notify.emit({message, type: 'error'});
       }
-      console.error('[JobResults] Job search returned a mismatched target role');
       return;
     }
     const responseJobs = matchingGroup?.jobs
       ?? response.jobs
       ?? [];
-    let skippedCount = 0;
     const validJobs = responseJobs
       .flatMap(job => {
         const validated = this.validateJob(job);
         if (validated) return [validated];
-        skippedCount++;
         return [];
       })
+      .map(job => this.reconcilePersistedApplication(job))
       .map(job => this.preserveNewerLocalApplicationState(job, requestSequence));
-    if (skippedCount > 0) {
-      console.warn(`[JobResults] Filtered out ${skippedCount} malformed job(s)`);
-    }
 
     const responsePage = Math.max(
       1,
@@ -849,7 +855,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     if (this.roleKey(this.selectedTargetRole()) === roleKey) {
       this.notify.emit({message, type: 'error'});
     }
-    console.error('[JobResults] Job search failed');
   }
 
   private searchErrorMessage(status: number | undefined): string {
@@ -1567,7 +1572,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       }
       this.generationErrors.update(errors => ({ ...errors, [jobId]: error.message }));
       this.notify.emit({message: error.message, type: 'error'});
-      console.error(`[JobResults] Document generation failed (${error.code})`);
       return;
     }
     const status = typeof error === 'object' && error !== null && 'status' in error
@@ -1593,7 +1597,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         : 'Generation failed. Please try again.';
     this.generationErrors.update(errors => ({ ...errors, [jobId]: message }));
     this.notify.emit({ message, type: 'error' });
-    console.error('[JobResults] Document generation failed');
   }
 
   cancelGeneration(job: Job): void {
@@ -1657,7 +1660,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     try {
       pendingGenerations = this.documentGenerationService.pendingGenerations();
     } catch {
-      console.error('[JobResults] Pending document generation discovery failed');
       return;
     }
 
@@ -1828,7 +1830,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       : 'Cancellation could not be confirmed. Generation is still being reconciled.';
     this.generationErrors.update(errors => ({...errors, [jobId]: message}));
     this.notify.emit({message, type: 'error'});
-    console.error('[JobResults] Document generation cancellation failed');
   }
 
   private clearGenerationSubscription(jobId: string): void {
@@ -2349,7 +2350,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         ? err.message
         : 'Upload failed. Please choose a DOCX file under 25MB.';
       this.notify.emit({ message, type: 'error' });
-      console.error('[JobResults] Document upload failed');
     }).finally(() => {
       this.uploadingDocuments.update(uploading => ({ ...uploading, [jobId]: undefined }));
     });
@@ -2358,7 +2358,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   downloadFile(file: DownloadFileResponse): void {
     this.documentGenerationService.download(file).catch(() => {
       this.notify.emit({ message: 'Download failed. Please try again.', type: 'error' });
-      console.error('[JobResults] Document download failed');
     });
   }
 
@@ -2378,6 +2377,8 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   }
 
   applyApplicationRecord(jobId: string, record: ApplicationRecordResponse): void {
+    if (!jobId) return;
+    this.persistedApplicationsByJobId.set(jobId, record);
     this.updateJobLocally(jobId, {
       applicationId: record.id,
       applicationVersion: record.version,
@@ -2394,6 +2395,21 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         coverLetterDocumentId: record.coverLetterDocumentId,
       },
     }));
+  }
+
+  private reconcilePersistedApplication(job: Job): Job {
+    const record = this.persistedApplicationsByJobId.get(this.jobStateKey(job));
+    if (!record) return job;
+    return {
+      ...job,
+      applicationId: record.id,
+      applicationVersion: record.version,
+      applicationStatus: record.status,
+      cvDocumentId: record.cvDocumentId,
+      coverLetterDocumentId: record.coverLetterDocumentId,
+      appliedAt: record.appliedAt,
+      applicationUpdatedAt: record.updatedAt,
+    };
   }
 
   private updateJobLocally(jobId: string, patch: Partial<Job>): void {
@@ -2505,7 +2521,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
             [jobId]: { ...(downloads[jobId] ?? {}), cv },
           }));
         },
-        error: () => console.warn('[JobResults] Could not restore CV downloads'),
+        error: () => undefined,
       });
 
       this.documentGenerationService.latestFiles(coverLetterDocumentId).subscribe({
@@ -2517,7 +2533,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
             [jobId]: { ...(downloads[jobId] ?? {}), coverLetter },
           }));
         },
-        error: () => console.warn('[JobResults] Could not restore cover letter downloads'),
+        error: () => undefined,
       });
     }
   }
