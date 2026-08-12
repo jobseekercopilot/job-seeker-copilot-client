@@ -241,16 +241,16 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     const hasSuccess = statuses.includes('SUCCESS');
     const hasFailure = statuses.some(status => status !== 'SUCCESS');
     if (statuses.includes('CONFIGURATION_ERROR') && !hasSuccess) {
-      return 'Real-provider configuration is incomplete. No fixture results were substituted.';
+      return 'Real-provider configuration is incomplete. No fixtures were substituted.';
     }
     if (!hasSuccess && statuses.includes('RATE_LIMITED')) {
-      return 'All available real providers are currently rate limited. Please try again later.';
+      return 'Real providers are rate limited. Try again later.';
     }
     if (statuses.length > 0 && !hasSuccess) {
-      return 'Real job providers are temporarily unavailable. Please try again later.';
+      return 'Real providers are unavailable. Try again later.';
     }
     if (hasSuccess && hasFailure) {
-      return 'Available providers returned no matches; some real providers were unavailable.';
+      return 'No matches; some real providers were unavailable.';
     }
     return 'No job matches found based on your current profile.';
   });
@@ -858,15 +858,15 @@ export class JobResultsComponent implements OnInit, OnDestroy {
 
   private searchErrorMessage(status: number | undefined): string {
     if (status === 503) {
-      return 'Job search service is temporarily unavailable. Please try again later.';
+      return 'Job search is unavailable. Try again later.';
     }
     if (status === 400) {
-      return 'Invalid search parameters. Please update your profile and try again.';
+      return 'Invalid search. Update your profile and try again.';
     }
     if (status === 401 || status === 403) {
-      return 'Session expired. Please log in again.';
+      return 'Session expired. Log in again.';
     }
-    return 'An unexpected error occurred while searching for jobs.';
+    return 'Job search failed unexpectedly. Please try again.';
   }
 
   private removeCrossPageDuplicates(
@@ -1411,7 +1411,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       this.openEvidenceSelection(job);
     } else if (!uploads.size) {
       this.notify.emit({
-        message: 'Application saved. You can add documents later.',
+        message: 'Application saved. Add documents later.',
         type: 'success',
       });
     }
@@ -1817,7 +1817,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     );
     this.generationErrors.update(errors => ({...errors, [jobId]: undefined}));
     this.notify.emit({
-      message: 'Document generation cancelled. Your evidence selection has been kept.',
+      message: 'Generation cancelled. Evidence selection kept.',
       type: 'info',
     });
   }
@@ -2194,7 +2194,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     if (!jobId || !job.applicationId || this.updatingApplicationStatuses()[jobId]) {
       if (!job.applicationId) {
         this.notify.emit({
-          message: 'Application record is missing. Generate documents before updating status.',
+          message: 'Generate documents before updating status.',
           type: 'error',
         });
       }
@@ -2239,7 +2239,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     if (!jobId || !job.applicationId || this.updatingApplicationStatuses()[jobId]) {
       if (!job.applicationId) {
         this.notify.emit({
-          message: 'Application record is missing. Generate documents before withdrawing.',
+          message: 'Generate documents before withdrawing.',
           type: 'error',
         });
       }
@@ -2384,6 +2384,12 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         record,
       );
     }
+    if (record.provider && record.jobTitle && record.companyName) {
+      this.persistedApplicationsByJobId.set(
+        `${record.provider}:${record.jobTitle}:${record.companyName}`.toLowerCase(),
+        record,
+      );
+    }
     this.updateJobLocally(jobId, {
       applicationId: record.id,
       applicationVersion: record.version,
@@ -2407,6 +2413,9 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     const record = this.persistedApplicationsByJobId.get(this.jobStateKey(job))
       ?? this.persistedApplicationsByJobId.get(
         provider && job.externalJobId ? `${provider}:${job.externalJobId}` : '',
+      )
+      ?? this.persistedApplicationsByJobId.get(
+        provider ? `${provider}:${job.title}:${job.company}`.toLowerCase() : '',
       );
     if (!record) return job;
     return {

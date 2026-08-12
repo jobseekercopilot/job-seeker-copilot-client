@@ -640,6 +640,32 @@ describe('JobResultsComponent', () => {
     expect(fixture.componentInstance.jobs()[0].applicationStatus).toBe('INTERVIEW');
   });
 
+  it('reconciles by provider, title and company when source identifiers change', () => {
+    currentResponse = singleRoleResponse([
+      job('persisted role', {
+        canonicalJobId: 'fresh-id',
+        primarySource: 'REED',
+        externalJobId: undefined,
+        title: 'Senior Java Developer',
+        company: 'Proactive Appointments',
+      }),
+    ]);
+    applicationTracker.listApplications.mockReturnValue(of([{
+      id: 'application-1',
+      canonicalJobId: 'original-id',
+      provider: 'REED',
+      jobTitle: 'Senior Java Developer',
+      companyName: 'Proactive Appointments',
+      status: 'INTERVIEW',
+    }]));
+
+    const fixture = createFixture();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.jobs()[0].applicationStatus).toBe('INTERVIEW');
+    expect(fixture.nativeElement.textContent).toContain('Interview');
+  });
+
   it('reconciles a newer tracked status without rerunning the provider search', () => {
     currentResponse = singleRoleResponse([
       job('tracked role', {
