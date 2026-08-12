@@ -485,10 +485,10 @@ export class JobResultsComponent implements OnInit, OnDestroy {
           if (!jobId) continue;
           this.applyApplicationRecord(jobId, record);
         }
+        this.search();
       },
-      error: () => undefined,
+      error: () => this.search(),
     });
-    this.search();
   }
 
   ngOnDestroy(): void {

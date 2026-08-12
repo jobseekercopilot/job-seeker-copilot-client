@@ -611,6 +611,35 @@ describe('JobResultsComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Interview');
   });
 
+  it('waits for persisted application state before starting the provider search', () => {
+    const applications = new Subject<any[]>();
+    applicationTracker.listApplications.mockReturnValue(applications.asObservable());
+    currentResponse = singleRoleResponse([
+      job('persisted role', {
+        canonicalJobId: 'fresh-id',
+        primarySource: 'REED',
+        externalJobId: 'reed-123',
+      }),
+    ]);
+
+    const fixture = createFixture();
+    fixture.detectChanges();
+    expect(jobService.callCount).toBe(0);
+
+    applications.next([{
+      id: 'application-1',
+      canonicalJobId: 'original-id',
+      provider: 'REED',
+      externalJobId: 'reed-123',
+      status: 'INTERVIEW',
+    }]);
+    applications.complete();
+    fixture.detectChanges();
+
+    expect(jobService.callCount).toBe(1);
+    expect(fixture.componentInstance.jobs()[0].applicationStatus).toBe('INTERVIEW');
+  });
+
   it('reconciles a newer tracked status without rerunning the provider search', () => {
     currentResponse = singleRoleResponse([
       job('tracked role', {
