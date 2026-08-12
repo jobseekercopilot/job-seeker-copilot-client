@@ -582,6 +582,35 @@ describe('JobResultsComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Interview');
   });
 
+  it('reconciles a persisted application by provider vacancy identity when canonical IDs differ', () => {
+    currentResponse = singleRoleResponse([
+      job('persisted role', {
+        id: 'fresh-search-id',
+        canonicalJobId: 'fresh-canonical-id',
+        primarySource: 'REED',
+        externalJobId: 'reed-123',
+      }),
+    ]);
+    applicationTracker.listApplications.mockReturnValue(of([{
+      id: 'application-1',
+      jobId: 'original-search-id',
+      canonicalJobId: 'original-canonical-id',
+      provider: 'REED',
+      externalJobId: 'reed-123',
+      status: 'INTERVIEW',
+      version: 5,
+    }]));
+
+    const fixture = createFixture();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.jobs()[0]).toMatchObject({
+      applicationId: 'application-1',
+      applicationStatus: 'INTERVIEW',
+    });
+    expect(fixture.nativeElement.textContent).toContain('Interview');
+  });
+
   it('reconciles a newer tracked status without rerunning the provider search', () => {
     currentResponse = singleRoleResponse([
       job('tracked role', {

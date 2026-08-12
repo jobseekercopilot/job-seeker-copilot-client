@@ -483,7 +483,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         for (const record of records) {
           const jobId = record.canonicalJobId ?? record.jobId;
           if (!jobId) continue;
-          this.persistedApplicationsByJobId.set(jobId, record);
           this.applyApplicationRecord(jobId, record);
         }
       },
@@ -2220,15 +2219,15 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         const updatedStatus = record.status ?? status;
         this.notify.emit({
           message: updatedStatus === 'APPLIED'
-            ? 'Application marked as applied. Documents are now locked.'
-            : `Application status updated to ${this.friendlyStatus(updatedStatus)}.`,
+            ? 'Marked as applied. Documents are locked.'
+            : `Application status updated to ${updatedStatus.toLowerCase().replaceAll('_', ' ')}.`,
           type: 'success',
         });
         this.applicationChanged.emit();
       },
       error: () => {
         this.notify.emit({
-          message: 'Could not update application status. Please try again.',
+          message: 'Status update failed. Please try again.',
           type: 'error',
         });
       },
@@ -2285,14 +2284,14 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         this.generationMessages.update(messages => ({ ...messages, [jobId]: undefined }));
         this.generationErrors.update(errors => ({ ...errors, [jobId]: undefined }));
         this.notify.emit({
-          message: 'Generated application withdrawn and reset to new.',
+          message: 'Application withdrawn and reset to new.',
           type: 'success',
         });
         this.applicationChanged.emit();
       },
       error: () => {
         this.notify.emit({
-          message: 'Could not withdraw generated application. Please try again.',
+          message: 'Withdrawal failed. Please try again.',
           type: 'error',
         });
       },
@@ -2378,7 +2377,13 @@ export class JobResultsComponent implements OnInit, OnDestroy {
 
   applyApplicationRecord(jobId: string, record: ApplicationRecordResponse): void {
     if (!jobId) return;
-    this.persistedApplicationsByJobId.set(jobId, record);
+    this.persistedApplicationsByJobId.set(record.canonicalJobId ?? jobId, record);
+    if (record.provider && record.externalJobId) {
+      this.persistedApplicationsByJobId.set(
+        `${record.provider}:${record.externalJobId}`,
+        record,
+      );
+    }
     this.updateJobLocally(jobId, {
       applicationId: record.id,
       applicationVersion: record.version,
@@ -2398,7 +2403,11 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   }
 
   private reconcilePersistedApplication(job: Job): Job {
-    const record = this.persistedApplicationsByJobId.get(this.jobStateKey(job));
+    const provider = job.primarySource ?? job.provider;
+    const record = this.persistedApplicationsByJobId.get(this.jobStateKey(job))
+      ?? this.persistedApplicationsByJobId.get(
+        provider && job.externalJobId ? `${provider}:${job.externalJobId}` : '',
+      );
     if (!record) return job;
     return {
       ...job,
@@ -2456,10 +2465,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       appliedAt: current.appliedAt,
       applicationUpdatedAt: current.applicationUpdatedAt,
     };
-  }
-
-  private friendlyStatus(status: string): string {
-    return status.toLowerCase().replaceAll('_', ' ');
   }
 
   private reconcileGeneratedState(jobs: Job[]): void {
