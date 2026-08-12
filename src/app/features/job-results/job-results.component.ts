@@ -163,6 +163,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   private readonly pendingApplicationUploads = new Map<string, Map<EvidencePurpose, PendingApplicationUpload>>();
   private readonly generationOutputsByJob = new Map<string, EvidencePurpose[]>();
   private readonly localApplicationMutationSequence = new Map<string, number>();
+  private readonly persistedApplicationsByJobId = new Map<string, ApplicationRecordResponse>();
   private destroyed = false;
 
   // Inputs from the parent App component (profile signals)
@@ -234,24 +235,24 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   });
   emptyStateMessage = computed(() => {
     if (this.providerMode() !== 'REAL_PROVIDERS') {
-      return 'No job matches found based on your current profile.';
+      return 'No jobs match your current profile.';
     }
     const statuses = this.providerStatuses().filter(status => status !== 'DISABLED');
     const hasSuccess = statuses.includes('SUCCESS');
     const hasFailure = statuses.some(status => status !== 'SUCCESS');
     if (statuses.includes('CONFIGURATION_ERROR') && !hasSuccess) {
-      return 'Real-provider configuration is incomplete. No fixture results were substituted.';
+      return 'Provider setup is incomplete. No fixtures used.';
     }
     if (!hasSuccess && statuses.includes('RATE_LIMITED')) {
-      return 'All available real providers are currently rate limited. Please try again later.';
+      return 'Providers rate limited. Try later.';
     }
     if (statuses.length > 0 && !hasSuccess) {
-      return 'Real job providers are temporarily unavailable. Please try again later.';
+      return 'Providers unavailable. Try later.';
     }
     if (hasSuccess && hasFailure) {
-      return 'Available providers returned no matches; some real providers were unavailable.';
+      return 'No matches; some providers unavailable.';
     }
-    return 'No job matches found based on your current profile.';
+    return 'No jobs match your current profile.';
   });
   readonly currentPage = computed(() =>
     this.activeRoleState()?.currentPage ?? 1);
@@ -477,8 +478,17 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   ));
 
   ngOnInit(): void {
-    // Auto-trigger search when the component initialises (profile is already loaded)
-    this.search();
+    this.applicationTracker.listApplications().subscribe({
+      next: records => {
+        for (const record of records) {
+          const jobId = record.canonicalJobId ?? record.jobId;
+          if (!jobId) continue;
+          this.applyApplicationRecord(jobId, record);
+        }
+        this.search();
+      },
+      error: () => this.search(),
+    });
   }
 
   ngOnDestroy(): void {
@@ -722,24 +732,19 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       if (this.roleKey(this.selectedTargetRole()) === roleKey) {
         this.notify.emit({message, type: 'error'});
       }
-      console.error('[JobResults] Job search returned a mismatched target role');
       return;
     }
     const responseJobs = matchingGroup?.jobs
       ?? response.jobs
       ?? [];
-    let skippedCount = 0;
     const validJobs = responseJobs
       .flatMap(job => {
         const validated = this.validateJob(job);
         if (validated) return [validated];
-        skippedCount++;
         return [];
       })
+      .map(job => this.reconcilePersistedApplication(job))
       .map(job => this.preserveNewerLocalApplicationState(job, requestSequence));
-    if (skippedCount > 0) {
-      console.warn(`[JobResults] Filtered out ${skippedCount} malformed job(s)`);
-    }
 
     const responsePage = Math.max(
       1,
@@ -849,20 +854,19 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     if (this.roleKey(this.selectedTargetRole()) === roleKey) {
       this.notify.emit({message, type: 'error'});
     }
-    console.error('[JobResults] Job search failed');
   }
 
   private searchErrorMessage(status: number | undefined): string {
     if (status === 503) {
-      return 'Job search service is temporarily unavailable. Please try again later.';
+      return 'Job search is unavailable. Try again later.';
     }
     if (status === 400) {
-      return 'Invalid search parameters. Please update your profile and try again.';
+      return 'Invalid search. Update your profile and try again.';
     }
     if (status === 401 || status === 403) {
-      return 'Session expired. Please log in again.';
+      return 'Session expired. Sign in.';
     }
-    return 'An unexpected error occurred while searching for jobs.';
+    return 'Search failed.';
   }
 
   private removeCrossPageDuplicates(
@@ -1407,7 +1411,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       this.openEvidenceSelection(job);
     } else if (!uploads.size) {
       this.notify.emit({
-        message: 'Application saved. You can add documents later.',
+        message: 'Application saved. Add documents later.',
         type: 'success',
       });
     }
@@ -1567,7 +1571,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       }
       this.generationErrors.update(errors => ({ ...errors, [jobId]: error.message }));
       this.notify.emit({message: error.message, type: 'error'});
-      console.error(`[JobResults] Document generation failed (${error.code})`);
       return;
     }
     const status = typeof error === 'object' && error !== null && 'status' in error
@@ -1593,7 +1596,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         : 'Generation failed. Please try again.';
     this.generationErrors.update(errors => ({ ...errors, [jobId]: message }));
     this.notify.emit({ message, type: 'error' });
-    console.error('[JobResults] Document generation failed');
   }
 
   cancelGeneration(job: Job): void {
@@ -1657,7 +1659,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     try {
       pendingGenerations = this.documentGenerationService.pendingGenerations();
     } catch {
-      console.error('[JobResults] Pending document generation discovery failed');
       return;
     }
 
@@ -1816,7 +1817,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     );
     this.generationErrors.update(errors => ({...errors, [jobId]: undefined}));
     this.notify.emit({
-      message: 'Document generation cancelled. Your evidence selection has been kept.',
+      message: 'Generation cancelled. Evidence selection kept.',
       type: 'info',
     });
   }
@@ -1828,7 +1829,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       : 'Cancellation could not be confirmed. Generation is still being reconciled.';
     this.generationErrors.update(errors => ({...errors, [jobId]: message}));
     this.notify.emit({message, type: 'error'});
-    console.error('[JobResults] Document generation cancellation failed');
   }
 
   private clearGenerationSubscription(jobId: string): void {
@@ -2194,7 +2194,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     if (!jobId || !job.applicationId || this.updatingApplicationStatuses()[jobId]) {
       if (!job.applicationId) {
         this.notify.emit({
-          message: 'Application record is missing. Generate documents before updating status.',
+          message: 'Generate documents before updating status.',
           type: 'error',
         });
       }
@@ -2219,15 +2219,15 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         const updatedStatus = record.status ?? status;
         this.notify.emit({
           message: updatedStatus === 'APPLIED'
-            ? 'Application marked as applied. Documents are now locked.'
-            : `Application status updated to ${this.friendlyStatus(updatedStatus)}.`,
+            ? 'Marked as applied. Documents are locked.'
+            : `Application status updated to ${updatedStatus.toLowerCase().replaceAll('_', ' ')}.`,
           type: 'success',
         });
         this.applicationChanged.emit();
       },
       error: () => {
         this.notify.emit({
-          message: 'Could not update application status. Please try again.',
+          message: 'Status update failed. Please try again.',
           type: 'error',
         });
       },
@@ -2239,7 +2239,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     if (!jobId || !job.applicationId || this.updatingApplicationStatuses()[jobId]) {
       if (!job.applicationId) {
         this.notify.emit({
-          message: 'Application record is missing. Generate documents before withdrawing.',
+          message: 'Generate documents before withdrawing.',
           type: 'error',
         });
       }
@@ -2284,14 +2284,14 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         this.generationMessages.update(messages => ({ ...messages, [jobId]: undefined }));
         this.generationErrors.update(errors => ({ ...errors, [jobId]: undefined }));
         this.notify.emit({
-          message: 'Generated application withdrawn and reset to new.',
+          message: 'Application withdrawn and reset to new.',
           type: 'success',
         });
         this.applicationChanged.emit();
       },
       error: () => {
         this.notify.emit({
-          message: 'Could not withdraw generated application. Please try again.',
+          message: 'Withdrawal failed. Please try again.',
           type: 'error',
         });
       },
@@ -2349,7 +2349,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         ? err.message
         : 'Upload failed. Please choose a DOCX file under 25MB.';
       this.notify.emit({ message, type: 'error' });
-      console.error('[JobResults] Document upload failed');
     }).finally(() => {
       this.uploadingDocuments.update(uploading => ({ ...uploading, [jobId]: undefined }));
     });
@@ -2358,7 +2357,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   downloadFile(file: DownloadFileResponse): void {
     this.documentGenerationService.download(file).catch(() => {
       this.notify.emit({ message: 'Download failed. Please try again.', type: 'error' });
-      console.error('[JobResults] Document download failed');
     });
   }
 
@@ -2378,7 +2376,25 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   }
 
   applyApplicationRecord(jobId: string, record: ApplicationRecordResponse): void {
-    this.updateJobLocally(jobId, {
+    if (!jobId) return;
+    const displayedJob = this.jobs().find(job =>
+      this.jobStateKey(job) === record.canonicalJobId
+      || (record.jobTitle === job.title && record.companyName === job.company));
+    const displayedJobId = displayedJob ? this.jobStateKey(displayedJob) : jobId;
+    this.persistedApplicationsByJobId.set(record.canonicalJobId ?? jobId, record);
+    if (record.provider && record.externalJobId) {
+      this.persistedApplicationsByJobId.set(
+        `${record.provider}:${record.externalJobId}`,
+        record,
+      );
+    }
+    if (record.provider && record.jobTitle && record.companyName) {
+      this.persistedApplicationsByJobId.set(
+        `${record.provider}:${record.jobTitle}:${record.companyName}`.toLowerCase(),
+        record,
+      );
+    }
+    this.updateJobLocally(displayedJobId, {
       applicationId: record.id,
       applicationVersion: record.version,
       applicationStatus: record.status,
@@ -2389,11 +2405,33 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     });
     this.generatedDocumentIds.update(documentIds => ({
       ...documentIds,
-      [jobId]: {
+      [displayedJobId]: {
         cvDocumentId: record.cvDocumentId,
         coverLetterDocumentId: record.coverLetterDocumentId,
       },
     }));
+  }
+
+  private reconcilePersistedApplication(job: Job): Job {
+    const provider = job.primarySource ?? job.provider;
+    const record = this.persistedApplicationsByJobId.get(this.jobStateKey(job))
+      ?? this.persistedApplicationsByJobId.get(
+        provider && job.externalJobId ? `${provider}:${job.externalJobId}` : '',
+      )
+      ?? this.persistedApplicationsByJobId.get(
+        provider ? `${provider}:${job.title}:${job.company}`.toLowerCase() : '',
+      );
+    if (!record) return job;
+    return {
+      ...job,
+      applicationId: record.id,
+      applicationVersion: record.version,
+      applicationStatus: record.status,
+      cvDocumentId: record.cvDocumentId,
+      coverLetterDocumentId: record.coverLetterDocumentId,
+      appliedAt: record.appliedAt,
+      applicationUpdatedAt: record.updatedAt,
+    };
   }
 
   private updateJobLocally(jobId: string, patch: Partial<Job>): void {
@@ -2440,10 +2478,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       appliedAt: current.appliedAt,
       applicationUpdatedAt: current.applicationUpdatedAt,
     };
-  }
-
-  private friendlyStatus(status: string): string {
-    return status.toLowerCase().replaceAll('_', ' ');
   }
 
   private reconcileGeneratedState(jobs: Job[]): void {
@@ -2505,7 +2539,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
             [jobId]: { ...(downloads[jobId] ?? {}), cv },
           }));
         },
-        error: () => console.warn('[JobResults] Could not restore CV downloads'),
+        error: () => undefined,
       });
 
       this.documentGenerationService.latestFiles(coverLetterDocumentId).subscribe({
@@ -2517,7 +2551,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
             [jobId]: { ...(downloads[jobId] ?? {}), coverLetter },
           }));
         },
-        error: () => console.warn('[JobResults] Could not restore cover letter downloads'),
+        error: () => undefined,
       });
     }
   }
