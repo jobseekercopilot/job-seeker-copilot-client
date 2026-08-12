@@ -110,6 +110,7 @@ export class MyApplicationsComponent implements OnInit {
   selectedApplicationId = input<string | null>(null);
   notify = output<{ message: string; type: 'success' | 'info' | 'error' }>();
   applicationChanged = output<void>();
+  applicationUpdated = output<TrackedApplication>();
 
   applications = signal<TrackedApplication[]>([]);
   selectedFilter = signal<ApplicationFilter>('ALL');
@@ -621,11 +622,11 @@ export class MyApplicationsComponent implements OnInit {
       next: record => {
         this.upsert(record);
         this.notify.emit({ message: `Application updated to ${this.statusLabel(record.status)}.`, type: 'success' });
+        this.applicationUpdated.emit(record);
         this.applicationChanged.emit();
       },
-      error: err => {
+      error: () => {
         this.notify.emit({ message: 'Could not update application status. Please try again.', type: 'error' });
-        console.error('Application workspace status update failed:', err);
       },
     });
   }
@@ -859,9 +860,8 @@ export class MyApplicationsComponent implements OnInit {
         this.notify.emit({ message: 'Generated application withdrawn.', type: 'success' });
         this.applicationChanged.emit();
       },
-      error: err => {
+      error: () => {
         this.notify.emit({ message: 'Could not withdraw this application. Please try again.', type: 'error' });
-        console.error('Application workspace withdraw failed:', err);
       },
     });
   }

@@ -226,7 +226,7 @@ describe('App', () => {
     );
   });
 
-  it('mounts only the workspace selected by the Applications and Documents tabs', async () => {
+  it('preserves search state while mounting only the selected Applications or Documents workspace', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -241,7 +241,9 @@ describe('App', () => {
     expect(fixture.componentInstance.activeWorkspaceTab()).toBe('applications');
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-applications"]'))
       .not.toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-search"]')).toBeNull();
+    expect((fixture.nativeElement.querySelector(
+      '[data-testid="workspace-panel-search"]',
+    ) as HTMLElement).hidden).toBe(true);
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-documents"]')).toBeNull();
     expect(applicationsTab.classList).toContain('workspace-tab-active');
     expect(applicationsTab.getAttribute('aria-current')).toBe('page');
@@ -255,6 +257,9 @@ describe('App', () => {
     expect(fixture.componentInstance.activeWorkspaceTab()).toBe('documents');
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-documents"]'))
       .not.toBeNull();
+    expect((fixture.nativeElement.querySelector(
+      '[data-testid="workspace-panel-search"]',
+    ) as HTMLElement).hidden).toBe(true);
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-applications"]'))
       .toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-experience"]'))
