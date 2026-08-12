@@ -2021,7 +2021,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
           message: 'Could not add this application. Please try again.',
           type: 'error',
         });
-        console.error('[JobResults] Application creation failed');
       },
       complete: () => {
         this.creatingApplicationIds.update(ids => {
@@ -2231,7 +2230,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
           message: 'Could not update application status. Please try again.',
           type: 'error',
         });
-        console.error('[JobResults] Application status update failed');
       },
     });
   }
@@ -2296,7 +2294,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
           message: 'Could not withdraw generated application. Please try again.',
           type: 'error',
         });
-        console.error('[JobResults] Generated application withdrawal failed');
       },
     });
   }
@@ -2380,7 +2377,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.generationMessages.update(messages => ({ ...messages, [jobId]: message }));
   }
 
-  private applyApplicationRecord(jobId: string, record: ApplicationRecordResponse): void {
+  applyApplicationRecord(jobId: string, record: ApplicationRecordResponse): void {
     this.updateJobLocally(jobId, {
       applicationId: record.id,
       applicationVersion: record.version,

@@ -171,8 +171,8 @@
             </button>
           </div>
 
-          @if (activeWorkspaceTab() === 'search') {
-          <div data-testid="workspace-panel-search">
+          <div data-testid="workspace-panel-search"
+               [hidden]="activeWorkspaceTab() !== 'search'">
             <div class="workspace-status-line">
               <span class="capability-state"
                     [class.state-fixture]="jobSearchProviderMode() === 'FIXTURE'"
@@ -206,7 +206,7 @@
               </section>
             }
           </div>
-          } @else if (activeWorkspaceTab() === 'applications') {
+          @if (activeWorkspaceTab() === 'applications') {
           <div data-testid="workspace-panel-applications">
             <div class="workspace-status-line">
               <span class="capability-state state-available">Available</span>
@@ -215,10 +215,11 @@
             <app-my-applications #myApplications
               [selectedApplicationId]="selectedApplicationId()"
               (notify)="showToast($event.message, $event.type)"
+              (applicationUpdated)="jobResults.applyApplicationRecord($event.canonicalJobId || $event.jobId || '', $event)"
               (applicationChanged)="refreshApplicationTracking()">
             </app-my-applications>
           </div>
-          } @else {
+          } @else if (activeWorkspaceTab() === 'documents') {
           <div data-testid="workspace-panel-documents">
             <div class="workspace-status-line">
               <span class="capability-state"

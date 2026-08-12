@@ -80,7 +80,7 @@ describe('JobResultsComponent', () => {
   };
 
   const applicationTracker = {
-    listApplications: vi.fn(() => of([])),
+    listApplications: vi.fn((): Observable<any[]> => of([])),
     createApplication: vi.fn(),
     updateStatus: vi.fn(),
     withdrawGeneratedApplication: vi.fn(),
@@ -102,7 +102,8 @@ describe('JobResultsComponent', () => {
     queuedEvidenceResponses = [];
     evidenceEntries = [];
     pendingGenerations = [];
-    applicationTracker.listApplications.mockClear();
+    applicationTracker.listApplications.mockReset();
+    applicationTracker.listApplications.mockReturnValue(of([]));
     documentGenerationService.pendingGenerations.mockClear();
     documentGenerationService.resume.mockClear();
     documentGenerationService.resume.mockImplementation(() => new Subject<any>());
@@ -547,6 +548,40 @@ describe('JobResultsComponent', () => {
     expect(reloadedFixture.nativeElement.textContent).toContain('Documents prepared');
     expect(reloadedFixture.nativeElement.textContent).toContain('Upload CV');
     expect(applicationTracker.listApplications).not.toHaveBeenCalled();
+  });
+
+  it('reconciles a newer tracked status without rerunning the provider search', () => {
+    currentResponse = singleRoleResponse([
+      job('tracked role', {
+        id: 'canonical-job-1',
+        canonicalJobId: 'canonical-job-1',
+        applicationId: 'application-1',
+        applicationVersion: 2,
+        applicationStatus: 'DOCUMENTS_GENERATED',
+        cvDocumentId: 'cv-1',
+        coverLetterDocumentId: 'letter-1',
+      }),
+    ]);
+    const trackedApplication = {
+      id: 'application-1',
+      canonicalJobId: 'canonical-job-1',
+      version: 3,
+      status: 'INTERVIEW',
+      cvDocumentId: 'cv-1',
+      coverLetterDocumentId: 'letter-1',
+      updatedAt: '2026-08-12T12:00:00Z',
+    };
+    const fixture = createFixture();
+    const searchesBeforeReconciliation = jobService.callCount;
+
+    fixture.componentInstance.applyApplicationRecord('canonical-job-1', trackedApplication);
+    fixture.detectChanges();
+
+    expect(jobService.callCount).toBe(searchesBeforeReconciliation);
+    expect(fixture.componentInstance.jobs()[0]).toMatchObject({
+      applicationVersion: 3,
+      applicationStatus: 'INTERVIEW',
+    });
   });
 
   it('does not allow a stale overlapping search response to overwrite newer results', () => {
