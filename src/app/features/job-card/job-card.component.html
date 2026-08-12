@@ -16,6 +16,9 @@
         @if (specialistLabel(); as label) {
           <span class="source-badge" data-testid="specialist-job-badge">{{ label }}</span>
         }
+        @if (matchLabel(); as label) {
+          <span class="match-badge" data-testid="job-match-score">{{ label }}</span>
+        }
         @for (label of sourceLabels(); track label) {
           <span class="source-badge hidden sm:inline-flex">{{ label }}</span>
         } @empty {
@@ -130,11 +133,47 @@
       </span>
       </div>
     </button>
+    @if (discoveryStatusLabel(); as discoveryStatus) {
+      <p class="discovery-status" data-testid="job-discovery-status">{{ discoveryStatus }}</p>
+    }
   </div>
 
   @if (detailsExpanded()) {
     <div class="expanded-content px-5 pb-5 mt-0" [id]="detailsId()">
       <div class="pt-4">
+        @if (matchAssessmentAvailable()) {
+          <section class="match-explanation" data-testid="job-match-explanation"
+                   [attr.aria-label]="matchExplanationHeading()">
+            <header>
+              <div>
+                <h4>{{ matchExplanationHeading() }}</h4>
+                <p>{{ matchProvenanceLabel() }} · deterministic rules, not an AI opinion</p>
+              </div>
+              @if (matchLabel(); as label) {
+                <strong>{{ label }}</strong>
+              }
+            </header>
+            @if (matchReasons().length) {
+              <ul>
+                @for (reason of matchReasons(); track reason.code) {
+                  <li [class.match-gap]="reason.severity === 'GAP'">
+                    {{ reason.explanation }}
+                  </li>
+                }
+              </ul>
+            }
+            @if (hardGateReasons().length) {
+              <div class="hard-gate-warning" role="status">
+                <strong>Check before applying</strong>
+                <ul>
+                  @for (reason of hardGateReasons(); track reason.code) {
+                    <li>{{ reason.explanation }}</li>
+                  }
+                </ul>
+              </div>
+            }
+          </section>
+        }
         <h4 class="text-sm font-medium mb-2">Job Description</h4>
         <p class="job-description text-sm leading-relaxed whitespace-pre-line m-0"
            [id]="descriptionId()">

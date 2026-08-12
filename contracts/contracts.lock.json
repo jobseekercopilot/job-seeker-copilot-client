@@ -10,11 +10,11 @@
   "contracts": [
     {
       "id": "user-management-gateway",
-      "version": "3.0.0",
+      "version": "3.1.0",
       "sourceRepository": "jobseekercopilot/user-management-gateway",
-      "sourceCommit": "9ce00d56946e4b5a76beab1cda6fbc416c0b67b6",
-      "path": "contracts/user-management-gateway/3.0.0/openapi.json",
-      "sha256": "b1999d8859743d1acdf0a3a07397373ede7ccf491a9634d9906da547cab766f4",
+      "sourceCommit": "457e0187d764e39a556675ee1cc4b2b6f7e16a43",
+      "path": "contracts/user-management-gateway/3.1.0/openapi.json",
+      "sha256": "d7185f653802dc303ade37e9ce7bc0cf2febc82e94eabd32b697612673a89703",
       "output": "src/app/api",
       "requiredPaths": [
         "/api/auth/csrf",
@@ -31,6 +31,7 @@
         "/api/auth/password-reset/complete",
         "/api/auth/password-reset/request",
         "/api/auth/profile",
+        "/api/auth/profile/professional-contact",
         "/api/auth/refresh",
         "/api/auth/register"
       ]
@@ -52,11 +53,11 @@
     },
     {
       "id": "job-finder-gateway",
-      "version": "1.12.0",
+      "version": "1.13.0",
       "sourceRepository": "jobseekercopilot/job-finder-gateway",
-      "sourceCommit": "7a8a93126e048a8c5af0676cb4db7e454d577459",
-      "path": "contracts/job-finder-gateway/1.12.0/openapi.json",
-      "sha256": "6bfa8e70ac94bbac6ab4265360276189092c94b259b6c26a275e0e8617fd029f",
+      "sourceCommit": "ae14ffc27bf98b9cb5e0cbfae0823025619f1c26",
+      "path": "contracts/job-finder-gateway/1.13.0/openapi.json",
+      "sha256": "bfc11e8b8d2d3b9026461f7e65baf9e4fdb7b86d677a1e836c0318aa38c55ad8",
       "output": "src/app/api/job-finder",
       "requiredPaths": [
         "/api/jobs/search",
@@ -69,11 +70,11 @@
     },
     {
       "id": "document-generation-gateway",
-      "version": "2.6.0",
+      "version": "2.7.0",
       "sourceRepository": "jobseekercopilot/document-generation-gateway",
-      "sourceCommit": "21bf336f51f0ce9594cce32b533394314ba570c4",
-      "path": "contracts/document-generation-gateway/2.6.0/openapi.json",
-      "sha256": "672eac3edfa20b3f6efb25d5b4966c638d0fd480b17bc1eef8b40554f607529b",
+      "sourceCommit": "ff73599f84bc112dee83e19dbf333a6644002706",
+      "path": "contracts/document-generation-gateway/2.7.0/openapi.json",
+      "sha256": "2925dff83d8814ec4f3c3117c7e9547cf0717adae37b5ab602fda58d7a8ddb71",
       "output": "src/app/api/document-generation-gateway",
       "requiredPaths": [
         "/api/v1/document-generation/saved-jobs/{savedJobId}/operations",

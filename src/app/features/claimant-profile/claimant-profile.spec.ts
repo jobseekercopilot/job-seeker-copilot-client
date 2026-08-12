@@ -5,6 +5,7 @@ import type {
   EvidenceEntry,
   EvidenceRevision,
   GatewayResponse,
+  ProfessionalContact,
   ProfilePreferencesUpdate,
   UserProfile,
 } from '../../api';
@@ -20,6 +21,7 @@ import {ClaimantProfileComponent} from './claimant-profile';
 
 describe('ClaimantProfileComponent progressive profile', () => {
   const updatePreferences = vi.fn();
+  const updateProfessionalContact = vi.fn();
   const ensureCsrf = vi.fn(() => of(undefined));
   const invalidateCsrf = vi.fn();
   const handleAuthenticatedError = vi.fn();
@@ -30,6 +32,7 @@ describe('ClaimantProfileComponent progressive profile', () => {
 
   beforeEach(async () => {
     updatePreferences.mockReset();
+    updateProfessionalContact.mockReset();
     ensureCsrf.mockClear();
     invalidateCsrf.mockReset();
     handleAuthenticatedError.mockReset();
@@ -53,11 +56,28 @@ describe('ClaimantProfileComponent progressive profile', () => {
         },
       },
     }));
+    updateProfessionalContact.mockImplementation((contact: ProfessionalContact) =>
+      of<GatewayResponse>({
+        statusCode: 200,
+        success: true,
+        user: {
+          profile: {
+            revision: 9,
+            skills: [],
+            qualifications: [],
+            roles: [],
+            professionalContact: contact,
+          },
+        },
+      }));
 
     await TestBed.configureTestingModule({
       imports: [ClaimantProfileComponent],
       providers: [
-        {provide: ProfileService, useValue: {updatePreferences}},
+        {
+          provide: ProfileService,
+          useValue: {updatePreferences, updateProfessionalContact},
+        },
         {provide: EvidenceLibraryService, useValue: {listEvidence}},
         {provide: BrowserSessionService, useValue: {
           ensureCsrf,
@@ -304,6 +324,134 @@ describe('ClaimantProfileComponent progressive profile', () => {
     expect(preferences.textContent).toContain('Reading, South East (RG1 1AA)');
   });
 
+  it('shows exact user-declared professional contact without inferring missing details', () => {
+    const fixture = TestBed.createComponent(ClaimantProfileComponent);
+    fixture.componentRef.setInput('profile', {
+      revision: 8,
+      skills: [],
+      qualifications: [],
+      roles: [],
+      professionalContact: {
+        phone: '+44 (0)20 7946 0958',
+        links: [
+          {label: 'GitHub', url: 'https://github.com/synthetic-candidate'},
+          {label: 'Portfolio', url: 'https://portfolio.example.test/work'},
+        ],
+      },
+    } satisfies UserProfile);
+    fixture.detectChanges();
+
+    const contact = fixture.nativeElement.querySelector(
+      '[data-testid="profile-professional-contact"]',
+    ) as HTMLElement;
+    expect(contact.textContent).toContain('Contact shown on CVs and cover letters');
+    expect(contact.textContent).toContain('+44 (0)20 7946 0958');
+    expect(contact.textContent).toContain('https://github.com/synthetic-candidate');
+    expect(contact.textContent).toContain('https://portfolio.example.test/work');
+    expect(contact.textContent).not.toContain('LinkedIn');
+    expect(contact.querySelectorAll('a')).toHaveLength(2);
+  });
+
+  it('saves bounded professional contact through the revision-aware owner route', async () => {
+    const fixture = TestBed.createComponent(ClaimantProfileComponent);
+    fixture.componentRef.setInput('profile', {
+      revision: 8,
+      skills: [],
+      qualifications: [],
+      roles: [],
+      professionalContact: {
+        phone: '+44 20 7946 0001',
+        links: [{label: 'GitHub', url: 'https://github.com/initial-synthetic'}],
+      },
+    } satisfies UserProfile);
+    fixture.detectChanges();
+    const saved = vi.fn();
+    fixture.componentInstance.profileSaved.subscribe(saved);
+    fixture.componentInstance.startEditing('contact');
+    fixture.componentInstance.localProfessionalPhone.set('+44 20 7946 0999');
+    fixture.componentInstance.localProfessionalLinks.set([
+      {label: 'GitHub', url: 'https://github.com/synthetic-candidate'},
+      {label: 'Demo', url: 'https://demo.example.test/application-pack'},
+    ]);
+
+    await fixture.componentInstance.saveSection();
+
+    const expectedContact = {
+      phone: '+44 20 7946 0999',
+      links: [
+        {label: 'GitHub', url: 'https://github.com/synthetic-candidate'},
+        {label: 'Demo', url: 'https://demo.example.test/application-pack'},
+      ],
+    };
+    expect(ensureCsrf).toHaveBeenCalledOnce();
+    expect(updateProfessionalContact).toHaveBeenCalledWith(
+      expectedContact,
+      '"8"',
+      'body',
+      false,
+      {transferCache: false},
+    );
+    expect(updatePreferences).not.toHaveBeenCalled();
+    expect(updateCurrentProfile).toHaveBeenCalledWith(expect.objectContaining({
+      revision: 9,
+      professionalContact: expectedContact,
+    }));
+    expect(saved).toHaveBeenCalledWith(expect.objectContaining({
+      profile: expect.objectContaining({professionalContact: expectedContact}),
+    }));
+    expect(fixture.componentInstance.editingSection()).toBeNull();
+    expect(invalidateCsrf).toHaveBeenCalledOnce();
+  });
+
+  it('rejects unsafe links before CSRF bootstrap or profile mutation', async () => {
+    const fixture = TestBed.createComponent(ClaimantProfileComponent);
+    fixture.componentRef.setInput('profile', {
+      revision: 2,
+      skills: [],
+      qualifications: [],
+      roles: [],
+    } satisfies UserProfile);
+    fixture.detectChanges();
+    fixture.componentInstance.startEditing('contact');
+    fixture.componentInstance.localProfessionalLinks.set([
+      {label: 'Portfolio', url: 'http://portfolio.example.test'},
+    ]);
+
+    await fixture.componentInstance.saveSection();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.saveError()).toContain('valid HTTPS address');
+    expect(ensureCsrf).not.toHaveBeenCalled();
+    expect(updateProfessionalContact).not.toHaveBeenCalled();
+    expect(updatePreferences).not.toHaveBeenCalled();
+  });
+
+  it('provides labelled contact controls and enforces the eight-link UI limit', () => {
+    const fixture = TestBed.createComponent(ClaimantProfileComponent);
+    fixture.detectChanges();
+    fixture.componentInstance.startEditing('contact');
+    fixture.componentInstance.localProfessionalLinks.set(Array.from({length: 8}, (_, index) => ({
+      label: `Example ${index + 1}`,
+      url: `https://example${index + 1}.test/profile`,
+    })));
+    fixture.componentInstance.addProfessionalLink();
+    fixture.detectChanges();
+
+    const contact = fixture.nativeElement.querySelector(
+      '[data-testid="profile-professional-contact"]',
+    ) as HTMLElement;
+    expect(fixture.componentInstance.localProfessionalLinks()).toHaveLength(8);
+    expect(contact.querySelector('label[for="profile-professional-phone"]')).not.toBeNull();
+    expect(contact.querySelector('label[for="profile-professional-link-label-0"]')?.textContent)
+      .toContain('Link 1 label');
+    expect(contact.querySelector('label[for="profile-professional-link-url-0"]')?.textContent)
+      .toContain('Link 1 HTTPS address');
+    const add = Array.from(contact.querySelectorAll('button')).find(button =>
+      button.textContent?.includes('Add professional link')) as HTMLButtonElement;
+    expect(add.disabled).toBe(true);
+    expect(contact.querySelectorAll('.contact-link-remove')).toHaveLength(8);
+  });
+
   it('shows a compact three-row active evidence summary and opens the manager', async () => {
     const fixture = TestBed.createComponent(ClaimantProfileComponent);
     const openManager = vi.fn();
@@ -356,6 +504,10 @@ describe('ClaimantProfileComponent progressive profile', () => {
     fixture.detectChanges();
     await expectNoAxeViolations(fixture.nativeElement);
     fixture.componentInstance.startEditing('skills');
+    fixture.detectChanges();
+    await expectNoAxeViolations(fixture.nativeElement);
+    fixture.componentInstance.startEditing('contact');
+    fixture.componentInstance.addProfessionalLink();
     fixture.detectChanges();
     await expectNoAxeViolations(fixture.nativeElement);
   });

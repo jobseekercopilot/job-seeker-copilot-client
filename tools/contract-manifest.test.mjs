@@ -68,13 +68,21 @@ test('pins the reporting summary and evidence contract', async () => {
   assert.ok(contract.paths['/api/v1/reports/evidence.txt']);
 });
 
-test('pins the stabilised progressive-profile and Evidence Library UMG browser contract', async () => {
+test('pins the progressive-profile, professional-contact and Evidence Library UMG browser contract', async () => {
   const lock = await verifyContractManifest(rootDir);
   const umg = lock.contracts.find(({id}) => id === 'user-management-gateway');
   const contract = JSON.parse(await readFile(resolve(rootDir, umg.path), 'utf8'));
 
-  assert.equal(umg.version, '3.0.0');
-  assert.equal(contract.info.version, '3.0.0');
+  assert.equal(umg.version, '3.1.0');
+  assert.equal(contract.info.version, '3.1.0');
+  assert.equal(
+    umg.sourceCommit,
+    '457e0187d764e39a556675ee1cc4b2b6f7e16a43',
+  );
+  assert.equal(
+    umg.sha256,
+    'd7185f653802dc303ade37e9ce7bc0cf2febc82e94eabd32b697612673a89703',
+  );
   assert.equal(contract.components.schemas.User.properties.token, undefined);
   assert.equal(contract.components.securitySchemes.browserSession.in, 'cookie');
   assert.equal(contract.components.securitySchemes.browserRefresh.in, 'cookie');
@@ -148,6 +156,27 @@ test('pins the stabilised progressive-profile and Evidence Library UMG browser c
     2000,
   );
   assert.ok(contract.paths['/api/auth/profile'].patch);
+  const professionalContactPath =
+    contract.paths['/api/auth/profile/professional-contact'].patch;
+  assert.equal(professionalContactPath.operationId, 'updateProfessionalContact');
+  assert.equal(professionalContactPath.security[0].browserSession.length, 0);
+  assert.equal(
+    professionalContactPath.parameters.find(({name}) => name === 'If-Match').in,
+    'header',
+  );
+  assert.equal(
+    professionalContactPath.requestBody.content['application/json'].schema.$ref,
+    '#/components/schemas/ProfessionalContact',
+  );
+  assert.equal(
+    contract.components.schemas.UserProfile.properties.professionalContact.readOnly,
+    true,
+  );
+  assert.equal(contract.components.schemas.ProfessionalContact.properties.phone.maxLength, 40);
+  assert.equal(contract.components.schemas.ProfessionalContact.properties.links.maxItems, 8);
+  assert.equal(contract.components.schemas.ProfessionalLink.properties.label.maxLength, 40);
+  assert.equal(contract.components.schemas.ProfessionalLink.properties.url.maxLength, 512);
+  assert.equal(contract.components.schemas.ProfessionalLink.properties.url.pattern, '^https://');
   assert.ok(contract.paths['/api/auth/evidence'].post);
   assert.ok(contract.paths['/api/auth/evidence/{entryId}/confirm'].post);
   assert.ok(contract.paths['/api/auth/evidence/{entryId}/archive'].post);
@@ -166,6 +195,7 @@ test('pins the stabilised progressive-profile and Evidence Library UMG browser c
     '/api/auth/password-reset/complete',
     '/api/auth/password-reset/request',
     '/api/auth/profile',
+    '/api/auth/profile/professional-contact',
     '/api/auth/refresh',
     '/api/auth/register',
   ]);
@@ -183,19 +213,19 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
   const targetRoleResults =
     contract.components.schemas.TargetRoleJobResults;
 
-  assert.equal(gateway.version, '1.12.0');
+  assert.equal(gateway.version, '1.13.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/job-finder-gateway');
   assert.equal(
     gateway.sourceCommit,
-    '7a8a93126e048a8c5af0676cb4db7e454d577459',
+    'ae14ffc27bf98b9cb5e0cbfae0823025619f1c26',
   );
   assert.equal(
     gateway.sha256,
-    '6bfa8e70ac94bbac6ab4265360276189092c94b259b6c26a275e0e8617fd029f',
+    'bfc11e8b8d2d3b9026461f7e65baf9e4fdb7b86d677a1e836c0318aa38c55ad8',
   );
   assert.equal(
     gateway.path,
-    'contracts/job-finder-gateway/1.12.0/openapi.json',
+    'contracts/job-finder-gateway/1.13.0/openapi.json',
   );
   assert.equal(gateway.output, 'src/app/api/job-finder');
   assert.deepEqual(
@@ -214,7 +244,7 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
     '/api/jobs/applications',
     '/api/jobs/applications/{applicationId}/status',
   ]);
-  assert.equal(contract.info.version, '1.12.0');
+  assert.equal(contract.info.version, '1.13.0');
   assert.deepEqual(
     contract.components.schemas.Job.properties.specialistType.enum,
     ['STANDARD', 'NHS', 'APPRENTICESHIP'],
@@ -360,6 +390,34 @@ test('pins the session-derived Job Finder search, saved-job and provenance contr
     'TIMED_OUT',
     'SATURATED',
   ]);
+  assert.equal(
+    contract.components.schemas.Job.properties.matchAssessment.$ref,
+    '#/components/schemas/MatchAssessment',
+  );
+  assert.equal(
+    contract.components.schemas.Job.properties.discoveryAssessment.$ref,
+    '#/components/schemas/JobDiscoveryAssessment',
+  );
+  assert.deepEqual(contract.components.schemas.MatchAssessment.properties.provenance.enum, [
+    'DETERMINISTIC_PROFILE',
+    'DETERMINISTIC_QUERY_ONLY',
+  ]);
+  assert.equal(
+    contract.components.schemas.JobSearchRequest.properties.candidateProfile.readOnly,
+    true,
+  );
+  assert.equal(
+    contract.components.schemas.ReedJobSearchResponse.properties.freshness.$ref,
+    '#/components/schemas/SearchFreshness',
+  );
+  assert.equal(
+    contract.components.schemas.ProviderResultStatus.properties.dataProvenance.$ref,
+    '#/components/schemas/ProviderDataProvenance',
+  );
+  assert.equal(
+    contract.components.schemas.TargetRoleJobResults.properties.qualitySummary.$ref,
+    '#/components/schemas/SearchQualitySummary',
+  );
 });
 
 test('rejects unsafe or incomplete Job Finder saved-job drift', async (context) => {
@@ -584,15 +642,15 @@ test('pins durable generation, atomic selection and exact lifecycle contracts', 
     '/api/v1/document-generation/document-versions/{documentId}'
   ].delete;
 
-  assert.equal(gateway.version, '2.6.0');
+  assert.equal(gateway.version, '2.7.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/document-generation-gateway');
-  assert.equal(gateway.sourceCommit, '21bf336f51f0ce9594cce32b533394314ba570c4');
+  assert.equal(gateway.sourceCommit, 'ff73599f84bc112dee83e19dbf333a6644002706');
   assert.equal(
     gateway.sha256,
-    '672eac3edfa20b3f6efb25d5b4966c638d0fd480b17bc1eef8b40554f607529b',
+    '2925dff83d8814ec4f3c3117c7e9547cf0717adae37b5ab602fda58d7a8ddb71',
   );
   assert.equal(gateway.output, 'src/app/api/document-generation-gateway');
-  assert.equal(contract.info.version, '2.6.0');
+  assert.equal(contract.info.version, '2.7.0');
   assert.equal(start.operationId, 'startOperation');
   assert.equal(start.requestBody.required, true);
   assert.equal(
@@ -645,6 +703,37 @@ test('pins durable generation, atomic selection and exact lifecycle contracts', 
   assert.ok(
     contract.components.schemas.GenerationOperationResponse.properties.state.enum
       .includes('GENERATION_OUTCOME_UNKNOWN'),
+  );
+  assert.equal(
+    contract.components.schemas.GenerationOperationResponse.properties.outputResults
+      .additionalProperties.$ref,
+    '#/components/schemas/GenerationOutputResultResponse',
+  );
+  assert.equal(
+    contract.components.schemas.GenerationOutputResultResponse.additionalProperties,
+    false,
+  );
+  assert.deepEqual(
+    contract.components.schemas.GenerationOutputResultResponse.required,
+    ['recoverySummary'],
+  );
+  assert.equal(
+    contract.components.schemas.GenerationOutputResultResponse.properties.recoverySummary
+      .$ref,
+    '#/components/schemas/GenerationRecoverySummaryResponse',
+  );
+  assert.equal(
+    contract.components.schemas.GenerationRecoverySummaryResponse.additionalProperties,
+    false,
+  );
+  assert.deepEqual(
+    contract.components.schemas.GenerationRecoverySummaryResponse.properties
+      .generationSource.enum,
+    ['LLM', 'DETERMINISTIC_FALLBACK', 'NOT_AVAILABLE'],
+  );
+  assert.ok(
+    contract.components.schemas.GenerationRecoverySummaryResponse.properties
+      .billingStatus.enum.includes('RELEASED_NO_CHARGE'),
   );
   assert.equal(saveSelections.operationId, 'save');
   assert.equal(saveSelections.requestBody.required, true);

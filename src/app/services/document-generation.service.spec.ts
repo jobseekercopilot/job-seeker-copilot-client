@@ -282,6 +282,43 @@ describe('DocumentGenerationService', () => {
     expect(TestBed.inject(DocumentGenerationService).pendingGenerations()).toEqual([]);
   });
 
+  it('returns the content-free fallback and billing summary for each output', async () => {
+    approveOperation.mockReturnValue(of({
+      ...completedOperation(),
+      outputResults: {
+        CV: {
+          recoverySummary: {
+            generationSource: 'DETERMINISTIC_FALLBACK',
+            structuralRepairStatus: 'NOT_REQUIRED',
+            duplicateItemsRemoved: 0,
+            providerAttemptCount: 1,
+            automaticRetryCount: 0,
+            retried: false,
+            retainedResponseReplayed: false,
+            deterministicFallbackUsed: true,
+            fallbackReason: 'MODEL_OUTPUT_REJECTED',
+            reconciliationStatus: 'NOT_REQUIRED',
+            reconciliationAttempts: 0,
+            billingStatus: 'RELEASED_NO_CHARGE',
+            charged: false,
+            released: true,
+          },
+        },
+      },
+    }));
+
+    const response = await firstValueFrom(
+      TestBed.inject(DocumentGenerationService).generate(job, evidence),
+    );
+
+    expect(response.recovery?.CV).toEqual(expect.objectContaining({
+      generationSource: 'DETERMINISTIC_FALLBACK',
+      fallbackReason: 'MODEL_OUTPUT_REJECTED',
+      billingStatus: 'RELEASED_NO_CHARGE',
+      charged: false,
+    }));
+  });
+
   it('approves and returns the successful cover letter when the CV failed', async () => {
     getOperation.mockReturnValue(of({
       operationId,

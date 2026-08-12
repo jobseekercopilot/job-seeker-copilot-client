@@ -38,4 +38,30 @@ describe('normaliseProfile', () => {
       workingPatterns: ['FULL_TIME'],
     }));
   });
+
+  it('preserves exact professional contact without adding it to job-search text', () => {
+    const profile = normaliseProfile({
+      revision: 5,
+      skills: ['TypeScript'],
+      qualifications: [],
+      roles: [],
+      professionalContact: {
+        phone: '+44 (0)20 7946 0958',
+        links: [{
+          label: 'GitHub',
+          url: 'https://github.com/synthetic-candidate',
+        }],
+      },
+    } satisfies UserProfile);
+
+    expect(profile.professionalContact).toEqual({
+      phone: '+44 (0)20 7946 0958',
+      links: [{
+        label: 'GitHub',
+        url: 'https://github.com/synthetic-candidate',
+      }],
+    });
+    expect(JSON.stringify(profileToSearchText(profile))).not.toContain('+44');
+    expect(JSON.stringify(profileToSearchText(profile))).not.toContain('github.com');
+  });
 });

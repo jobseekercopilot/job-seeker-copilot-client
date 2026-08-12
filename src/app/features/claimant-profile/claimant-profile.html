@@ -256,6 +256,136 @@
       </div>
     </section>
 
+    <section class="profile-group"
+             aria-labelledby="profile-professional-contact-heading"
+             data-testid="profile-professional-contact">
+      <header>
+        <p class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">
+          Professional contact
+        </p>
+        <h3 id="profile-professional-contact-heading"
+            class="font-extrabold text-sm text-slate-900">
+          Contact shown on CVs and cover letters
+        </h3>
+        <p class="mt-1 text-[11px] text-slate-600">
+          Only details you enter here are added to generated application documents.
+        </p>
+      </header>
+
+      <div class="profile-group-list mt-3">
+        <article class="profile-group-row">
+          <div class="flex justify-between gap-3">
+            <div class="min-w-0">
+              <h4 class="font-extrabold text-sm text-slate-900">Phone and professional links</h4>
+              <p class="text-xs text-slate-600 mt-1">
+                {{ localProfessionalPhone() || 'No phone number added' }}
+              </p>
+              @if (localProfessionalLinks().length) {
+                <ul class="contact-link-summary mt-2" aria-label="Saved professional links">
+                  @for (link of localProfessionalLinks(); track $index) {
+                    <li>
+                      @if (link.label && link.url) {
+                        <span>{{ link.label }}:</span>
+                        <a [href]="link.url" target="_blank" rel="noreferrer">{{ link.url }}</a>
+                      } @else {
+                        <span>New link not completed</span>
+                      }
+                    </li>
+                  }
+                </ul>
+              } @else {
+                <p class="text-[11px] text-slate-500 mt-1">No professional links added</p>
+              }
+            </div>
+            <button type="button" class="text-xs font-bold text-indigo-700"
+                    aria-label="Edit professional contact"
+                    aria-controls="profile-professional-contact-editor"
+                    [attr.aria-expanded]="editingSection() === 'contact'"
+                    (click)="startEditing('contact')">Edit</button>
+          </div>
+
+          @if (editingSection() === 'contact') {
+            <div id="profile-professional-contact-editor" class="mt-4 space-y-4">
+              <div>
+                <label for="profile-professional-phone"
+                       class="block text-xs font-bold text-slate-700 mb-1">
+                  Professional phone number
+                </label>
+                <input id="profile-professional-phone"
+                       type="tel"
+                       autocomplete="tel"
+                       maxlength="40"
+                       pattern="\s*|(?=(?:\D*\d){7,15}\D*$)[+0-9() .-]+"
+                       aria-describedby="profile-professional-phone-hint"
+                       [value]="localProfessionalPhone()"
+                       (input)="localProfessionalPhone.set($any($event.target).value)"
+                       class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                <p id="profile-professional-phone-hint" class="text-[11px] text-slate-500 mt-1">
+                  Optional. Enter 7 to 15 digits; spaces and standard phone punctuation are allowed.
+                </p>
+              </div>
+
+              <fieldset class="space-y-3">
+                <legend class="text-xs font-extrabold text-slate-700">Professional links</legend>
+                <p id="profile-professional-links-hint" class="text-[11px] text-slate-500">
+                  Add up to 8 labelled HTTPS links, such as GitHub, LinkedIn or a portfolio.
+                </p>
+                @for (link of localProfessionalLinks(); track $index; let index = $index) {
+                  <div class="contact-link-row">
+                    <div>
+                      <label [for]="'profile-professional-link-label-' + index"
+                             class="block text-xs font-bold text-slate-700 mb-1">
+                        Link {{ index + 1 }} label
+                      </label>
+                      <input [id]="'profile-professional-link-label-' + index"
+                             type="text"
+                             maxlength="40"
+                             required
+                             [value]="link.label"
+                             (input)="updateProfessionalLink(index, 'label', $any($event.target).value)"
+                             class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label [for]="'profile-professional-link-url-' + index"
+                             class="block text-xs font-bold text-slate-700 mb-1">
+                        Link {{ index + 1 }} HTTPS address
+                      </label>
+                      <input [id]="'profile-professional-link-url-' + index"
+                             type="url"
+                             inputmode="url"
+                             autocomplete="url"
+                             maxlength="512"
+                             pattern="https://.*"
+                             required
+                             aria-describedby="profile-professional-links-hint"
+                             [value]="link.url"
+                             (input)="updateProfessionalLink(index, 'url', $any($event.target).value)"
+                             class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                    </div>
+                    <button type="button"
+                            class="contact-link-remove"
+                            [attr.aria-label]="'Remove ' + (link.label || 'link ' + (index + 1))"
+                            (click)="removeProfessionalLink(index)">
+                      Remove
+                    </button>
+                  </div>
+                }
+                <button type="button"
+                        class="contact-link-add"
+                        [disabled]="localProfessionalLinks().length >= 8"
+                        (click)="addProfessionalLink()">
+                  Add professional link
+                </button>
+                <p class="text-[11px] text-slate-500" aria-live="polite">
+                  {{ localProfessionalLinks().length }} of 8 links added
+                </p>
+              </fieldset>
+            </div>
+          }
+        </article>
+      </div>
+    </section>
+
     <section class="profile-group evidence-summary"
              aria-labelledby="profile-evidence-heading"
              data-testid="profile-evidence-summary">

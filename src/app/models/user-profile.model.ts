@@ -117,6 +117,20 @@ export const normaliseProfile = (profile?: ProfileInputShape | UserProfile | nul
     ...(versionedProfile.contentDigest == null
       ? {}
       : {contentDigest: versionedProfile.contentDigest}),
+    ...(versionedProfile.professionalContact == null
+      ? {}
+      : {
+          professionalContact: {
+            ...(versionedProfile.professionalContact.phone == null
+              ? {}
+              : {phone: versionedProfile.professionalContact.phone}),
+            ...(versionedProfile.professionalContact.links == null
+              ? {}
+              : {
+                  links: versionedProfile.professionalContact.links.map(link => ({...link})),
+                }),
+          },
+        }),
     skills: splitTags(profile.skills),
     qualifications: (profile.qualifications || []).filter(isValidQualification),
     roles: (profile.roles || []).filter(isValidRole),

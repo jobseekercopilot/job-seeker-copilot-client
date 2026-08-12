@@ -69,6 +69,57 @@ describe('user management proxy boundary', () => {
     });
   });
 
+  it('forwards professional contact to the dedicated owner-scoped route', async () => {
+    const fetchMock = vi.fn(async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      void input;
+      void init;
+      return new Response('{"success":true}', {
+        status: 200,
+        headers: {'Content-Type': 'application/json'},
+      });
+    });
+    const contact = {
+      phone: '+44 7700 900123',
+      links: [{label: 'GitHub', url: 'https://github.com/example'}],
+    };
+
+    await callUserManagement(
+      'https://gateway.example.test',
+      '/api/auth/profile/professional-contact',
+      'PATCH',
+      {
+        authorization: 'Bearer forged',
+        'x-user-id': 'another-user',
+        cookie: 'jsc-access-local=opaque; jsc-csrf-local=csrf-value',
+        'x-csrf-token': 'csrf-value',
+        'if-match': '5',
+      },
+      contact,
+      100,
+      fetchMock as typeof fetch,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://gateway.example.test/api/auth/profile/professional-contact',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify(contact),
+        headers: expect.objectContaining({
+          Cookie: 'jsc-access-local=opaque; jsc-csrf-local=csrf-value',
+          'X-CSRF-Token': 'csrf-value',
+          'If-Match': '5',
+        }),
+      }),
+    );
+    expect(JSON.stringify(fetchMock.mock.calls[0][1]?.headers))
+      .not.toContain('another-user');
+    expect(JSON.stringify(fetchMock.mock.calls[0][1]?.headers))
+      .not.toContain('forged');
+  });
+
   it('preserves each Set-Cookie header independently', () => {
     const headers = new Headers();
     headers.append('Set-Cookie', 'jsc-access-local=access; Path=/; HttpOnly; SameSite=Lax');

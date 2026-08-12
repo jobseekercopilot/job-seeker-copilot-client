@@ -27,6 +27,8 @@ import {
 import type {
   GatewayResponse,
   EvidenceEntry,
+  ProfessionalContact,
+  ProfessionalLink,
   ProfilePreferencesUpdate,
   UserProfile,
   WorkPreferences,
@@ -42,7 +44,8 @@ import {
 } from '../../services/location.service';
 import {TagInputComponent} from '../../shared/tag-input/tag-input';
 
-type ProfileSection = 'jobs' | 'skills' | 'location' | 'patterns' | 'availability';
+type ProfileSection =
+  'jobs' | 'skills' | 'location' | 'patterns' | 'availability' | 'contact';
 interface EvidenceSummaryRow {
   label: string;
   categories: string[];
@@ -134,6 +137,8 @@ export class ClaimantProfileComponent implements OnInit {
   readonly localWorkplaceArrangements = signal<string[]>([]);
   readonly localAvailableFrom = signal('');
   readonly localNoticePeriodDays = signal<number | undefined>(undefined);
+  readonly localProfessionalPhone = signal('');
+  readonly localProfessionalLinks = signal<ProfessionalLink[]>([]);
 
   readonly locationSuggestions = signal<LocationOption[]>([]);
   readonly showLocationDropdown = signal(false);
@@ -281,6 +286,9 @@ export class ClaimantProfileComponent implements OnInit {
       this.saveError.set('Choose a location from the suggestions before saving.');
       return;
     }
+    const editingContact = this.editingSection() === 'contact';
+    const professionalContact = editingContact ? this.professionalContactPayload() : null;
+    if (editingContact && professionalContact === null) return;
     const update: ProfilePreferencesUpdate = {
       skills: this.localSkills(),
       aspirations: {
@@ -299,7 +307,15 @@ export class ClaimantProfileComponent implements OnInit {
     this.saveError.set(null);
     try {
       await firstValueFrom(this.browserSession.ensureCsrf());
-      const response = await firstValueFrom(this.profileApi.updatePreferences(update, ifMatch));
+      const response = await firstValueFrom(editingContact
+        ? this.profileApi.updateProfessionalContact(
+            professionalContact!,
+            ifMatch,
+            'body',
+            false,
+            {transferCache: false},
+          )
+        : this.profileApi.updatePreferences(update, ifMatch));
       if (!response.success || !response.user?.profile) {
         throw new Error(response.message || 'Profile update was rejected.');
       }
@@ -404,6 +420,21 @@ export class ClaimantProfileComponent implements OnInit {
     return values.includes(value);
   }
 
+  addProfessionalLink(): void {
+    if (this.localProfessionalLinks().length >= 8) return;
+    this.localProfessionalLinks.update(links => [...links, {label: '', url: ''}]);
+  }
+
+  updateProfessionalLink(index: number, field: keyof ProfessionalLink, value: string): void {
+    this.localProfessionalLinks.update(links => links.map((link, linkIndex) =>
+      linkIndex === index ? {...link, [field]: value} : link));
+  }
+
+  removeProfessionalLink(index: number): void {
+    this.localProfessionalLinks.update(links =>
+      links.filter((_, linkIndex) => linkIndex !== index));
+  }
+
   triggerFinderSearch(): void {
     this.findJobsRequested.emit();
   }
@@ -444,6 +475,60 @@ export class ClaimantProfileComponent implements OnInit {
       profile.workPreferences?.workplaceArrangements ?? []));
     this.localAvailableFrom.set(profile.workPreferences?.availableFrom ?? '');
     this.localNoticePeriodDays.set(profile.workPreferences?.noticePeriodDays);
+    this.localProfessionalPhone.set(profile.professionalContact?.phone ?? '');
+    this.localProfessionalLinks.set(
+      (profile.professionalContact?.links ?? []).map(link => ({...link})),
+    );
+  }
+
+  private professionalContactPayload(): ProfessionalContact | null {
+    const phone = this.localProfessionalPhone().trim();
+    const links = this.localProfessionalLinks().map(link => ({
+      label: link.label.trim(),
+      url: link.url.trim(),
+    }));
+
+    if (phone.length > 40
+        || (phone && !/^(?=(?:\D*\d){7,15}\D*$)[+0-9() .-]+$/.test(phone))) {
+      this.rejectContact('Enter a phone number with 7 to 15 digits using standard phone punctuation.');
+      return null;
+    }
+    if (links.length > 8) {
+      this.rejectContact('Add no more than 8 professional links.');
+      return null;
+    }
+    for (const link of links) {
+      if (!link.label || link.label.length > 40 || /[\p{Cc}]/u.test(link.label)) {
+        this.rejectContact('Give every professional link a label of 40 characters or fewer.');
+        return null;
+      }
+      if (link.url.length > 512 || !link.url.startsWith('https://')) {
+        this.rejectContact('Every professional link must use a valid HTTPS address.');
+        return null;
+      }
+      try {
+        const parsedUrl = new URL(link.url);
+        if (parsedUrl.protocol !== 'https:' || !parsedUrl.hostname
+            || parsedUrl.username || parsedUrl.password) {
+          this.rejectContact('Every professional link must use a valid HTTPS address.');
+          return null;
+        }
+      } catch {
+        this.rejectContact('Every professional link must use a valid HTTPS address.');
+        return null;
+      }
+    }
+
+    return {
+      ...(phone ? {phone} : {}),
+      links,
+    };
+  }
+
+  private rejectContact(message: string): void {
+    this.saveError.set(message);
+    setTimeout(() =>
+      this.host.nativeElement.querySelector<HTMLElement>('#profile-save-error')?.focus());
   }
 
   private workPreferencesPayload(): WorkPreferences {
