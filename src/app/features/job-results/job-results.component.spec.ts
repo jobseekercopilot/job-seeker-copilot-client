@@ -211,7 +211,7 @@ describe('JobResultsComponent', () => {
     expect(fixture.componentInstance.roleResults()).toHaveLength(2);
     expect(fixture.componentInstance.totalResults()).toBe(12);
     expect(fixture.componentInstance.error())
-      .toBe('Invalid search parameters. Please update your profile and try again.');
+      .toBe('Invalid search. Update your profile and try again.');
     expect(jobCards(fixture)).toHaveLength(10);
   });
 
@@ -259,7 +259,7 @@ describe('JobResultsComponent', () => {
     expect(jobCards(fixture)).toHaveLength(10);
     expect(fixture.nativeElement.textContent).toContain('cleaning job 1');
     expect(fixture.nativeElement.textContent)
-      .toContain('Job search service is temporarily unavailable');
+      .toContain('Job search is unavailable');
   });
 
   it('refreshes only the active role and current page without clearing another role cache', () => {
@@ -450,7 +450,7 @@ describe('JobResultsComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain('programming (Unavailable)');
     expect(fixture.nativeElement.textContent)
-      .toContain('Job search service is temporarily unavailable');
+      .toContain('Job search is unavailable');
 
     clickButtonContaining(fixture, 'cleaning');
 
@@ -472,7 +472,7 @@ describe('JobResultsComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain('Real-provider configuration error');
     expect(fixture.nativeElement.textContent)
-      .toContain('Real-provider configuration is incomplete. No fixture results were substituted.');
+      .toContain('Real-provider setup is incomplete. No fixtures were used.');
   });
 
   it('distinguishes unavailable real providers from a successful zero-result search', () => {
@@ -488,7 +488,7 @@ describe('JobResultsComponent', () => {
     const unavailable = createFixture('REAL_PROVIDERS');
     expect(unavailable.nativeElement.textContent).toContain('Real providers temporarily unavailable');
     expect(unavailable.nativeElement.textContent)
-      .toContain('Real job providers are temporarily unavailable. Please try again later.');
+      .toContain('Providers are unavailable. Try later.');
 
     currentResponse = singleRoleResponse(
       [],
@@ -500,7 +500,7 @@ describe('JobResultsComponent', () => {
     const zeroResults = createFixture('REAL_PROVIDERS');
     expect(zeroResults.nativeElement.textContent).toContain('Real providers');
     expect(zeroResults.nativeElement.textContent)
-      .toContain('No job matches found based on your current profile.');
+      .toContain('No jobs match your current profile.');
   });
 
   it('renders authoritative application enrichment on initial load and reload', () => {
@@ -698,6 +698,35 @@ describe('JobResultsComponent', () => {
       applicationVersion: 3,
       applicationStatus: 'INTERVIEW',
     });
+  });
+
+  it('applies an application update to the displayed card when canonical IDs differ', () => {
+    currentResponse = singleRoleResponse([
+      job('Senior Java Developer', {
+        canonicalJobId: 'fresh-search-id',
+        company: 'Proactive Appointments',
+        primarySource: 'REED.CO.UK',
+      }),
+    ]);
+    const fixture = createFixture();
+
+    fixture.componentInstance.applyApplicationRecord('original-job-id', {
+      id: 'application-1',
+      canonicalJobId: 'original-job-id',
+      provider: 'REED',
+      jobTitle: 'Senior Java Developer',
+      companyName: 'Proactive Appointments',
+      status: 'INTERVIEW',
+      version: 4,
+    });
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.jobs()[0]).toMatchObject({
+      applicationId: 'application-1',
+      applicationStatus: 'INTERVIEW',
+      applicationVersion: 4,
+    });
+    expect(fixture.nativeElement.textContent).toContain('Interview');
   });
 
   it('does not allow a stale overlapping search response to overwrite newer results', () => {

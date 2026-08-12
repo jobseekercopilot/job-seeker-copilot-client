@@ -235,24 +235,24 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   });
   emptyStateMessage = computed(() => {
     if (this.providerMode() !== 'REAL_PROVIDERS') {
-      return 'No job matches found based on your current profile.';
+      return 'No jobs match your current profile.';
     }
     const statuses = this.providerStatuses().filter(status => status !== 'DISABLED');
     const hasSuccess = statuses.includes('SUCCESS');
     const hasFailure = statuses.some(status => status !== 'SUCCESS');
     if (statuses.includes('CONFIGURATION_ERROR') && !hasSuccess) {
-      return 'Real-provider configuration is incomplete. No fixtures were substituted.';
+      return 'Provider setup is incomplete. No fixtures used.';
     }
     if (!hasSuccess && statuses.includes('RATE_LIMITED')) {
-      return 'Real providers are rate limited. Try again later.';
+      return 'Providers rate limited. Try later.';
     }
     if (statuses.length > 0 && !hasSuccess) {
-      return 'Real providers are unavailable. Try again later.';
+      return 'Providers unavailable. Try later.';
     }
     if (hasSuccess && hasFailure) {
-      return 'No matches; some real providers were unavailable.';
+      return 'No matches; some providers unavailable.';
     }
-    return 'No job matches found based on your current profile.';
+    return 'No jobs match your current profile.';
   });
   readonly currentPage = computed(() =>
     this.activeRoleState()?.currentPage ?? 1);
@@ -864,9 +864,9 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       return 'Invalid search. Update your profile and try again.';
     }
     if (status === 401 || status === 403) {
-      return 'Session expired. Log in again.';
+      return 'Session expired. Sign in.';
     }
-    return 'Job search failed unexpectedly. Please try again.';
+    return 'Search failed.';
   }
 
   private removeCrossPageDuplicates(
@@ -2377,6 +2377,10 @@ export class JobResultsComponent implements OnInit, OnDestroy {
 
   applyApplicationRecord(jobId: string, record: ApplicationRecordResponse): void {
     if (!jobId) return;
+    const displayedJob = this.jobs().find(job =>
+      this.jobStateKey(job) === record.canonicalJobId
+      || (record.jobTitle === job.title && record.companyName === job.company));
+    const displayedJobId = displayedJob ? this.jobStateKey(displayedJob) : jobId;
     this.persistedApplicationsByJobId.set(record.canonicalJobId ?? jobId, record);
     if (record.provider && record.externalJobId) {
       this.persistedApplicationsByJobId.set(
@@ -2390,7 +2394,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         record,
       );
     }
-    this.updateJobLocally(jobId, {
+    this.updateJobLocally(displayedJobId, {
       applicationId: record.id,
       applicationVersion: record.version,
       applicationStatus: record.status,
@@ -2401,7 +2405,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     });
     this.generatedDocumentIds.update(documentIds => ({
       ...documentIds,
-      [jobId]: {
+      [displayedJobId]: {
         cvDocumentId: record.cvDocumentId,
         coverLetterDocumentId: record.coverLetterDocumentId,
       },
