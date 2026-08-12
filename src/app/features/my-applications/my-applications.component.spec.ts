@@ -60,6 +60,13 @@ describe('MyApplicationsComponent document replacement', () => {
     ]);
   });
 
+  it('allows an offer to be accepted or declined', () => {
+    expect(component.actions(application('OFFER'))).toEqual([
+      {label: 'Mark Accepted', status: 'ACCEPTED'},
+      {label: 'Decline Offer', status: 'REJECTED_BY_USER', danger: true},
+    ]);
+  });
+
   it('derives the uploaded milestone from durable user-uploaded metadata', () => {
     expect(latestUserUploadTimestamp([
       {

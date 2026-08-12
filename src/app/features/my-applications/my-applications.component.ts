@@ -535,8 +535,8 @@ export class MyApplicationsComponent implements OnInit {
         ];
       case 'OFFER':
         return [
-          { label: 'Mark Offer', status: 'OFFER' },
-          { label: 'Mark Unsuccessful', status: 'UNSUCCESSFUL', danger: true },
+          { label: 'Mark Accepted', status: 'ACCEPTED' },
+          { label: 'Decline Offer', status: 'REJECTED_BY_USER', danger: true },
         ];
       default:
         return [];
