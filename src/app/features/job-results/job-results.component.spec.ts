@@ -472,7 +472,7 @@ describe('JobResultsComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain('Real-provider configuration error');
     expect(fixture.nativeElement.textContent)
-      .toContain('Real-provider setup is incomplete. No fixtures were used.');
+      .toContain('Provider setup is incomplete. No fixtures used.');
   });
 
   it('distinguishes unavailable real providers from a successful zero-result search', () => {
@@ -488,7 +488,7 @@ describe('JobResultsComponent', () => {
     const unavailable = createFixture('REAL_PROVIDERS');
     expect(unavailable.nativeElement.textContent).toContain('Real providers temporarily unavailable');
     expect(unavailable.nativeElement.textContent)
-      .toContain('Providers are unavailable. Try later.');
+      .toContain('Providers unavailable. Try later.');
 
     currentResponse = singleRoleResponse(
       [],
