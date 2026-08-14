@@ -166,7 +166,7 @@
 }
 
 .discovery-status {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 0.68rem;
   margin: 0.35rem 0 0;
 }
