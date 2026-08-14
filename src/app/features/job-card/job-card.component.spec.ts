@@ -5,8 +5,17 @@ import { Job } from '../../models/job-search.model';
 import { DownloadFileResponse } from '../../api/document-generation-gateway';
 import {
   JobDescriptionCompletenessEnum,
+  JobDiscoveryAssessmentAvailabilityEnum,
+  JobDiscoveryAssessmentEngagementTypeEnum,
+  JobDiscoveryAssessmentOccupationFamilyEnum,
+  JobDiscoveryAssessmentSeniorityEnum,
+  JobDiscoveryAssessmentTargetRoleAlignmentEnum,
   JobSalaryPeriodCodeEnum,
   JobSpecialistTypeEnum,
+  MatchAssessmentProvenanceEnum,
+  MatchAssessmentRatingEnum,
+  MatchReasonSeverityEnum,
+  MatchReasonStatusEnum,
 } from '../../api/job-finder';
 import { GenerationDownloadsResponse } from '../../services/document-generation.service';
 
@@ -49,6 +58,105 @@ describe('JobCardComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Not saved');
     expect(fixture.nativeElement.getAttribute('data-job-reference')).toBe('reed:123');
     expect(fixture.nativeElement.getAttribute('data-job-provider')).toBe('REED');
+  });
+
+  it('shows an explainable deterministic match and keeps unverified gates explicit', () => {
+    const fixture = createFixture({
+      job: {
+        ...job,
+        matchScore: 0.82,
+        matchAssessment: {
+          score: 0.82,
+          provenance: MatchAssessmentProvenanceEnum.DeterministicProfile,
+          algorithmVersion: 'PROFILE_MATCH_V1',
+          targetRole: 'Software developer',
+          rating: MatchAssessmentRatingEnum.Strong,
+          candidateProfileUsed: true,
+          components: [{
+            code: 'SKILLS',
+            score: 32,
+            maximumScore: 40,
+            explanation: 'Java and Spring overlap with the advert.',
+          }],
+          reasons: [{
+            code: 'SKILL_OVERLAP',
+            severity: MatchReasonSeverityEnum.Positive,
+            status: MatchReasonStatusEnum.Met,
+            explanation: 'Confirmed Java and Spring skills match this role.',
+          }],
+          hardGateReasons: [{
+            code: 'RIGHT_TO_WORK',
+            severity: MatchReasonSeverityEnum.Info,
+            status: MatchReasonStatusEnum.Unverified,
+            explanation: 'Right-to-work requirement must be confirmed by you.',
+          }],
+        },
+        discoveryAssessment: {
+          algorithmVersion: 'DISCOVERY_RULES_V1',
+          availability: JobDiscoveryAssessmentAvailabilityEnum.OpenAtRetrieval,
+          engagementType: JobDiscoveryAssessmentEngagementTypeEnum.Vacancy,
+          occupationFamily: JobDiscoveryAssessmentOccupationFamilyEnum.Software,
+          seniority: JobDiscoveryAssessmentSeniorityEnum.Mid,
+          targetRoleAlignment: JobDiscoveryAssessmentTargetRoleAlignmentEnum.Aligned,
+          excluded: false,
+          exclusionReasons: [],
+        },
+      },
+    });
+
+    expect(fixture.debugElement.query(By.css('[data-testid="job-match-score"]')).nativeElement.textContent)
+      .toContain('82% strong');
+    expect(fixture.debugElement.query(By.css('[data-testid="job-discovery-status"]')).nativeElement.textContent)
+      .toContain('Open when retrieved · mid');
+
+    expandCard(fixture);
+
+    const explanation = fixture.debugElement.query(By.css('[data-testid="job-match-explanation"]'))
+      .nativeElement as HTMLElement;
+    expect(explanation.textContent).toContain('Explainable profile match');
+    expect(explanation.textContent).toContain('deterministic rules, not an AI opinion');
+    expect(explanation.textContent).toContain('Confirmed Java and Spring skills match this role.');
+    expect(explanation.textContent).toContain('Right-to-work requirement must be confirmed by you.');
+  });
+
+  it('does not invent a match explanation when the backend did not assess the job', () => {
+    const fixture = createFixture({job: {...job, matchScore: 0.85}});
+
+    expect(fixture.debugElement.query(By.css('[data-testid="job-match-score"]'))).toBeNull();
+    expandCard(fixture);
+    expect(fixture.debugElement.query(By.css('[data-testid="job-match-explanation"]'))).toBeNull();
+  });
+
+  it('labels query-only scoring as title alignment rather than a personal match', () => {
+    const fixture = createFixture({
+      job: {
+        ...job,
+        matchScore: 1,
+        matchAssessment: {
+          score: 1,
+          provenance: MatchAssessmentProvenanceEnum.DeterministicQueryOnly,
+          algorithmVersion: 'PROFILE_MATCH_V1',
+          targetRole: 'Software engineer',
+          rating: MatchAssessmentRatingEnum.Strong,
+          candidateProfileUsed: false,
+          components: [],
+          reasons: [{
+            code: 'PROFILE_EVIDENCE_NOT_SUPPLIED',
+            severity: MatchReasonSeverityEnum.Info,
+            status: MatchReasonStatusEnum.Unverified,
+            explanation: 'This is query-title relevance only.',
+          }],
+          hardGateReasons: [],
+        },
+      },
+    });
+
+    expect(fixture.nativeElement.textContent).toContain('100% title alignment');
+    expect(fixture.nativeElement.textContent).not.toContain('100% strong');
+    expandCard(fixture);
+    expect(fixture.nativeElement.textContent).toContain('Query-only estimate');
+    expect(fixture.nativeElement.textContent).toContain('Why this advert matches your search');
+    expect(fixture.nativeElement.textContent).not.toContain('Why this job matches your profile');
   });
 
   it('shows a saved job accurately and still allows document generation', () => {

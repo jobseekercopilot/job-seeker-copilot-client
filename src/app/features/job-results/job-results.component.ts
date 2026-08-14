@@ -23,7 +23,13 @@ import {
   GenerationDownloadsResponse,
   PendingDocumentGeneration,
 } from '../../services/document-generation.service';
-import { Job, JobSearchResponse } from '../../models/job-search.model';
+import {
+  Job,
+  JobSearchFreshness,
+  JobSearchQualitySummary,
+  JobSearchResponse,
+  ProviderSearchResult,
+} from '../../models/job-search.model';
 import {
   ApplicationRecordResponse,
   JobAdvertiserTypeEnum,
@@ -36,6 +42,7 @@ import {
 } from '../../api/document-generation-gateway';
 import {
   EvidenceEntry,
+  EvidenceEntryCategoryEnum,
   EvidenceEntryLifecycleEnum,
   EvidenceEntryVisibilityEnum,
   EvidenceLibraryService,
@@ -74,6 +81,9 @@ interface RolePageCache {
   providerWarnings: string[];
   searchStatus: string | null;
   matchingStatus: string | null;
+  freshness: JobSearchFreshness | null;
+  qualitySummary: JobSearchQualitySummary | null;
+  providerResults: ProviderSearchResult[];
 }
 
 interface RoleSearchState {
@@ -89,6 +99,9 @@ interface RoleSearchState {
   providerWarnings: string[];
   searchStatus: string | null;
   matchingStatus: string | null;
+  freshness: JobSearchFreshness | null;
+  qualitySummary: JobSearchQualitySummary | null;
+  providerResults: ProviderSearchResult[];
   loading: boolean;
   error: string | null;
   searched: boolean;
@@ -107,6 +120,11 @@ interface EvidenceMatch {
   score: number;
   label: string;
   explanation: string;
+}
+
+interface EvidenceSectionPreview {
+  section: EvidenceSection;
+  headings: string[];
 }
 
 interface PendingApplicationUpload {
@@ -215,23 +233,110 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.activeRoleState()?.searchStatus ?? null);
   readonly matchingStatus = computed(() =>
     this.activeRoleState()?.matchingStatus ?? null);
+  readonly matchingEvidenceLabel = computed(() => {
+    if (this.matchingStatus() !== 'COMPLETE') {
+      return 'Results use provider and advert ordering because profile matching was unavailable.';
+    }
+    const assessments = this.activeJobs()
+      .map(job => job.matchAssessment)
+      .filter(assessment => Boolean(assessment));
+    return assessments.some(assessment => assessment?.candidateProfileUsed)
+      ? 'Results are ordered by deterministic profile and advert evidence, not an AI opinion.'
+      : 'Results are ordered by deterministic advert and title evidence, not a personal profile match.';
+  });
+  readonly freshness = computed(() =>
+    this.activeRoleState()?.freshness ?? null);
+  readonly qualitySummary = computed(() =>
+    this.activeRoleState()?.qualitySummary ?? null);
+  readonly activeProviderResults = computed(() =>
+    this.activeRoleState()?.providerResults ?? []);
+  readonly freshnessLabel = computed(() => {
+    const freshness = this.freshness();
+    if (!freshness) return 'Freshness not reported';
+    switch (freshness.resultSource) {
+      case 'PROVIDER_RESPONSE':
+        return 'Fresh provider response';
+      case 'JOB_SERVICE_CACHE':
+        return `Cached provider data${this.cacheAgeLabel(freshness.maximumCacheAgeSeconds)}`;
+      case 'MIXED':
+        return 'Mixed fresh and cached provider data';
+      default:
+        return 'Freshness not reported';
+    }
+  });
+  readonly retrievedAtLabel = computed(() => {
+    const retrievedAt = this.freshness()?.oldestRetrievedAtUtc;
+    if (!retrievedAt) return null;
+    const instant = new Date(retrievedAt);
+    if (Number.isNaN(instant.getTime())) return null;
+    return new Intl.DateTimeFormat('en-GB', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Europe/London',
+    }).format(instant);
+  });
+  readonly filteredResultSummary = computed(() => {
+    const quality = this.qualitySummary();
+    if (!quality) return null;
+    const reasons = [
+      this.filteredCountLabel(quality.excludedExpiredCount ?? 0, 'closed or expired listing'),
+      this.filteredCountLabel(quality.excludedPaidTrainingCount ?? 0, 'paid training scheme'),
+      this.filteredCountLabel(quality.excludedOccupationMismatchCount ?? 0, 'unrelated occupation'),
+    ].filter((value): value is string => Boolean(value));
+    if (reasons.length === 0) return null;
+    return `${reasons.join(', ')} filtered before ranking.`;
+  });
   providerDegraded = computed(() => {
     const statuses = this.providerStatuses();
     return statuses.some(status => status !== 'SUCCESS' && status !== 'DISABLED');
   });
+  readonly reportedProviderOrigin = computed<'LIVE' | 'FIXTURE' | 'MIXED' | 'UNKNOWN' | null>(
+    () => {
+      const enabledResults = this.activeProviderResults()
+        .filter(result => result.status !== 'DISABLED');
+      if (enabledResults.length === 0) return null;
+      const successfulResults = enabledResults.filter(result => result.status === 'SUCCESS');
+      const assessedResults = successfulResults.length ? successfulResults : enabledResults;
+      const modes = new Set(assessedResults.map(result => {
+        const provenance = result.dataProvenance;
+        if (provenance?.dataOrigin === 'LIVE_PROVIDER') return 'LIVE';
+        if (provenance?.dataOrigin === 'FIXTURE') return 'FIXTURE';
+        if (provenance?.providerMode === 'LIVE') return 'LIVE';
+        if (provenance?.providerMode === 'FIXTURE') return 'FIXTURE';
+        return 'UNKNOWN';
+      }));
+      if (modes.has('UNKNOWN')) return 'UNKNOWN';
+      if (modes.has('LIVE') && modes.has('FIXTURE')) return 'MIXED';
+      if (modes.has('FIXTURE')) return 'FIXTURE';
+      if (modes.has('LIVE')) return 'LIVE';
+      return 'UNKNOWN';
+    },
+  );
+  readonly providerProvenanceCaution = computed(() =>
+    this.providerDegraded()
+      || this.reportedProviderOrigin() === 'MIXED'
+      || this.reportedProviderOrigin() === 'UNKNOWN');
   providerModeLabel = computed(() => {
-    if (this.providerMode() === 'FIXTURE') return 'Fixture-backed';
-    if (this.providerMode() === 'REQUIRED_VALIDATION') return 'Required validation';
     const statuses = this.providerStatuses().filter(status => status !== 'DISABLED');
     const hasSuccess = statuses.includes('SUCCESS');
+    const reportedOrigin = this.reportedProviderOrigin();
     if (statuses.includes('CONFIGURATION_ERROR') && !hasSuccess) {
       return 'Real-provider configuration error';
     }
     if (statuses.length > 0 && !hasSuccess) {
-      return 'Real providers temporarily unavailable';
+      if (reportedOrigin === 'FIXTURE') return 'Fixture-backed provider data unavailable';
+      if (reportedOrigin === 'MIXED') return 'Mixed provider data unavailable';
+      if (reportedOrigin === 'UNKNOWN') return 'Provider data unavailable — origin not verified';
+      return 'Providers temporarily unavailable';
     }
+    if (reportedOrigin === 'FIXTURE') return 'Fixture-backed provider data';
+    if (reportedOrigin === 'MIXED') return 'Mixed live and fixture provider data';
+    if (reportedOrigin === 'UNKNOWN') return 'Provider data origin not verified';
+    if (!reportedOrigin && this.activeRoleSearched()) return 'Provider data origin not reported';
+    if (!reportedOrigin && this.providerMode() === 'FIXTURE') return 'Fixture mode configured';
+    if (!reportedOrigin && this.providerMode() === 'REQUIRED_VALIDATION') return 'Required validation';
     if (this.providerDegraded()) return 'Real providers — partial availability';
-    return 'Real providers';
+    return reportedOrigin === 'LIVE' ? 'Real providers' : 'Real-provider mode configured';
   });
   emptyStateMessage = computed(() => {
     if (this.providerMode() !== 'REAL_PROVIDERS') {
@@ -325,7 +430,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         || this.evidencePurposes.some(purpose => choices[purpose] === 'GENERATE'));
   });
   readonly sortOptions: { value: SortOption; label: string }[] = [
-    { value: 'MOST_RELEVANT', label: 'Most relevant' },
+    { value: 'MOST_RELEVANT', label: 'Best assessed match' },
     { value: 'CLOSEST', label: 'Closest to me' },
     { value: 'HIGHEST_SALARY', label: 'Highest salary' },
     { value: 'NEWEST_POSTED', label: 'Newest posted' },
@@ -651,6 +756,9 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       providerWarnings: [],
       searchStatus: null,
       matchingStatus: null,
+      freshness: null,
+      qualitySummary: null,
+      providerResults: [],
       loading: false,
       error: null,
       searched: false,
@@ -673,6 +781,9 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         providerWarnings: cachedPage.providerWarnings,
         searchStatus: cachedPage.searchStatus,
         matchingStatus: cachedPage.matchingStatus,
+        freshness: cachedPage.freshness,
+        qualitySummary: cachedPage.qualitySummary,
+        providerResults: cachedPage.providerResults,
         error: null,
       }));
       return;
@@ -728,6 +839,9 @@ export class JobResultsComponent implements OnInit, OnDestroy {
             providerWarnings: [],
             searchStatus: 'UNAVAILABLE',
             matchingStatus: 'UNAVAILABLE',
+            freshness: null,
+            qualitySummary: null,
+            providerResults: [],
           });
       if (this.roleKey(this.selectedTargetRole()) === roleKey) {
         this.notify.emit({message, type: 'error'});
@@ -789,12 +903,19 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     const matchingStatus = matchingGroup?.matchingStatus
       ?? response.matchingStatus
       ?? null;
+    const freshness = response.freshness ?? null;
+    const qualitySummary = matchingGroup?.qualitySummary
+      ?? response.qualitySummary
+      ?? null;
     const pageCache: RolePageCache = {
       jobs: deduplicatedJobs,
       providerStatuses,
       providerWarnings,
       searchStatus,
       matchingStatus,
+      freshness,
+      qualitySummary,
+      providerResults,
     };
 
     this.updateRoleState(roleKey, state => {
@@ -818,6 +939,9 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         providerWarnings,
         searchStatus,
         matchingStatus,
+        freshness,
+        qualitySummary,
+        providerResults,
         loading: false,
         error: null,
         searched: true,
@@ -850,6 +974,9 @@ export class JobResultsComponent implements OnInit, OnDestroy {
           providerWarnings: [],
           searchStatus: 'UNAVAILABLE',
           matchingStatus: 'UNAVAILABLE',
+          freshness: null,
+          qualitySummary: null,
+          providerResults: [],
         });
     if (this.roleKey(this.selectedTargetRole()) === roleKey) {
       this.notify.emit({message, type: 'error'});
@@ -937,6 +1064,17 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     }
   }
 
+  private cacheAgeLabel(cacheAgeSeconds: number | null | undefined): string {
+    if (cacheAgeSeconds == null || cacheAgeSeconds < 0) return '';
+    if (cacheAgeSeconds < 60) return ` · ${Math.round(cacheAgeSeconds)}s old`;
+    return ` · ${Math.round(cacheAgeSeconds / 60)}m old`;
+  }
+
+  private filteredCountLabel(count: number, noun: string): string | null {
+    if (!Number.isFinite(count) || count <= 0) return null;
+    return `${count} ${noun}${count === 1 ? '' : 's'}`;
+  }
+
   selectTargetRole(targetRole: string): void {
     if (targetRole === this.selectedTargetRole()) return;
     this.selectedTargetRole.set(targetRole);
@@ -967,6 +1105,9 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       providerWarnings: [],
       searchStatus: null,
       matchingStatus: null,
+      freshness: null,
+      qualitySummary: null,
+      providerResults: [],
       loading: false,
       error: null,
       searched: false,
@@ -1266,6 +1407,87 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.persistEvidenceDraft();
   }
 
+  applyRecommendedEvidence(purpose: EvidencePurpose): void {
+    const recommended = this.recommendedEvidence(purpose);
+    const selected = purpose === 'CV' ? this.cvEvidenceIds : this.coverLetterEvidenceIds;
+    const sections = purpose === 'CV' ? this.cvSectionOrder : this.coverLetterSectionOrder;
+    selected.set(recommended.map(entry => entry.entryId));
+    sections.set(Array.from(new Set(recommended.map(entry =>
+      entry.category as unknown as EvidenceSection))));
+    this.persistEvidenceDraft();
+  }
+
+  recommendedEvidence(purpose: EvidencePurpose): EvidenceEntry[] {
+    const limit = purpose === 'CV' ? 7 : 4;
+    const candidates = this.rankedEligibleEvidence()
+      .filter(entry => entry.category !== EvidenceEntryCategoryEnum.CareerBreak);
+    const relevant = candidates.filter(entry => this.evidenceMatch(entry).score > 0);
+    const pool = relevant.length ? relevant : candidates;
+    const recommended = pool.slice(0, limit);
+    const strongestCore = candidates.find(entry => this.isSubstantialCoreEvidence(entry));
+    if (strongestCore && !recommended.some(entry => entry.entryId === strongestCore.entryId)) {
+      recommended.unshift(strongestCore);
+      recommended.splice(limit);
+    }
+    if (purpose === 'CV') {
+      const education = candidates.find(entry =>
+        entry.category === EvidenceEntryCategoryEnum.Education
+        || entry.category === EvidenceEntryCategoryEnum.QualificationTraining);
+      if (education && !recommended.some(entry => entry.entryId === education.entryId)) {
+        if (recommended.length >= limit) recommended.pop();
+        recommended.push(education);
+      }
+    }
+    return recommended;
+  }
+
+  recommendedEvidenceSelected(purpose: EvidencePurpose): boolean {
+    const current = purpose === 'CV' ? this.cvEvidenceIds() : this.coverLetterEvidenceIds();
+    const recommended = this.recommendedEvidence(purpose).map(entry => entry.entryId);
+    return recommended.length > 0
+      && current.length === recommended.length
+      && recommended.every(entryId => current.includes(entryId));
+  }
+
+  evidenceSectionPreview(purpose: EvidencePurpose): EvidenceSectionPreview[] {
+    const selected = this.selectedEvidence(purpose);
+    const bySection = new Map<EvidenceSection, string[]>();
+    for (const entry of selected) {
+      const section = entry.category as unknown as EvidenceSection;
+      const headings = bySection.get(section) ?? [];
+      const heading = this.latestEvidence(entry)?.heading?.trim();
+      if (heading) headings.push(heading);
+      bySection.set(section, headings);
+    }
+    return this.sectionOrder(purpose)
+      .filter(section => bySection.has(section))
+      .map(section => ({section, headings: bySection.get(section) ?? []}));
+  }
+
+  evidenceSelectionWarnings(purpose: EvidencePurpose): string[] {
+    const selected = this.selectedEvidence(purpose);
+    if (!selected.length) return [];
+    const warnings: string[] = [];
+    const totalNarrative = selected.reduce((total, entry) =>
+      total + this.evidenceNarrativeLength(entry), 0);
+    if (!selected.some(entry => this.isSubstantialCoreEvidence(entry))) {
+      warnings.push('No substantial employment, freelance or project narrative is selected. The document may lack convincing delivery evidence.');
+    }
+    const minimumNarrative = purpose === 'CV' ? 400 : 180;
+    if (totalNarrative < minimumNarrative) {
+      warnings.push(`${this.documentPurposeLabel(purpose)} evidence looks sparse. Add confirmed responsibilities, achievements or project detail before generating.`);
+    }
+    const duplicateGroups = this.selectedDuplicateEvidence(selected);
+    if (duplicateGroups.length) {
+      warnings.push(`Possible duplicate evidence selected: ${duplicateGroups.join('; ')}. Review the entries rather than including the same work twice.`);
+    }
+    const maximum = purpose === 'CV' ? 10 : 7;
+    if (selected.length > maximum) {
+      warnings.push(`This selection contains ${selected.length} entries and may dilute the strongest evidence. Consider a more focused document.`);
+    }
+    return warnings;
+  }
+
   moveEvidenceSection(
     purpose: EvidencePurpose,
     section: EvidenceSection,
@@ -1307,6 +1529,56 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         ? `Matched: ${reasons.join(', ')}`
         : 'Review manually; no distinctive advert terms matched.',
     };
+  }
+
+  private isSubstantialCoreEvidence(entry: EvidenceEntry): boolean {
+    return [
+      EvidenceEntryCategoryEnum.Employment,
+      EvidenceEntryCategoryEnum.Freelance,
+      EvidenceEntryCategoryEnum.Project,
+    ].includes(entry.category)
+      && this.evidenceNarrativeLength(entry) >= 120;
+  }
+
+  private evidenceNarrativeLength(entry: EvidenceEntry): number {
+    const revision = this.latestEvidence(entry);
+    if (!revision) return 0;
+    return [revision.description, revision.responsibilities, revision.achievements]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .join(' ')
+      .trim().length;
+  }
+
+  private selectedDuplicateEvidence(entries: EvidenceEntry[]): string[] {
+    const groups = new Map<string, EvidenceEntry[]>();
+    for (const entry of entries) {
+      const revision = this.latestEvidence(entry);
+      if (!revision) continue;
+      const organisation = this.normalisedEvidenceIdentity(
+        revision.organisationContext || revision.heading,
+      );
+      if (!organisation) continue;
+      const start = revision.startDate
+        ? `${revision.startDate.year}-${revision.startDate.month ?? 0}`
+        : '';
+      const end = revision.ongoing
+        ? 'ongoing'
+        : revision.endDate
+          ? `${revision.endDate.year}-${revision.endDate.month ?? 0}`
+          : '';
+      const key = `${organisation}|${start}|${end}`;
+      groups.set(key, [...(groups.get(key) ?? []), entry]);
+    }
+    return [...groups.values()]
+      .filter(group => group.length > 1
+        && new Set(group.map(entry => entry.category)).size > 1)
+      .map(group => group.map(entry => this.latestEvidence(entry)?.heading)
+        .filter((heading): heading is string => Boolean(heading))
+        .join(' / '));
+  }
+
+  private normalisedEvidenceIdentity(value: string): string {
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   }
 
   private resetGenerationJobParties(): void {
@@ -1776,9 +2048,32 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       .map(output => this.documentPurposeLabel(output));
     const outcome = generatedNames.join(' and ');
     const partial = missingOutputs.length > 0;
-    const message = partial
+    const recoveryNotices = generatedOutputs.flatMap(output => {
+      const summary = response.recovery?.[output];
+      if (!summary) return [];
+      const label = this.documentPurposeLabel(output);
+      if (summary.deterministicFallbackUsed) {
+        return [`${label} recovered with an evidence-based fallback — no AI Credit charged.`];
+      }
+      if (summary.reconciliationStatus === 'RECOVERED') {
+        return [summary.charged
+          ? `${label} recovered safely without a duplicate request.`
+          : `${label} recovered safely without a duplicate request or AI Credit charge.`];
+      }
+      if (summary.retried) {
+        return [`${label} completed after an automatic provider retry.`];
+      }
+      if (summary.structuralRepairStatus === 'APPLIED') {
+        return [`${label} formatting was repaired automatically.`];
+      }
+      return [];
+    });
+    const baseMessage = partial
       ? `${outcome} ready; ${this.documentPurposeLabel(missingOutputs[0] ?? 'CV')} failed. Retry it.`
       : `${outcome} generated successfully.`;
+    const message = recoveryNotices.length
+      ? `${partial ? baseMessage : `${outcome} ready.`} ${recoveryNotices.join(' ')}`
+      : baseMessage;
     this.generationDownloads.update(downloads => ({
       ...downloads,
       [jobId]: response.downloads,

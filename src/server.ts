@@ -128,6 +128,15 @@ app.patch('/api/auth/profile', async (req, res) => {
   await proxyUserManagementRequest('/api/auth/profile', 'PATCH', req, res);
 });
 
+app.patch('/api/auth/profile/professional-contact', async (req, res) => {
+  await proxyUserManagementRequest(
+    '/api/auth/profile/professional-contact',
+    'PATCH',
+    req,
+    res,
+  );
+});
+
 app.post('/api/auth/refresh', async (req, res) => {
   await proxyUserManagementRequest('/api/auth/refresh', 'POST', req, res, true);
 });

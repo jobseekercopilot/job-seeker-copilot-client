@@ -44,6 +44,20 @@ import { BrowserSessionService } from './browser-session.service';
 export type DocumentKind = 'CV' | 'COVER_LETTER';
 export type UploadFormat = 'DOCX' | 'PDF';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const GENERATION_SOURCES = new Set<GenerationSource>([
+  'LLM',
+  'DETERMINISTIC_FALLBACK',
+  'NOT_AVAILABLE',
+]);
+const BILLING_STATUSES = new Set<BillingStatus>([
+  'NOT_RESERVED',
+  'RESERVED',
+  'COMMITTED',
+  'RELEASED_NO_CHARGE',
+  'RELEASED_AFTER_FAILURE',
+  'RESERVED_PENDING_RECONCILIATION',
+  'RELEASED_AFTER_RECONCILIATION',
+]);
 
 export interface DocumentArtifactManifestItem {
   artifactId: string;
@@ -145,11 +159,46 @@ export interface GenerationDownloadsResponse {
   coverLetter?: DocumentDownloadsResponse;
 }
 
+export type GenerationSource = 'LLM' | 'DETERMINISTIC_FALLBACK' | 'NOT_AVAILABLE';
+export type BillingStatus =
+  | 'NOT_RESERVED'
+  | 'RESERVED'
+  | 'COMMITTED'
+  | 'RELEASED_NO_CHARGE'
+  | 'RELEASED_AFTER_FAILURE'
+  | 'RESERVED_PENDING_RECONCILIATION'
+  | 'RELEASED_AFTER_RECONCILIATION';
+
+export interface DocumentRecoverySummary {
+  generationSource: GenerationSource;
+  structuralRepairStatus: 'APPLIED' | 'CHECKED' | 'NOT_REQUIRED';
+  duplicateItemsRemoved: number;
+  providerAttemptCount: number;
+  automaticRetryCount: number;
+  retried: boolean;
+  retryReason?: 'RATE_LIMITED';
+  retainedResponseReplayed: boolean;
+  deterministicFallbackUsed: boolean;
+  fallbackReason?:
+    | 'PROVIDER_FAILURE'
+    | 'EMPTY_PROVIDER_RESPONSE'
+    | 'RECONCILIATION_EXHAUSTED'
+    | 'MODEL_OUTPUT_REJECTED'
+    | 'RETAINED_MODEL_OUTPUT_REJECTED';
+  reconciliationStatus: 'NOT_REQUIRED' | 'PENDING' | 'RECOVERED' | 'EXHAUSTED';
+  reconciliationAttempts: number;
+  reconciliationSource?: 'RETAINED_RESPONSE' | 'DETERMINISTIC_FALLBACK';
+  billingStatus: BillingStatus;
+  charged: boolean;
+  released: boolean;
+}
+
 export interface DocumentGenerationResponse {
   applicationId: string;
   cvDocumentId?: string;
   coverLetterDocumentId?: string;
   downloads: GenerationDownloadsResponse;
+  recovery?: Partial<Record<DocumentKind, DocumentRecoverySummary>>;
 }
 
 export type DocumentGenerationErrorCode =
@@ -1254,6 +1303,66 @@ export class DocumentGenerationService {
     return asciiMatch?.[1] ?? null;
   }
 
+  private recoverySummaries(
+    operation: GenerationOperationResponse,
+  ): Partial<Record<DocumentKind, DocumentRecoverySummary>> | undefined {
+    const rawResults = operation.outputResults;
+    if (!rawResults || typeof rawResults !== 'object') return undefined;
+    const summaries: Partial<Record<DocumentKind, DocumentRecoverySummary>> = {};
+    for (const purpose of ['CV', 'COVER_LETTER'] as const) {
+      const rawResult = rawResults[purpose];
+      if (!rawResult || typeof rawResult !== 'object') continue;
+      const rawSummary = (rawResult as {recoverySummary?: unknown}).recoverySummary;
+      if (!rawSummary || typeof rawSummary !== 'object' || Array.isArray(rawSummary)) continue;
+      const summary = rawSummary as Record<string, unknown>;
+      if (
+        typeof summary['generationSource'] !== 'string'
+        || !GENERATION_SOURCES.has(summary['generationSource'] as GenerationSource)
+        || typeof summary['billingStatus'] !== 'string'
+        || !BILLING_STATUSES.has(summary['billingStatus'] as BillingStatus)
+        || !['APPLIED', 'CHECKED', 'NOT_REQUIRED'].includes(
+          String(summary['structuralRepairStatus']),
+        )
+        || !['NOT_REQUIRED', 'PENDING', 'RECOVERED', 'EXHAUSTED'].includes(
+          String(summary['reconciliationStatus']),
+        )
+        || typeof summary['retried'] !== 'boolean'
+        || typeof summary['retainedResponseReplayed'] !== 'boolean'
+        || typeof summary['deterministicFallbackUsed'] !== 'boolean'
+        || typeof summary['charged'] !== 'boolean'
+        || typeof summary['released'] !== 'boolean'
+        || !this.boundedRecoveryCount(summary['duplicateItemsRemoved'], 200)
+        || !this.boundedRecoveryCount(summary['providerAttemptCount'], 2)
+        || !this.boundedRecoveryCount(summary['automaticRetryCount'], 1)
+        || !this.boundedRecoveryCount(summary['reconciliationAttempts'], 60)
+      ) {
+        continue;
+      }
+      const generationSource = summary['generationSource'] as GenerationSource;
+      const billingStatus = summary['billingStatus'] as BillingStatus;
+      if (
+        summary['retried'] !== ((summary['automaticRetryCount'] as number) > 0)
+        || summary['charged'] !== (billingStatus === 'COMMITTED')
+        || summary['released'] !== billingStatus.startsWith('RELEASED_')
+        || summary['deterministicFallbackUsed']
+          !== (generationSource === 'DETERMINISTIC_FALLBACK')
+        || (generationSource === 'DETERMINISTIC_FALLBACK'
+          && billingStatus !== 'RELEASED_NO_CHARGE')
+      ) {
+        continue;
+      }
+      summaries[purpose] = summary as unknown as DocumentRecoverySummary;
+    }
+    return Object.keys(summaries).length ? summaries : undefined;
+  }
+
+  private boundedRecoveryCount(value: unknown, maximum: number): value is number {
+    return typeof value === 'number'
+      && Number.isSafeInteger(value)
+      && value >= 0
+      && value <= maximum;
+  }
+
   private completedGeneration(
     operation: GenerationOperationResponse,
     requestedOutputs: DocumentKind[] = ['CV', 'COVER_LETTER'],
@@ -1271,6 +1380,7 @@ export class DocumentGenerationService {
     ) {
       throw this.operationError(operation);
     }
+    const recovery = this.recoverySummaries(operation);
     return {
       applicationId: operation.applicationId,
       ...(operation.cvDocumentId ? {cvDocumentId: operation.cvDocumentId} : {}),
@@ -1281,6 +1391,7 @@ export class DocumentGenerationService {
         cv: this.exportDownloads(operation.downloads?.['cv']),
         coverLetter: this.exportDownloads(operation.downloads?.['coverLetter']),
       },
+      ...(recovery ? {recovery} : {}),
     };
   }
 

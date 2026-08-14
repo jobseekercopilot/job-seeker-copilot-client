@@ -37,6 +37,52 @@ const OPERATION_STATES = new Set([
   'FAILED',
   'CANCELLED',
 ]);
+const OUTPUT_STATUSES = new Set([
+  'READY',
+  'ESTIMATED',
+  'CREDIT_RESERVED',
+  'OUTCOME_UNKNOWN',
+  'DRAFT_GENERATED',
+  'CREDIT_COMMITTED',
+  'STORED',
+  'FAILED',
+]);
+const GENERATION_SOURCES = new Set([
+  'LLM',
+  'DETERMINISTIC_FALLBACK',
+  'NOT_AVAILABLE',
+]);
+const STRUCTURAL_REPAIR_STATUSES = new Set([
+  'APPLIED',
+  'CHECKED',
+  'NOT_REQUIRED',
+]);
+const FALLBACK_REASONS = new Set([
+  'PROVIDER_FAILURE',
+  'EMPTY_PROVIDER_RESPONSE',
+  'RECONCILIATION_EXHAUSTED',
+  'MODEL_OUTPUT_REJECTED',
+  'RETAINED_MODEL_OUTPUT_REJECTED',
+]);
+const RECONCILIATION_STATUSES = new Set([
+  'NOT_REQUIRED',
+  'PENDING',
+  'RECOVERED',
+  'EXHAUSTED',
+]);
+const RECONCILIATION_SOURCES = new Set([
+  'RETAINED_RESPONSE',
+  'DETERMINISTIC_FALLBACK',
+]);
+const BILLING_STATUSES = new Set([
+  'NOT_RESERVED',
+  'RESERVED',
+  'COMMITTED',
+  'RELEASED_NO_CHARGE',
+  'RELEASED_AFTER_FAILURE',
+  'RESERVED_PENDING_RECONCILIATION',
+  'RELEASED_AFTER_RECONCILIATION',
+]);
 const SAFE_DOWNLOAD_TYPES = new Set([
   'application/octet-stream',
   'application/pdf',
@@ -895,6 +941,143 @@ function safeOperationDownloads(value: unknown): Record<string, object> | undefi
   return Object.keys(downloads).length ? downloads : undefined;
 }
 
+function boundedWholeNumber(
+  value: unknown,
+  maximum: number,
+): number | undefined {
+  return typeof value === 'number'
+    && Number.isSafeInteger(value)
+    && value >= 0
+    && value <= maximum
+    ? value
+    : undefined;
+}
+
+function safeRecoverySummary(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  if (
+    typeof source['generationSource'] !== 'string'
+    || !GENERATION_SOURCES.has(source['generationSource'])
+    || typeof source['structuralRepairStatus'] !== 'string'
+    || !STRUCTURAL_REPAIR_STATUSES.has(source['structuralRepairStatus'])
+    || typeof source['reconciliationStatus'] !== 'string'
+    || !RECONCILIATION_STATUSES.has(source['reconciliationStatus'])
+    || typeof source['billingStatus'] !== 'string'
+    || !BILLING_STATUSES.has(source['billingStatus'])
+    || typeof source['retried'] !== 'boolean'
+    || typeof source['retainedResponseReplayed'] !== 'boolean'
+    || typeof source['deterministicFallbackUsed'] !== 'boolean'
+    || typeof source['charged'] !== 'boolean'
+    || typeof source['released'] !== 'boolean'
+  ) {
+    return undefined;
+  }
+  const duplicateItemsRemoved = boundedWholeNumber(
+    source['duplicateItemsRemoved'],
+    200,
+  );
+  const providerAttemptCount = boundedWholeNumber(
+    source['providerAttemptCount'],
+    2,
+  );
+  const automaticRetryCount = boundedWholeNumber(
+    source['automaticRetryCount'],
+    1,
+  );
+  const reconciliationAttempts = boundedWholeNumber(
+    source['reconciliationAttempts'],
+    60,
+  );
+  if (
+    duplicateItemsRemoved === undefined
+    || providerAttemptCount === undefined
+    || automaticRetryCount === undefined
+    || reconciliationAttempts === undefined
+  ) {
+    return undefined;
+  }
+  const billingStatus = source['billingStatus'] as string;
+  const generationSource = source['generationSource'] as string;
+  if (
+    source['retried'] !== (automaticRetryCount > 0)
+    || source['charged'] !== (billingStatus === 'COMMITTED')
+    || source['released'] !== billingStatus.startsWith('RELEASED_')
+    || source['deterministicFallbackUsed']
+      !== (generationSource === 'DETERMINISTIC_FALLBACK')
+    || (generationSource === 'DETERMINISTIC_FALLBACK'
+      && billingStatus !== 'RELEASED_NO_CHARGE')
+  ) {
+    return undefined;
+  }
+
+  const safe: Record<string, unknown> = {
+    generationSource,
+    structuralRepairStatus: source['structuralRepairStatus'],
+    duplicateItemsRemoved,
+    providerAttemptCount,
+    automaticRetryCount,
+    retried: source['retried'],
+    retainedResponseReplayed: source['retainedResponseReplayed'],
+    deterministicFallbackUsed: source['deterministicFallbackUsed'],
+    reconciliationStatus: source['reconciliationStatus'],
+    reconciliationAttempts,
+    billingStatus,
+    charged: source['charged'],
+    released: source['released'],
+  };
+  if (source['retryReason'] === 'RATE_LIMITED') {
+    safe['retryReason'] = source['retryReason'];
+  }
+  if (
+    typeof source['fallbackReason'] === 'string'
+    && FALLBACK_REASONS.has(source['fallbackReason'])
+  ) {
+    safe['fallbackReason'] = source['fallbackReason'];
+  }
+  if (
+    typeof source['reconciliationSource'] === 'string'
+    && RECONCILIATION_SOURCES.has(source['reconciliationSource'])
+  ) {
+    safe['reconciliationSource'] = source['reconciliationSource'];
+  }
+  return safe;
+}
+
+function safeOperationOutputResults(value: unknown): Record<string, object> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  const results: Record<string, object> = {};
+  for (const purpose of DOCUMENT_TYPES) {
+    const raw = source[purpose];
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const output = raw as Record<string, unknown>;
+    const recoverySummary = safeRecoverySummary(output['recoverySummary']);
+    if (!recoverySummary) continue;
+    const safe: Record<string, unknown> = {recoverySummary};
+    if (
+      typeof output['status'] === 'string'
+      && OUTPUT_STATUSES.has(output['status'])
+    ) {
+      safe['status'] = output['status'];
+    }
+    if (
+      typeof output['documentId'] === 'string'
+      && validUuid(output['documentId'])
+    ) {
+      safe['documentId'] = output['documentId'].toLowerCase();
+    }
+    if (
+      typeof output['failureCode'] === 'string'
+      && FAILURE_CODE.test(output['failureCode'])
+    ) {
+      safe['failureCode'] = output['failureCode'];
+    }
+    results[purpose] = safe;
+  }
+  return Object.keys(results).length ? results : undefined;
+}
+
 function safeOperationPayload(body: string): Record<string, unknown> | undefined {
   let value: unknown;
   try {
@@ -943,6 +1126,20 @@ function safeOperationPayload(body: string): Record<string, unknown> | undefined
   }
   const downloads = safeOperationDownloads(source['downloads']);
   if (downloads) payload['downloads'] = downloads;
+  if (Array.isArray(source['requestedOutputs'])) {
+    const requestedOutputs = source['requestedOutputs'].filter(
+      output => typeof output === 'string' && DOCUMENT_TYPES.has(output),
+    );
+    if (
+      requestedOutputs.length === source['requestedOutputs'].length
+      && requestedOutputs.length > 0
+      && new Set(requestedOutputs).size === requestedOutputs.length
+    ) {
+      payload['requestedOutputs'] = requestedOutputs;
+    }
+  }
+  const outputResults = safeOperationOutputResults(source['outputResults']);
+  if (outputResults) payload['outputResults'] = outputResults;
   return payload;
 }
 

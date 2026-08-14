@@ -7,7 +7,7 @@
         <mat-icon class="panel-icon">work</mat-icon>
         <h2 class="text-lg font-semibold m-0">Job Matches</h2>
         <span class="provider-mode-badge"
-              [class.provider-mode-partial]="providerDegraded()"
+              [class.provider-mode-partial]="providerProvenanceCaution()"
               data-testid="job-search-provider-mode">
           {{ providerModeLabel() }}
         </span>
@@ -146,6 +146,27 @@
         <mat-icon class="text-amber-500 text-lg flex-shrink-0">warning</mat-icon>
         <p class="text-sm m-0">{{ warning }}</p>
       </div>
+    }
+
+    @if (!loading() && activeRoleSearched()) {
+      <section class="search-trust-summary"
+               aria-label="Search data and filtering details"
+               data-testid="job-search-trust-summary">
+        <div>
+          <mat-icon aria-hidden="true">verified_user</mat-icon>
+          <span>{{ freshnessLabel() }}</span>
+          @if (retrievedAtLabel(); as retrievedAt) {
+            <span>· oldest result retrieved {{ retrievedAt }}</span>
+          }
+        </div>
+        <p>
+          {{ matchingEvidenceLabel() }}
+          Eligibility and unverified requirements still need your review.
+        </p>
+        @if (filteredResultSummary(); as filteredSummary) {
+          <p class="search-filter-summary">{{ filteredSummary }}</p>
+        }
+      </section>
     }
 
     <!-- Empty state (no error, not loading, zero jobs) -->
@@ -363,8 +384,8 @@
                     </div>
                   </dl>
                   <p>
-                    Nothing is included automatically. Choose user-confirmed entries separately for the CV
-                    for each selected document, then set the section order. The service will freeze the current revisions.
+                    Nothing is included automatically. Choose user-confirmed entries separately for each
+                    document, then review its section preview. The service will freeze the current revisions.
                   </p>
                 </div>
                 <button type="button" class="selector-close" (click)="closeEvidenceSelection()"
@@ -501,11 +522,19 @@
                           </h4>
                           <p>Select only what is relevant to this document.</p>
                         </div>
-                        <button type="button"
-                                class="evidence-select-all"
-                                (click)="toggleAllEvidence(purpose)">
-                          {{ allEvidenceSelected(purpose) ? 'Clear all' : 'Select all' }}
-                        </button>
+                        <span class="evidence-selection-actions">
+                          <button type="button"
+                                  class="evidence-recommend"
+                                  [disabled]="recommendedEvidenceSelected(purpose)"
+                                  (click)="applyRecommendedEvidence(purpose)">
+                            {{ recommendedEvidenceSelected(purpose) ? 'Recommended selected' : 'Use recommended' }}
+                          </button>
+                          <button type="button"
+                                  class="evidence-select-all"
+                                  (click)="toggleAllEvidence(purpose)">
+                            {{ allEvidenceSelected(purpose) ? 'Clear all' : 'Select all' }}
+                          </button>
+                        </span>
                       </header>
 
                       <div class="evidence-choice-list">
@@ -535,6 +564,28 @@
                       </div>
 
                       @if (selectedEvidence(purpose).length) {
+                        <div class="evidence-preview" data-testid="evidence-selection-preview">
+                          <h5>Document preview</h5>
+                          <p>{{ selectedEvidence(purpose).length }} confirmed entr{{ selectedEvidence(purpose).length === 1 ? 'y' : 'ies' }}</p>
+                          <ol>
+                            @for (preview of evidenceSectionPreview(purpose); track preview.section) {
+                              <li>
+                                <strong>{{ categoryLabel(preview.section) }}</strong>
+                                <span>{{ preview.headings.join(' · ') }}</span>
+                              </li>
+                            }
+                          </ol>
+                        </div>
+                        @if (evidenceSelectionWarnings(purpose).length) {
+                          <div class="evidence-quality-warnings" role="status">
+                            <strong>Review before generating</strong>
+                            <ul>
+                              @for (warning of evidenceSelectionWarnings(purpose); track warning) {
+                                <li>{{ warning }}</li>
+                              }
+                            </ul>
+                          </div>
+                        }
                         <div class="selection-order">
                           <h5>Section order</h5>
                           <ol>

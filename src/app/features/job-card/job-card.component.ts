@@ -358,6 +358,53 @@ export class JobCardComponent {
     return `${distanceMiles.toFixed(1)} miles from you`;
   }
 
+  matchAssessmentAvailable(): boolean {
+    return Boolean(this.job().matchAssessment);
+  }
+
+  matchLabel(): string | null {
+    const assessment = this.job().matchAssessment;
+    if (!assessment || typeof assessment.score !== 'number') return null;
+    const percentage = Math.round(Math.max(0, Math.min(1, assessment.score)) * 100);
+    if (!assessment.candidateProfileUsed) {
+      return `${percentage}% title alignment`;
+    }
+    const label = (assessment.rating ?? 'REVIEW_REQUIRED').toLowerCase().replaceAll('_', ' ');
+    return `${percentage}% ${label}`;
+  }
+
+  matchProvenanceLabel(): string {
+    return this.job().matchAssessment?.candidateProfileUsed
+      ? 'Explainable profile match'
+      : 'Query-only estimate';
+  }
+
+  matchExplanationHeading(): string {
+    return this.job().matchAssessment?.candidateProfileUsed
+      ? 'Why this job matches your profile'
+      : 'Why this advert matches your search';
+  }
+
+  matchReasons() {
+    return this.job().matchAssessment?.reasons ?? [];
+  }
+
+  hardGateReasons() {
+    return this.job().matchAssessment?.hardGateReasons ?? [];
+  }
+
+  discoveryStatusLabel(): string | null {
+    const discovery = this.job().discoveryAssessment;
+    if (!discovery) return null;
+    const availability = discovery.availability === 'OPEN_AT_RETRIEVAL'
+      ? 'Open when retrieved'
+      : 'Availability not verified';
+    const level = !discovery.seniority || discovery.seniority === 'UNSPECIFIED'
+      ? 'Level unstated'
+      : discovery.seniority.toLowerCase().replaceAll('_', ' ');
+    return `${availability} · ${level}`;
+  }
+
   statusLabel(): string {
     const applicationStatus = this.job().applicationStatus;
     if (applicationStatus) return applicationStatus;

@@ -12,9 +12,13 @@ import { Job, JobSearchResponse } from '../../models/job-search.model';
 import {
   ProviderResultStatus,
   ProviderResultStatusStatusEnum,
+  ProviderDataProvenanceDataOriginEnum,
+  ProviderDataProvenanceProviderModeEnum,
+  ProviderDataProvenanceResultSourceEnum,
   JobDescriptionCompletenessEnum,
   ReedJobSearchResponseMatchingStatusEnum,
   ReedJobSearchResponseSearchStatusEnum,
+  SearchFreshnessResultSourceEnum,
   TargetRoleJobResultsMatchingStatusEnum,
   TargetRoleJobResultsSearchStatusEnum,
 } from '../../api/job-finder';
@@ -378,7 +382,12 @@ describe('JobResultsComponent', () => {
       [job('real developer role', {})],
       'developer',
       [
-        {provider: 'REED', status: ProviderResultStatusStatusEnum.Success, rawResultCount: 1},
+        {
+          provider: 'REED',
+          status: ProviderResultStatusStatusEnum.Success,
+          rawResultCount: 1,
+          dataProvenance: liveProviderProvenance(),
+        },
         {provider: 'JSEARCH', status: ProviderResultStatusStatusEnum.RateLimited, rawResultCount: 0},
       ],
       TargetRoleJobResultsSearchStatusEnum.Partial,
@@ -388,6 +397,47 @@ describe('JobResultsComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Real providers — partial availability');
     expect(fixture.nativeElement.textContent).toContain('real developer role');
     expect(fixture.nativeElement.textContent).toContain('JSEARCH has reached its current request limit');
+  });
+
+  it('uses response provenance instead of the independently configured provider mode', () => {
+    currentResponse = singleRoleResponse(
+      [job('fixture-labelled result', {})],
+      'developer',
+      [{
+        provider: 'REED',
+        status: ProviderResultStatusStatusEnum.Success,
+        rawResultCount: 1,
+        dataProvenance: {
+          providerMode: ProviderDataProvenanceProviderModeEnum.Fixture,
+          dataOrigin: ProviderDataProvenanceDataOriginEnum.Fixture,
+          resultSource: ProviderDataProvenanceResultSourceEnum.ProviderResponse,
+        },
+      }],
+    );
+
+    const fixtureReportedByRealConfiguration = createFixture('REAL_PROVIDERS');
+    expect(fixtureReportedByRealConfiguration.nativeElement.textContent)
+      .toContain('Fixture-backed provider data');
+    expect(fixtureReportedByRealConfiguration.nativeElement.textContent)
+      .not.toContain('Real providers');
+    fixtureReportedByRealConfiguration.destroy();
+
+    currentResponse = singleRoleResponse(
+      [job('live-labelled result', {})],
+      'developer',
+      [{
+        provider: 'REED',
+        status: ProviderResultStatusStatusEnum.Success,
+        rawResultCount: 1,
+        dataProvenance: liveProviderProvenance(),
+      }],
+    );
+
+    const fixtureReportedByFixtureConfiguration = createFixture('FIXTURE');
+    expect(fixtureReportedByFixtureConfiguration.nativeElement.textContent)
+      .toContain('Real providers');
+    expect(fixtureReportedByFixtureConfiguration.nativeElement.textContent)
+      .not.toContain('Fixture-backed provider data');
   });
 
   it('keeps provider partial failures scoped to the role that returned them', () => {
@@ -486,7 +536,8 @@ describe('JobResultsComponent', () => {
       TargetRoleJobResultsMatchingStatusEnum.Unavailable,
     );
     const unavailable = createFixture('REAL_PROVIDERS');
-    expect(unavailable.nativeElement.textContent).toContain('Real providers temporarily unavailable');
+    expect(unavailable.nativeElement.textContent)
+      .toContain('Provider data unavailable — origin not verified');
     expect(unavailable.nativeElement.textContent)
       .toContain('Providers unavailable. Try later.');
 
@@ -494,7 +545,12 @@ describe('JobResultsComponent', () => {
       [],
       'developer',
       [
-        {provider: 'ADZUNA', status: ProviderResultStatusStatusEnum.Success, rawResultCount: 0},
+        {
+          provider: 'ADZUNA',
+          status: ProviderResultStatusStatusEnum.Success,
+          rawResultCount: 0,
+          dataProvenance: liveProviderProvenance(),
+        },
       ],
     );
     const zeroResults = createFixture('REAL_PROVIDERS');
@@ -848,6 +904,74 @@ describe('JobResultsComponent', () => {
     ]);
     expect(state.searchStatus).toBe(ReedJobSearchResponseSearchStatusEnum.Partial);
     expect(state.matchingStatus).toBe(ReedJobSearchResponseMatchingStatusEnum.TimedOut);
+  });
+
+  it('shows reported freshness and explains results filtered before ranking', () => {
+    queuedSearchResponses = [of({
+      ...singleRoleResponse([job('fresh verified result', {})], 'cleaning'),
+      freshness: {
+        resultSource: SearchFreshnessResultSourceEnum.JobServiceCache,
+        oldestRetrievedAtUtc: '2026-08-12T09:15:00Z',
+        servedAtUtc: '2026-08-12T09:20:00Z',
+        maximumCacheAgeSeconds: 300,
+      },
+      qualitySummary: {
+        assessedJobCount: 5,
+        eligibleJobCount: 1,
+        excludedExpiredCount: 2,
+        excludedPaidTrainingCount: 1,
+        excludedOccupationMismatchCount: 1,
+      },
+    })];
+
+    const fixture = createFixture('REAL_PROVIDERS');
+    fixture.detectChanges();
+
+    const trustSummary = fixture.debugElement.query(
+      By.css('[data-testid="job-search-trust-summary"]'),
+    );
+    expect(trustSummary.nativeElement.textContent).toContain('Cached provider data · 5m old');
+    expect(trustSummary.nativeElement.textContent).toContain('oldest result retrieved');
+    expect(trustSummary.nativeElement.textContent)
+      .toContain('2 closed or expired listings, 1 paid training scheme, 1 unrelated occupation filtered before ranking.');
+    expect(trustSummary.nativeElement.textContent)
+      .toContain('deterministic advert and title evidence, not a personal profile match');
+  });
+
+  it('does not claim profile ordering when matching is unavailable', () => {
+    queuedSearchResponses = [of(singleRoleResponse(
+      [job('unmatched result', {})],
+      'cleaning',
+      [],
+      TargetRoleJobResultsSearchStatusEnum.Complete,
+      TargetRoleJobResultsMatchingStatusEnum.Unavailable,
+    ))];
+
+    const fixture = createFixture('REAL_PROVIDERS');
+    fixture.detectChanges();
+
+    const trustSummary = fixture.debugElement.query(
+      By.css('[data-testid="job-search-trust-summary"]'),
+    );
+    expect(trustSummary.nativeElement.textContent)
+      .toContain('provider and advert ordering because profile matching was unavailable');
+    expect(trustSummary.nativeElement.textContent).not.toContain('profile and advert evidence');
+  });
+
+  it('does not invent freshness or filtering claims for legacy responses', () => {
+    queuedSearchResponses = [of(singleRoleResponse(
+      [job('legacy freshness result', {})],
+      'cleaning',
+    ))];
+
+    const fixture = createFixture('REAL_PROVIDERS');
+    fixture.detectChanges();
+
+    const trustSummary = fixture.debugElement.query(
+      By.css('[data-testid="job-search-trust-summary"]'),
+    );
+    expect(trustSummary.nativeElement.textContent).toContain('Freshness not reported');
+    expect(trustSummary.nativeElement.textContent).not.toContain('filtered before ranking');
   });
 
   it('restores page-scoped statuses when returning to a cached page', () => {
@@ -1547,6 +1671,118 @@ describe('JobResultsComponent', () => {
     expect(selectors[0].nativeElement.closest('[data-testid="job-results-workspace"]')).not.toBeNull();
   });
 
+  it('keeps evidence opt-in and applies an explicit relevance-based recommendation', () => {
+    const employment = evidenceEntry(
+      '50000000-0000-4000-8000-000000000001',
+      'EMPLOYMENT',
+      'Java engineer',
+      1,
+    );
+    Object.assign(employment.revisions[0], {
+      description: 'Delivered Java and Spring services with automated integration testing. '.repeat(3),
+      demonstratedSkills: ['Java', 'Spring'],
+    });
+    const project = evidenceEntry(
+      '50000000-0000-4000-8000-000000000002',
+      'PROJECT',
+      'API platform',
+      1,
+    );
+    Object.assign(project.revisions[0], {
+      description: 'Built REST API integrations and PostgreSQL workflows with Docker. '.repeat(3),
+      demonstratedSkills: ['REST APIs', 'PostgreSQL'],
+    });
+    const education = evidenceEntry(
+      '50000000-0000-4000-8000-000000000003',
+      'EDUCATION',
+      'Degree',
+      1,
+    );
+    const careerBreak = evidenceEntry(
+      '50000000-0000-4000-8000-000000000004',
+      'CAREER_BREAK',
+      'Career break',
+      1,
+    );
+    evidenceEntries = [careerBreak, education, project, employment];
+    const fixture = createFixture();
+    fixture.componentInstance.openEvidenceSelection(
+      fixture.componentInstance.paginatedJobs()[0],
+    );
+    fixture.componentInstance.generationJobDescription.set(
+      'Java Spring engineer building REST APIs with PostgreSQL and automated testing.',
+    );
+
+    expect(fixture.componentInstance.cvEvidenceIds()).toEqual([]);
+
+    fixture.componentInstance.applyRecommendedEvidence('CV');
+
+    expect(fixture.componentInstance.cvEvidenceIds()).toEqual(expect.arrayContaining([
+      employment.entryId,
+      project.entryId,
+      education.entryId,
+    ]));
+    expect(fixture.componentInstance.cvEvidenceIds()).not.toContain(careerBreak.entryId);
+    expect(fixture.componentInstance.recommendedEvidenceSelected('CV')).toBe(true);
+  });
+
+  it('previews selected sections and warns before generating a sparse CV', () => {
+    evidenceEntries = [evidenceEntry(
+      '50000000-0000-4000-8000-000000000001',
+      'EDUCATION',
+      'Degree',
+      1,
+    )];
+    const fixture = createFixture();
+    fixture.componentInstance.openEvidenceSelection(
+      fixture.componentInstance.paginatedJobs()[0],
+    );
+    fixture.componentInstance.toggleEvidence('CV', evidenceEntries[0]);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.evidenceSectionPreview('CV')).toEqual([{
+      section: 'EDUCATION',
+      headings: ['Degree'],
+    }]);
+    expect(fixture.componentInstance.evidenceSelectionWarnings('CV').join(' '))
+      .toContain('No substantial employment, freelance or project narrative');
+    expect(fixture.nativeElement.textContent).toContain('Document preview');
+    expect(fixture.nativeElement.textContent).toContain('CV evidence looks sparse');
+  });
+
+  it('warns when the same dated work is selected across evidence categories', () => {
+    const employment = evidenceEntry(
+      '50000000-0000-4000-8000-000000000001',
+      'EMPLOYMENT',
+      'Job Seeker Copilot developer',
+      1,
+    );
+    const project = evidenceEntry(
+      '50000000-0000-4000-8000-000000000002',
+      'PROJECT',
+      'Job Seeker Copilot project',
+      1,
+    );
+    for (const entry of [employment, project]) {
+      Object.assign(entry.revisions[0], {
+        organisationContext: 'Job Seeker Copilot',
+        description: 'Designed, built and tested a multi-service application with substantial evidence. '.repeat(3),
+        startDate: {precision: 'MONTH', year: 2026, month: 5},
+        ongoing: true,
+      });
+    }
+    evidenceEntries = [employment, project];
+    const fixture = createFixture();
+    fixture.componentInstance.openEvidenceSelection(
+      fixture.componentInstance.paginatedJobs()[0],
+    );
+    fixture.componentInstance.toggleEvidence('CV', employment);
+    fixture.componentInstance.toggleEvidence('CV', project);
+
+    expect(fixture.componentInstance.evidenceSelectionWarnings('CV').join(' '))
+      .toContain('Possible duplicate evidence selected');
+  });
+
   it('keeps only the latest job panel and ignores a stale evidence response', () => {
     const firstResponse = new Subject<any[]>();
     const secondResponse = new Subject<any[]>();
@@ -1732,6 +1968,54 @@ describe('JobResultsComponent', () => {
       .toContain('Cover letter ready; CV failed');
     expect(fixture.componentInstance.evidenceSelectionDrafts()[selectedJob.id!])
       .toBeDefined();
+  });
+
+  it('explains a no-charge evidence-based fallback instead of claiming ordinary AI success', () => {
+    evidenceEntries = [evidenceEntry(
+      '50000000-0000-4000-8000-000000000001',
+      'PROJECT',
+      'Portfolio project',
+      1,
+    )];
+    documentGenerationService.generate.mockReturnValueOnce(of({
+      applicationId: 'application-fallback',
+      cvDocumentId: 'cv-fallback',
+      coverLetterDocumentId: 'cover-llm',
+      downloads: {cv: {}, coverLetter: {}},
+      recovery: {
+        CV: {
+          generationSource: 'DETERMINISTIC_FALLBACK',
+          structuralRepairStatus: 'NOT_REQUIRED',
+          duplicateItemsRemoved: 0,
+          providerAttemptCount: 1,
+          automaticRetryCount: 0,
+          retried: false,
+          retainedResponseReplayed: false,
+          deterministicFallbackUsed: true,
+          fallbackReason: 'MODEL_OUTPUT_REJECTED',
+          reconciliationStatus: 'NOT_REQUIRED',
+          reconciliationAttempts: 0,
+          billingStatus: 'RELEASED_NO_CHARGE',
+          charged: false,
+          released: true,
+        },
+      },
+    }));
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    const [project] = fixture.componentInstance.eligibleEvidence();
+    fixture.componentInstance.toggleEvidence('CV', project);
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', project);
+    confirmGenerationAdvert(fixture);
+    fixture.componentInstance.confirmEvidenceGeneration();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.generationMessages()[selectedJob.id!])
+      .toBe('CV and Cover letter ready. CV recovered with an evidence-based fallback — no AI Credit charged.');
+    expect(fixture.componentInstance.generationMessages()[selectedJob.id!])
+      .not.toContain('generated successfully');
   });
 
   it('reconciles retained drafts against evidence that is still eligible', () => {
@@ -2324,6 +2608,14 @@ describe('JobResultsComponent', () => {
       providerResults,
       searchStatus,
       matchingStatus,
+    };
+  }
+
+  function liveProviderProvenance() {
+    return {
+      providerMode: ProviderDataProvenanceProviderModeEnum.Live,
+      dataOrigin: ProviderDataProvenanceDataOriginEnum.LiveProvider,
+      resultSource: ProviderDataProvenanceResultSourceEnum.ProviderResponse,
     };
   }
 
