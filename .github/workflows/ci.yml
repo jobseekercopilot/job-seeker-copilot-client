@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [develop, "feature/**"]
+    branches: [develop, main, "feature/**"]
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
   workflow_dispatch:
 
 permissions:
@@ -22,6 +22,7 @@ jobs:
           node-version: "24"
           cache: npm
       - run: npm ci
+      - run: npm run api:generate:verify
       - run: npm run lint
       - run: npm test -- --watch=false
       - run: npm run build

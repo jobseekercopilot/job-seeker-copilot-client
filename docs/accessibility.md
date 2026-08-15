@@ -1,6 +1,6 @@
 # Accessibility baseline
 
-The application targets WCAG 2.2 level AA for its private-beta journeys.
+The application targets WCAG 2.2 level AA for its public-beta journeys.
 Accessibility is a release requirement, not an optional visual enhancement.
 
 ## Implemented interaction contract
@@ -45,7 +45,7 @@ light backgrounds.
 
 ## Manual release checklist
 
-Before a beta release, use the local Docker Compose stack and the authoritative
+Before the public-beta release, use the local Docker Compose stack and the authoritative
 E2E repository to check:
 
 1. Complete registration, sign-in and profile editing with keyboard only at

@@ -4,6 +4,7 @@ import {TestBed} from '@angular/core/testing';
 import {MatDialog} from '@angular/material/dialog';
 import {provideRouter, Router} from '@angular/router';
 import {of} from 'rxjs';
+import type {Observable} from 'rxjs';
 import type {User} from './api';
 import {EvidenceLibraryService, WorkPreferencesWorkplaceArrangementsEnum} from './api';
 import {App} from './app';
@@ -12,6 +13,7 @@ import type {BrowserSessionStatus} from './services/browser-session.service';
 import {BrowserSessionService} from './services/browser-session.service';
 import {JobService} from './services/job.service';
 import {PaymentService} from './services/payment.service';
+import type {PaymentOrderStatusResponse} from './services/payment.service';
 import {ApplicationTrackerService} from './services/application-tracker.service';
 import {RuntimeConfigurationService} from './services/runtime-configuration.service';
 
@@ -30,9 +32,39 @@ describe('App', () => {
     },
   });
   const searchJobs = vi.fn(() => of({jobs: [], totalResults: 0}));
-  const wallet = vi.fn(() => of({balanceTokens: 70000}));
+  const wallet = vi.fn(() => of({
+    balanceDocumentCredits: 7,
+    lifetimePurchasedDocumentCredits: 7,
+    lifetimeSpentDocumentCredits: 0,
+    lifetimeReversedDocumentCredits: 0,
+    reviewDebtDocumentCredits: 0,
+    freeAllowanceGranted: true,
+    status: 'ACTIVE' as const,
+  }));
+  const orderId = 'c89d9cbb-9dfe-4f7b-9cbf-82ec67cfe9ef';
+  const fulfilledOrder: PaymentOrderStatusResponse = {
+    orderId,
+    status: 'FULFILLED' as const,
+    pricingPlanId: 'starter',
+    documentCredits: 10,
+    promotionBonusDocumentCredits: 5,
+    totalGrantedDocumentCredits: 15,
+    priceMinor: 799,
+    currency: 'GBP' as const,
+    createdAt: '2026-08-15T10:00:00Z',
+    expiresAt: '2026-08-15T11:00:00Z',
+    fulfilledAt: '2026-08-15T10:02:00Z',
+    creditsAdded: true,
+    messageCode: 'CREDITS_ADDED',
+    taxStatus: 'NOT_VAT_REGISTERED' as const,
+    taxTreatment: 'VAT_NOT_CHARGED' as const,
+    legalEntityType: 'SOLE_TRADER' as const,
+    legalEntityConfigurationVersion: 'seller-v1',
+  };
+  const orderStatus = vi.fn<() => Observable<PaymentOrderStatusResponse>>();
 
   beforeEach(async () => {
+    window.history.replaceState({}, '', '/dashboard');
     status.set('authenticated');
     user.set({
       id: 'user-1',
@@ -49,6 +81,8 @@ describe('App', () => {
     });
     searchJobs.mockClear();
     wallet.mockClear();
+    orderStatus.mockReset();
+    orderStatus.mockReturnValue(of(fulfilledOrder));
 
     await TestBed.configureTestingModule({
       imports: [App],
@@ -74,6 +108,14 @@ describe('App', () => {
           useValue: {
             jobSearchMode: () => of({mode: 'FIXTURE'}),
             documentGenerationMode: () => of({mode: 'FIXTURE_LLM'}),
+            commuteRoutingMode: () => of({mode: 'DISTANCE_ONLY'}),
+            legalConfiguration: () => of({
+              ready: false,
+              status: 'DRAFT',
+              minimumUserAge: 18,
+              legalEntityType: 'NOT_CONFIGURED',
+              taxStatus: 'NOT_CONFIGURED',
+            }),
           },
         },
         {
@@ -102,7 +144,16 @@ describe('App', () => {
           provide: PaymentService,
           useValue: {
             wallet,
-            pricing: () => of({plans: []}),
+            catalog: () => of({plans: []}),
+            checkoutReadiness: () => of({
+              checkoutAvailable: false,
+              code: 'PAYMENTS_DISABLED',
+              mode: 'DISABLED',
+              paymentServiceCode: 'PAYMENTS_DISABLED',
+              providerCode: 'NOT_CHECKED',
+            }),
+            transactions: () => of({transactions: []}),
+            orderStatus,
           },
         },
       ],
@@ -113,15 +164,15 @@ describe('App', () => {
     TestBed.inject(MatDialog).closeAll();
   });
 
-  it('refreshes and displays AI Credit when the secure session is restored', async () => {
+  it('refreshes and displays document credits when the secure session is restored', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(wallet).toHaveBeenCalledWith('user-1', '');
-    expect(fixture.componentInstance.aiTokenBalance()).toBe(70000);
-    expect(fixture.nativeElement.textContent).toContain('AI Credit: £5.59');
+    expect(wallet).toHaveBeenCalledWith();
+    expect(fixture.componentInstance.documentCreditBalance()).toBe(7);
+    expect(fixture.nativeElement.textContent).toContain('Documents: 7 credits');
   });
 
   it('renders the canonical product workspace with honest capability states', async () => {
@@ -136,9 +187,9 @@ describe('App', () => {
     expect(text).toContain('Applications');
     expect(text).toContain('Documents');
     expect(text).toContain('Reporting & job-search evidence');
-    expect(text).toContain('AI Credit');
+    expect(text).toContain('Document credits');
     expect(text).toContain('Fixture-backed');
-    expect(text).toContain('Not enabled for this beta');
+    expect(fixture.componentInstance.commuteRoutingMode()).toBe('DISTANCE_ONLY');
     expect(searchJobs).toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-evidence"]')).toBeNull();
     expect(fixture.nativeElement.querySelectorAll('.workspace-tab')).toHaveLength(3);
@@ -200,15 +251,112 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Privacy Policy');
-    expect(fixture.nativeElement.textContent).toContain('Google Maps Platform');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Google route and commute-time calculations are not enabled',
+    );
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-search"]')).toBeNull();
 
     window.history.pushState({}, '', '/terms');
     window.dispatchEvent(new PopStateEvent('popstate'));
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Terms of Use');
-    expect(fixture.nativeElement.textContent).toContain('Commute information is an estimate');
+    expect(fixture.nativeElement.textContent).toContain('One document credit covers one successfully delivered tailored CV');
     window.history.pushState({}, '', '/dashboard');
+  });
+
+  it('trusts only the owner-scoped order record on a checkout return and strips the query', async () => {
+    window.history.replaceState({}, '', `/payment/success?order_id=${orderId}`);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(orderStatus).toHaveBeenCalledWith(orderId);
+    expect(window.location.search).toBe('');
+    expect(fixture.componentInstance.paymentOrderState()).toBe('fulfilled');
+    expect(fixture.nativeElement.textContent).toContain('Payment confirmed');
+    expect(fixture.nativeElement.textContent).toContain(
+      '15 document credits were added after secure server confirmation',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain('Stripe payment received');
+  });
+
+  it('can reconcile a late fulfilled webhook after a cancel return', async () => {
+    vi.useFakeTimers();
+    orderStatus
+      .mockReturnValueOnce(of({
+        ...fulfilledOrder,
+        status: 'CHECKOUT_OPEN',
+        creditsAdded: false,
+        messageCode: 'PAYMENT_PENDING',
+      }))
+      .mockReturnValueOnce(of(fulfilledOrder));
+    window.history.replaceState({}, '', `/payment/cancel?order_id=${orderId}`);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.paymentOrderState()).toBe('checking');
+    await vi.advanceTimersByTimeAsync(1_000);
+    fixture.detectChanges();
+
+    expect(orderStatus).toHaveBeenCalledTimes(2);
+    expect(fixture.componentInstance.paymentOrderState()).toBe('fulfilled');
+    expect(fixture.nativeElement.textContent).toContain('Payment confirmed');
+    fixture.destroy();
+    vi.useRealTimers();
+  });
+
+  it('does not call payment status for a malformed return identifier', () => {
+    window.history.replaceState({}, '', '/payment/success?order_id=not-an-order&price=799');
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    expect(orderStatus).not.toHaveBeenCalled();
+    expect(window.location.search).toBe('');
+    expect(fixture.componentInstance.paymentOrderState()).toBe('invalid');
+    expect(fixture.nativeElement.textContent).toContain(
+      'No payment or document-credit outcome can be inferred',
+    );
+  });
+
+  it('does not describe credits as added for an unrecognised server pricing record', async () => {
+    orderStatus.mockReturnValue(of({
+      ...fulfilledOrder,
+      pricingPlanId: 'unexpected-plan',
+      documentCredits: 99,
+      promotionBonusDocumentCredits: 0,
+      totalGrantedDocumentCredits: 99,
+      priceMinor: 1,
+    }));
+    window.history.replaceState({}, '', `/payment/success?order_id=${orderId}`);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.paymentOrderState()).toBe('unavailable');
+    expect(fixture.nativeElement.textContent).toContain(
+      'No payment or document-credit outcome can be inferred',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain('credits were added');
+  });
+
+  it('does not trust a fulfilled order without matching reviewed seller and tax provenance', async () => {
+    orderStatus.mockReturnValue(of({
+      ...fulfilledOrder,
+      taxStatus: 'VAT_REGISTERED',
+      taxTreatment: 'VAT_NOT_CHARGED',
+      legalEntityType: 'NOT_CONFIGURED',
+      legalEntityConfigurationVersion: '',
+    }));
+    window.history.replaceState({}, '', `/payment/success?order_id=${orderId}`);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.paymentOrderState()).toBe('unavailable');
+    expect(fixture.nativeElement.textContent).not.toContain('credits were added');
   });
 
   it('enables the documents workspace for validated real OpenAI generation', async () => {

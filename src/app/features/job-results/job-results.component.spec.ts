@@ -1166,6 +1166,9 @@ describe('JobResultsComponent', () => {
     expect(fixture.componentInstance.canContinueDocumentChoice()).toBe(false);
     expect(fixture.nativeElement.textContent).toContain('Application saved');
     expect(fixture.nativeElement.textContent).toContain('Uploading is free');
+    expect(fixture.nativeElement.textContent).toContain(
+      '1 document credit after successful delivery; no charge if delivery fails.',
+    );
 
     fixture.componentInstance.chooseDocumentAction('CV', 'GENERATE');
     fixture.componentInstance.chooseDocumentAction('COVER_LETTER', 'OMIT');
@@ -1175,7 +1178,7 @@ describe('JobResultsComponent', () => {
 
     expect(fixture.componentInstance.evidenceSelectionJob()).toMatchObject({applicationId});
     expect(fixture.componentInstance.activeEvidencePurposes()).toEqual(['CV']);
-    expect(fixture.nativeElement.textContent).toContain('Generate CV (1 AI Credit)');
+    expect(fixture.nativeElement.textContent).toContain('Generate CV (1 document credit if delivered)');
     expect(fixture.nativeElement.textContent).not.toContain('Cover letter evidence');
   });
 
@@ -1203,7 +1206,7 @@ describe('JobResultsComponent', () => {
     expect(fixture.componentInstance.canContinueDocumentChoice()).toBe(false);
   });
 
-  it('supports an upload-only Add path without generation or AI Credit use', () => {
+  it('supports an upload-only Add path without document-credit use', () => {
     const applicationId = '10000000-0000-4000-8000-000000000002';
     const documentId = '20000000-0000-4000-8000-000000000002';
     currentResponse = singleRoleResponse([job('Upload-only role', {
@@ -2013,7 +2016,7 @@ describe('JobResultsComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.generationMessages()[selectedJob.id!])
-      .toBe('CV and Cover letter ready. CV recovered with an evidence-based fallback — no AI Credit charged.');
+      .toBe('CV and Cover letter ready. CV recovered with an evidence-based fallback — no document credit used.');
     expect(fixture.componentInstance.generationMessages()[selectedJob.id!])
       .not.toContain('generated successfully');
   });
@@ -2479,7 +2482,7 @@ describe('JobResultsComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.generationErrors()[selectedJob.id!])
-      .toBe('Insufficient AI Credit for this job. No OpenAI request was made.');
+      .toBe('There are not enough document credits for this job. No generation request was made.');
   });
 
   function createFixture(

@@ -15,7 +15,12 @@ import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {FormsModule} from '@angular/forms';
 import {MatIconModule} from '@angular/material/icon';
 import {debounceTime, distinctUntilChanged, firstValueFrom, Subject, switchMap} from 'rxjs';
-import type {GatewayResponse, ProfilePreferencesUpdate, UserProfile} from '../../api';
+import type {
+  GatewayResponse,
+  ProfilePreferencesUpdate,
+  RegistrationLegalRequirements,
+  UserProfile,
+} from '../../api';
 import {
   AuthenticationService,
   ProfileService,
@@ -24,7 +29,13 @@ import {
 import {normaliseProfile} from '../../models/user-profile.model';
 import {BrowserSessionService} from '../../services/browser-session.service';
 import {
+  DRAFT_LEGAL_CONFIGURATION,
+  isReviewedLegalConfiguration,
+  type PublicLegalConfiguration,
+} from '../../services/runtime-configuration.service';
+import {
   idleLocationLookup,
+  locationFailureState,
   LocationService,
   type CanonicalLocation,
   type LocationLookupState,
@@ -57,6 +68,7 @@ export class LandingAuthComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly initialMode = input<'create' | 'signin'>('create');
+  readonly legalConfiguration = input<PublicLegalConfiguration>(DRAFT_LEGAL_CONFIGURATION);
   readonly onboarded = output<{
     profile: UserProfile;
     id?: string;
@@ -68,6 +80,9 @@ export class LandingAuthComponent implements OnInit {
   readonly errorMessage = signal<string | null>(null);
   readonly isLoading = signal(false);
   readonly validationAttempted = signal(false);
+  readonly registrationLegalAcknowledged = signal(false);
+  readonly registrationRequirements = signal<RegistrationLegalRequirements | null>(null);
+  readonly registrationRequirementsState = signal<'idle' | 'checking' | 'ready' | 'unavailable'>('idle');
 
   readonly formName = signal('');
   readonly formEmail = signal('');
@@ -89,6 +104,14 @@ export class LandingAuthComponent implements OnInit {
     email: string;
   } | null>(null);
   readonly setupProgress = computed(() => `${this.setupStep() ?? 1} of 3`);
+  readonly registrationLegalReady = computed(() => {
+    const requirements = this.registrationRequirements();
+    const configuration = this.legalConfiguration();
+    return requirements !== null
+      && this.registrationRequirementsAreSafe(requirements)
+      && isReviewedLegalConfiguration(configuration)
+      && configuration.version === requirements.legalVersion;
+  });
   private readonly setupLocationQueries = new Subject<string>();
 
   readonly workplaceOptions = [
@@ -111,13 +134,20 @@ export class LandingAuthComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    if (this.initialMode() === 'signin') this.mode.set('signin');
+    if (this.initialMode() === 'signin') {
+      this.mode.set('signin');
+      return;
+    }
+    this.loadRegistrationRequirements();
   }
 
   setMode(mode: 'create' | 'signin'): void {
     this.mode.set(mode);
     this.errorMessage.set(null);
     this.validationAttempted.set(false);
+    if (mode === 'create' && this.registrationRequirementsState() === 'idle') {
+      this.loadRegistrationRequirements();
+    }
   }
 
   onModeTabKeydown(event: KeyboardEvent): void {
@@ -132,6 +162,19 @@ export class LandingAuthComponent implements OnInit {
 
   async completeRegistration(): Promise<void> {
     if (this.isLoading()) return;
+    if (!this.registrationLegalReady()) {
+      this.showError(
+        'Account creation is temporarily unavailable because the current legal requirements could not be verified. You can still sign in.',
+      );
+      return;
+    }
+    if (!this.registrationLegalAcknowledged()) {
+      this.validationAttempted.set(true);
+      this.showError(
+        'Confirm the current Terms of Use, Privacy Notice and UK 18+ eligibility before creating your account.',
+      );
+      return;
+    }
     if (this.registrationFieldError('name')
       || this.registrationFieldError('email')
       || this.registrationFieldError('password')) {
@@ -149,6 +192,10 @@ export class LandingAuthComponent implements OnInit {
         name: this.formName().trim(),
         email: this.formEmail().trim().toLowerCase(),
         password: this.formPassword(),
+        termsAccepted: true,
+        privacyNoticeAcknowledged: true,
+        ageEligibilityConfirmed: true,
+        legalVersion: this.registrationRequirements()!.legalVersion,
       }));
       if (response.success && response.user) {
         this.browserSession.invalidateCsrf();
@@ -157,10 +204,45 @@ export class LandingAuthComponent implements OnInit {
         this.showError(response.message || 'Registration could not be completed.');
       }
     } catch (error: unknown) {
-      this.showError(this.httpErrorMessage(error, 'Unable to contact the registration service.'));
+      const code = this.httpErrorCode(error);
+      if (code === 'LEGAL_VERSION_OUTDATED') {
+        this.registrationLegalAcknowledged.set(false);
+        this.loadRegistrationRequirements();
+        this.showError(
+          'The legal documents changed before registration completed. Review the current version and confirm again.',
+        );
+      } else if (code === 'LEGAL_ACCEPTANCE_REQUIRED') {
+        this.registrationLegalAcknowledged.set(false);
+        this.showError(
+          'Registration requires a fresh confirmation of the current Terms of Use, Privacy Notice and UK 18+ eligibility.',
+        );
+      } else {
+        this.showError(this.httpErrorMessage(error, 'Unable to contact the registration service.'));
+      }
     } finally {
       this.isLoading.set(false);
     }
+  }
+
+  loadRegistrationRequirements(): void {
+    this.registrationRequirementsState.set('checking');
+    this.registrationRequirements.set(null);
+    this.registrationLegalAcknowledged.set(false);
+    this.authenticationApi.getRegistrationLegalRequirements(
+      'body',
+      false,
+      {transferCache: false},
+    ).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: requirements => {
+        if (!this.registrationRequirementsAreSafe(requirements)) {
+          this.registrationRequirementsState.set('unavailable');
+          return;
+        }
+        this.registrationRequirements.set(requirements);
+        this.registrationRequirementsState.set('ready');
+      },
+      error: () => this.registrationRequirementsState.set('unavailable'),
+    });
   }
 
   async submitLogin(): Promise<void> {
@@ -295,11 +377,7 @@ export class LandingAuthComponent implements OnInit {
         this.setupLocationSuggestions.set([]);
         this.setupLocationLookup.set({status: 'idle', locations: [], message: 'Location confirmed.'});
       },
-      error: () => this.setupLocationLookup.set({
-        status: 'unavailable',
-        locations: [],
-        message: 'Location confirmation is temporarily unavailable. Try again.',
-      }),
+      error: error => this.setupLocationLookup.set(locationFailureState(error)),
     });
   }
 
@@ -361,6 +439,44 @@ export class LandingAuthComponent implements OnInit {
       if (typeof message === 'string' && message.trim()) return message;
     }
     return fallback;
+  }
+
+  private httpErrorCode(error: unknown): string | undefined {
+    if (typeof error !== 'object' || error === null || !('error' in error)) return undefined;
+    const body = (error as {error?: unknown}).error;
+    if (typeof body === 'string') return body;
+    if (typeof body !== 'object' || body === null) return undefined;
+    const directCode = (body as {code?: unknown}).code;
+    if (typeof directCode === 'string') return directCode;
+    const nestedError = (body as {error?: unknown}).error;
+    if (typeof nestedError === 'string') return nestedError;
+    if (typeof nestedError !== 'object' || nestedError === null) return undefined;
+    const nestedCode = (nestedError as {code?: unknown}).code;
+    return typeof nestedCode === 'string' ? nestedCode : undefined;
+  }
+
+  private registrationRequirementsAreSafe(
+    requirements: RegistrationLegalRequirements,
+  ): boolean {
+    return typeof requirements?.legalVersion === 'string'
+      && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(requirements.legalVersion)
+      && requirements.minimumAge === 18
+      && this.reviewedLegalUrl(requirements.termsUrl, '/terms')
+      && this.reviewedLegalUrl(requirements.privacyNoticeUrl, '/privacy');
+  }
+
+  private reviewedLegalUrl(value: string, expectedPath: '/privacy' | '/terms'): boolean {
+    try {
+      const url = new URL(value);
+      return url.protocol === 'https:'
+        && url.username === ''
+        && url.password === ''
+        && url.pathname === expectedPath
+        && url.search === ''
+        && url.hash === '';
+    } catch {
+      return false;
+    }
   }
 
   private emitProfileFromResponse(response: GatewayResponse): void {

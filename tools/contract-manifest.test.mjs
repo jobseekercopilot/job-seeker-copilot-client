@@ -68,22 +68,30 @@ test('pins the reporting summary and evidence contract', async () => {
   assert.ok(contract.paths['/api/v1/reports/evidence.txt']);
 });
 
-test('pins the progressive-profile, professional-contact and Evidence Library UMG browser contract', async () => {
+test('pins the registration-consent, progressive-profile and Evidence Library UMG browser contract', async () => {
   const lock = await verifyContractManifest(rootDir);
   const umg = lock.contracts.find(({id}) => id === 'user-management-gateway');
   const contract = JSON.parse(await readFile(resolve(rootDir, umg.path), 'utf8'));
 
-  assert.equal(umg.version, '3.1.0');
-  assert.equal(contract.info.version, '3.1.0');
+  assert.equal(umg.version, '4.1.0');
+  assert.equal(contract.info.version, '4.1.0');
   assert.equal(
     umg.sourceCommit,
-    '457e0187d764e39a556675ee1cc4b2b6f7e16a43',
+    '90ad2721e39fe5d0896211c4bf235a62667e2bd1',
   );
   assert.equal(
     umg.sha256,
-    'd7185f653802dc303ade37e9ce7bc0cf2febc82e94eabd32b697612673a89703',
+    'dde3349e015f2cd7ef7bf9bc810681bebe98fca1ed1510005aa0b1a8b0e6d08e',
   );
   assert.equal(contract.components.schemas.User.properties.token, undefined);
+  assert.equal(
+    contract.components.schemas.PersonalDataExport.properties.payments.type,
+    'object',
+  );
+  assert.equal(
+    contract.components.schemas.PersonalDataExport.required.includes('payments'),
+    true,
+  );
   assert.equal(contract.components.securitySchemes.browserSession.in, 'cookie');
   assert.equal(contract.components.securitySchemes.browserRefresh.in, 'cookie');
   assert.equal(contract.paths['/api/auth/profile'].get.parameters, undefined);
@@ -116,6 +124,57 @@ test('pins the progressive-profile, professional-contact and Evidence Library UM
     maxLength: 128,
     minLength: 15,
   });
+  assert.deepEqual(contract.components.schemas.RegisterRequest.required, [
+    'ageEligibilityConfirmed',
+    'email',
+    'legalVersion',
+    'name',
+    'password',
+    'privacyNoticeAcknowledged',
+    'termsAccepted',
+  ]);
+  assert.equal(
+    contract.components.schemas.RegisterRequest.properties.termsAccepted.type,
+    'boolean',
+  );
+  assert.equal(
+    contract.components.schemas.RegisterRequest.properties.privacyNoticeAcknowledged.type,
+    'boolean',
+  );
+  assert.equal(
+    contract.components.schemas.RegisterRequest.properties.ageEligibilityConfirmed.type,
+    'boolean',
+  );
+  assert.deepEqual(contract.components.schemas.RegisterRequest.properties.legalVersion, {
+    type: 'string',
+    description: 'Exact legal version returned by registration requirements.',
+    maxLength: 64,
+    minLength: 1,
+    pattern: '[A-Za-z0-9][A-Za-z0-9._-]{0,63}',
+  });
+  const registrationRequirements =
+    contract.paths['/api/auth/registration-requirements'].get;
+  assert.equal(registrationRequirements.operationId, 'getRegistrationLegalRequirements');
+  assert.equal(
+    registrationRequirements.responses['200'].content['application/json'].schema.$ref,
+    '#/components/schemas/RegistrationLegalRequirements',
+  );
+  assert.deepEqual(
+    contract.components.schemas.RegistrationLegalRequirements.required,
+    ['legalVersion', 'minimumAge', 'privacyNoticeUrl', 'termsUrl'],
+  );
+  assert.deepEqual(
+    contract.components.schemas.RegistrationLegalRequirements.properties.minimumAge,
+    {type: 'integer', format: 'int32', maximum: 18, minimum: 18},
+  );
+  assert.equal(
+    contract.components.schemas.RegistrationLegalRequirements.properties.termsUrl.format,
+    'uri',
+  );
+  assert.equal(
+    contract.components.schemas.RegistrationLegalRequirements.properties.privacyNoticeUrl.format,
+    'uri',
+  );
   assert.deepEqual(contract.components.schemas.LoginRequest.properties.email, {
     type: 'string',
     format: 'email',
@@ -197,8 +256,32 @@ test('pins the progressive-profile, professional-contact and Evidence Library UM
     '/api/auth/profile',
     '/api/auth/profile/professional-contact',
     '/api/auth/refresh',
+    '/api/auth/registration-requirements',
     '/api/auth/register',
   ]);
+});
+
+test('pins the unsupported-postcode Location Gateway contract', async () => {
+  const lock = await verifyContractManifest(rootDir);
+  const location = lock.contracts.find(({id}) => id === 'location-gateway');
+  const contract = JSON.parse(
+    await readFile(resolve(rootDir, location.path), 'utf8'),
+  );
+
+  assert.equal(location.version, '1.1.0');
+  assert.equal(
+    location.sourceCommit,
+    '777ec7e8885fcb07368e05ad2543181e4ef7a891',
+  );
+  assert.equal(
+    location.sha256,
+    '30d71d6b2508c7cbd452b522c30c26bfa7a571e1f1ebcda979008422db469cfc',
+  );
+  assert.equal(contract.info.version, '1.1.0');
+  assert.equal(
+    contract.paths['/api/postcodes/{postcode}'].get.responses['422'].description,
+    'Postcode area is outside approved coverage',
+  );
 });
 
 test('pins the session-derived Job Finder search, saved-job and provenance contract', async () => {
@@ -642,15 +725,15 @@ test('pins durable generation, atomic selection and exact lifecycle contracts', 
     '/api/v1/document-generation/document-versions/{documentId}'
   ].delete;
 
-  assert.equal(gateway.version, '2.7.0');
+  assert.equal(gateway.version, '2.8.1');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/document-generation-gateway');
-  assert.equal(gateway.sourceCommit, 'ff73599f84bc112dee83e19dbf333a6644002706');
+  assert.equal(gateway.sourceCommit, 'cd9b71a3d4dbfbe41d6784f3eeeb7b1b113f5218');
   assert.equal(
     gateway.sha256,
-    '2925dff83d8814ec4f3c3117c7e9547cf0717adae37b5ab602fda58d7a8ddb71',
+    '864ba3c36b2ba4bcd1749edc597ed903a21e7dfa515bb2809d3bc9b9cf878f42',
   );
   assert.equal(gateway.output, 'src/app/api/document-generation-gateway');
-  assert.equal(contract.info.version, '2.7.0');
+  assert.equal(contract.info.version, '2.8.1');
   assert.equal(start.operationId, 'startOperation');
   assert.equal(start.requestBody.required, true);
   assert.equal(

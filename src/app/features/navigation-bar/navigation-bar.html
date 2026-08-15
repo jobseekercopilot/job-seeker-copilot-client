@@ -23,13 +23,13 @@
 
     <!-- Quick Actions / User stats -->
     <div id="header-stats" class="flex items-center gap-3 relative">
-      @if (aiTokenBalance() !== null) {
+      @if (documentCreditBalance() !== null) {
         <div class="token-menu-widget relative hidden sm:block">
           <button type="button"
                   class="token-balance-pill flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-extrabold"
                   (click)="toggleTokenDropdown()"
                   [attr.aria-expanded]="tokenDropdownOpen()">
-            AI Credit: {{ formatCredit(aiTokenBalance()) }}
+            Documents: {{ formatCredits(documentCreditBalance()) }}
             <mat-icon class="text-[14px] w-3.5 h-3.5 leading-none">keyboard_arrow_down</mat-icon>
           </button>
 
@@ -37,19 +37,18 @@
             <button type="button"
                     class="fixed inset-0 z-40 bg-transparent w-full h-full cursor-default focus:outline-none"
                     (click)="closeTokenDropdown()">
-              <span class="sr-only">Close AI Credit menu</span>
+              <span class="sr-only">Close document-credit menu</span>
             </button>
 
             <div class="token-dropdown absolute right-0 mt-2.5 w-64 rounded-2xl shadow-lg z-50 py-3.5 px-4 text-left animate-fade-in origin-top-right">
               <div class="token-dropdown-header">
-                <span>AI Credit</span>
-                <strong>{{ formatCredit(aiTokenBalance()) }}</strong>
+                <span>Document credits</span>
+                <strong>{{ formatCredits(documentCreditBalance()) }}</strong>
               </div>
-              <p>Available: {{ formatCredit(aiTokenBalance()) }}</p>
-              <p class="token-equivalent">≈ {{ formatTokens(aiTokenBalance()) }} AI tokens</p>
+              <p>One successfully delivered CV or cover letter uses one credit.</p>
               <div class="token-dropdown-actions">
-                <a class="token-primary-action" href="/payment" (click)="closeTokenDropdown()">Buy AI Credit</a>
-                <a class="token-secondary-action" href="/payment/history" (click)="closeTokenDropdown()">View spending log</a>
+                <a class="token-primary-action" href="/payment" (click)="closeTokenDropdown()">View credit packs</a>
+                <a class="token-secondary-action" href="/payment/history" (click)="closeTokenDropdown()">View credit history</a>
                 <button type="button" class="token-secondary-action" (click)="refreshBalance()">Refresh balance</button>
               </div>
             </div>

@@ -3,7 +3,7 @@ import {provideHttpClient} from '@angular/common/http';
 import {HttpTestingController, provideHttpClientTesting} from '@angular/common/http/testing';
 import {firstValueFrom, toArray} from 'rxjs';
 import {LocationService as GeneratedLocationService} from '../api/location';
-import {idleLocationLookup, LocationService} from './location.service';
+import {idleLocationLookup, locationFailureState, LocationService} from './location.service';
 
 describe('LocationService lookup states', () => {
   const searchLocations = vi.fn();
@@ -83,6 +83,7 @@ describe('LocationService lookup states', () => {
   it.each([
     [400, 'invalid', 'Enter a valid UK location or postcode.'],
     [404, 'empty', 'No matching locations found.'],
+    [422, 'unsupported', 'This postcode area is not currently supported.'],
     [429, 'rate-limited', 'Too many location searches. Try again shortly.'],
     [0, 'unavailable', 'Location search is temporarily unavailable. Try again.'],
     [503, 'unavailable', 'Location search is temporarily unavailable. Try again.'],
@@ -94,5 +95,19 @@ describe('LocationService lookup states', () => {
 
     expect(states.at(-1)).toEqual({status: expectedStatus, locations: [], message});
     expect(JSON.stringify(states)).not.toContain('private provider');
+  });
+
+  it('maps an unsupported resolution response without echoing the postcode', () => {
+    const state = locationFailureState({
+      status: 422,
+      error: {message: 'BT1 1AA is outside approved coverage'},
+    });
+
+    expect(state).toEqual({
+      status: 'unsupported',
+      locations: [],
+      message: 'This postcode area is not currently supported.',
+    });
+    expect(JSON.stringify(state)).not.toContain('BT1 1AA');
   });
 });

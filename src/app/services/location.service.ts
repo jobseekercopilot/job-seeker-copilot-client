@@ -57,6 +57,7 @@ export type LocationLookupStatus =
   | 'results'
   | 'empty'
   | 'invalid'
+  | 'unsupported'
   | 'rate-limited'
   | 'unavailable';
 
@@ -90,6 +91,14 @@ function failureState(statusCode: number | undefined): LocationLookupState {
     };
   }
 
+  if (statusCode === 422) {
+    return {
+      status: 'unsupported',
+      locations: [],
+      message: 'This postcode area is not currently supported.',
+    };
+  }
+
   if (statusCode === 429) {
     return {
       status: 'rate-limited',
@@ -109,6 +118,10 @@ function errorStatus(error: unknown): number | undefined {
   if (!error || typeof error !== 'object' || !('status' in error)) return undefined;
   const status = Number(error.status);
   return Number.isInteger(status) ? status : undefined;
+}
+
+export function locationFailureState(error: unknown): LocationLookupState {
+  return failureState(errorStatus(error));
 }
 
 @Injectable({
@@ -170,7 +183,7 @@ export class LocationService {
               message: 'No matching locations found.',
             };
       }),
-      catchError(error => of(failureState(errorStatus(error)))),
+      catchError(error => of(locationFailureState(error))),
       startWith({
         status: 'loading' as const,
         locations: [],

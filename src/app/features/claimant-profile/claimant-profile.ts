@@ -37,6 +37,7 @@ import {normaliseProfile} from '../../models/user-profile.model';
 import {BrowserSessionService} from '../../services/browser-session.service';
 import {
   idleLocationLookup,
+  locationFailureState,
   LocationService,
   type LocationLookupState,
   type LocationOption,
@@ -98,6 +99,7 @@ export class ClaimantProfileComponent implements OnInit {
   readonly experience = input('');
   readonly aspirations = input('');
   readonly workPrefs = input('');
+  readonly commuteRoutingAvailable = input(false);
 
   readonly profileSaved = output<{profile: UserProfile; apiResult?: GatewayResponse; apiError?: unknown}>();
   readonly findJobsRequested = output<void>();
@@ -219,7 +221,8 @@ export class ClaimantProfileComponent implements OnInit {
 
     effect(() => {
       const profile = normaliseProfile(this.profile());
-      if (!this.editingSection()) this.populate(profile);
+      const commuteRoutingAvailable = this.commuteRoutingAvailable();
+      if (!this.editingSection()) this.populate(profile, commuteRoutingAvailable);
     });
   }
 
@@ -266,14 +269,14 @@ export class ClaimantProfileComponent implements OnInit {
   }
 
   startEditing(section: ProfileSection): void {
-    this.populate(normaliseProfile(this.profile()));
+    this.populate(normaliseProfile(this.profile()), this.commuteRoutingAvailable());
     this.saveError.set(null);
     this.editingSection.set(section);
   }
 
   cancelEditing(): void {
     if (this.isSaving()) return;
-    this.populate(normaliseProfile(this.profile()));
+    this.populate(normaliseProfile(this.profile()), this.commuteRoutingAvailable());
     this.saveError.set(null);
     this.editingSection.set(null);
   }
@@ -367,11 +370,7 @@ export class ClaimantProfileComponent implements OnInit {
           }
           this.applyCanonicalLocation(response.location);
         },
-        error: () => this.locationLookup.set({
-          status: 'unavailable',
-          locations: [],
-          message: 'Location confirmation is temporarily unavailable. Try again.',
-        }),
+        error: error => this.locationLookup.set(locationFailureState(error)),
       });
       return;
     }
@@ -444,7 +443,7 @@ export class ClaimantProfileComponent implements OnInit {
       right.revisionNumber - left.revisionNumber)[0];
   }
 
-  private populate(profile: UserProfile): void {
+  private populate(profile: UserProfile, commuteRoutingAvailable: boolean): void {
     this.localSkills.set(profile.skills ?? []);
     this.localTargetRoles.set(profile.aspirations?.targetRoles ?? []);
     const preferences = profile.workPreferences as ExtendedWorkPreferences | undefined;
@@ -466,9 +465,15 @@ export class ClaimantProfileComponent implements OnInit {
     this.localPostcodeSource.set(location?.postcodeSource);
     this.localCoordinatesSource.set(location?.coordinatesSource);
     this.localCommuteRange.set(profile.workPreferences?.commuteRange);
-    this.localCommuteTravelModes.set(Array.from(preferences?.commuteTravelModes ?? []));
-    this.localMaximumDrivingMinutes.set(preferences?.maximumDrivingMinutes);
-    this.localMaximumTransitMinutes.set(preferences?.maximumTransitMinutes);
+    this.localCommuteTravelModes.set(
+      commuteRoutingAvailable ? Array.from(preferences?.commuteTravelModes ?? []) : [],
+    );
+    this.localMaximumDrivingMinutes.set(
+      commuteRoutingAvailable ? preferences?.maximumDrivingMinutes : undefined,
+    );
+    this.localMaximumTransitMinutes.set(
+      commuteRoutingAvailable ? preferences?.maximumTransitMinutes : undefined,
+    );
     this.localEmploymentTypes.set(Array.from(profile.workPreferences?.employmentTypes ?? []));
     this.localWorkingPatterns.set(Array.from(profile.workPreferences?.workingPatterns ?? []));
     this.localWorkplaceArrangements.set(Array.from(
@@ -560,12 +565,16 @@ export class ClaimantProfileComponent implements OnInit {
         },
       } : {}),
       ...(this.localCommuteRange() == null ? {} : {commuteRange: this.localCommuteRange()}),
-      commuteTravelModes: this.localCommuteTravelModes() as unknown as Set<'DRIVE' | 'TRANSIT'>,
-      ...(this.localCommuteTravelModes().includes('DRIVE')
+      commuteTravelModes: (this.commuteRoutingAvailable()
+        ? this.localCommuteTravelModes()
+        : []) as unknown as Set<'DRIVE' | 'TRANSIT'>,
+      ...(this.commuteRoutingAvailable()
+        && this.localCommuteTravelModes().includes('DRIVE')
         && this.localMaximumDrivingMinutes() != null
         ? {maximumDrivingMinutes: this.localMaximumDrivingMinutes()}
         : {}),
-      ...(this.localCommuteTravelModes().includes('TRANSIT')
+      ...(this.commuteRoutingAvailable()
+        && this.localCommuteTravelModes().includes('TRANSIT')
         && this.localMaximumTransitMinutes() != null
         ? {maximumTransitMinutes: this.localMaximumTransitMinutes()}
         : {}),

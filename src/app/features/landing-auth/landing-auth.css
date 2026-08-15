@@ -31,6 +31,81 @@
   width: 3.25rem;
 }
 
+.registration-legal-status,
+.registration-legal-unavailable,
+.registration-legal-acceptance {
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  padding: 0.8rem;
+}
+
+.registration-legal-status {
+  background: #f8fafc;
+  margin: 0;
+}
+
+.registration-legal-unavailable {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #9a3412;
+}
+
+.registration-legal-unavailable p,
+.registration-legal-acceptance p {
+  margin: 0.35rem 0 0;
+}
+
+.registration-legal-unavailable button {
+  background: #fff;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-control);
+  color: inherit;
+  font-weight: 800;
+  margin-top: 0.6rem;
+}
+
+.registration-legal-acceptance {
+  background: #f8fafc;
+  margin: 0;
+}
+
+.registration-legal-acceptance legend {
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0 0.25rem;
+}
+
+.registration-legal-acceptance a {
+  color: var(--color-primary);
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 0.15rem;
+}
+
+.registration-legal-acceptance label {
+  align-items: flex-start;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  font-weight: 700;
+  gap: 0.6rem;
+  margin-top: 0.7rem;
+}
+
+.registration-legal-acceptance input {
+  flex: 0 0 auto;
+  margin-top: 0.2rem;
+}
+
+.registration-legal-acceptance .registration-legal-error {
+  color: #be123c;
+  font-weight: 700;
+}
+
 .setup-header {
   align-items: flex-start;
   display: flex;

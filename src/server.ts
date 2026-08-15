@@ -22,8 +22,10 @@ import {registerDocumentGenerationRoutes} from './server/document-generation-pro
 import {registerReportingRoutes} from './server/reporting-proxy';
 import {registerPaymentRoutes} from './server/payment-proxy';
 import {
+  commuteRoutingMode,
   documentGenerationMode,
   jobSearchProviderMode,
+  publicLegalConfiguration,
 } from './server/runtime-configuration';
 import {
   setAppShellCacheHeaders,
@@ -69,8 +71,37 @@ app.get('/api/runtime/document-generation-mode', (_req, res) => {
   res.status(200).json({mode: documentGenerationMode()});
 });
 
+app.get('/api/runtime/commute-routing-mode', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({mode: commuteRoutingMode()});
+});
+
+app.get('/api/runtime/legal-configuration', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json(publicLegalConfiguration());
+});
+
 app.get('/api/auth/csrf', async (req, res) => {
   await proxyUserManagementRequest('/api/auth/csrf', 'GET', req, res, true);
+});
+
+app.get('/api/auth/registration-requirements', async (req, res) => {
+  if (Object.keys(req.query).length > 0) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(400).json({
+      error: 'INVALID_REQUEST',
+      message: 'Registration requirements request is invalid',
+    });
+    return;
+  }
+  await proxyUserManagementRequest(
+    '/api/auth/registration-requirements',
+    'GET',
+    req,
+    res,
+    false,
+    false,
+  );
 });
 
 app.post('/api/auth/register', async (req, res) => {
@@ -156,13 +187,14 @@ async function proxyUserManagementRequest(
   req: express.Request,
   res: express.Response,
   forwardSessionCookies = false,
+  forwardRequestCredentials = true,
 ): Promise<void> {
   try {
     const result = await callUserManagement(
       USER_MANAGEMENT_GATEWAY_URL,
       path,
       method,
-      req.headers,
+      forwardRequestCredentials ? req.headers : {},
       req.body,
       bffConfig.downstreamTimeoutMs,
     );

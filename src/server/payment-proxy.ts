@@ -9,6 +9,8 @@ const MINIMUM_SERVICE_TOKEN_BYTES = 32;
 const MAXIMUM_OWNER_LENGTH = 128;
 const MAXIMUM_RESPONSE_BYTES = 1_048_576;
 const PRICING_PLAN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
+const ORDER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export class PaymentAuthenticationError extends Error {
   constructor() {
@@ -34,6 +36,7 @@ export interface PaymentProxyOptions {
   browserHeaders: BrowserHeaders;
   body: unknown;
   fetchImplementation?: typeof fetch;
+  idempotencyKey?: string;
   method: 'GET' | 'POST';
   path: string;
   paymentGatewayOrigin: string;
@@ -119,6 +122,7 @@ export async function callTrustedPaymentGateway(
     'X-Payment-Owner': owner,
   };
   if (hasBody) headers['Content-Type'] = 'application/json';
+  if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
 
   const {body, response} = await fetchTextWithTimeout(
     `${options.paymentGatewayOrigin}${options.path}`,
@@ -145,6 +149,7 @@ export async function callTrustedPaymentGateway(
     return {
       body: JSON.stringify({
         error: 'INVALID_DOWNSTREAM_RESPONSE',
+        code: 'INVALID_DOWNSTREAM_RESPONSE',
         message: 'Payment returned an invalid response',
       }),
       contentType: 'application/json',
@@ -160,7 +165,7 @@ export async function callTrustedPaymentGateway(
 }
 
 export function paymentProxyFailure(error: unknown): {
-  body: {error: string; message: string};
+  body: {error: string; code: string; message: string};
   status: 401 | 503 | 504;
 } {
   if (error instanceof PaymentAuthenticationError) {
@@ -168,6 +173,7 @@ export function paymentProxyFailure(error: unknown): {
       status: 401,
       body: {
         error: 'AUTHENTICATION_REQUIRED',
+        code: 'AUTHENTICATION_REQUIRED',
         message: 'Valid browser session required',
       },
     };
@@ -177,6 +183,7 @@ export function paymentProxyFailure(error: unknown): {
       status: 504,
       body: {
         error: 'SERVICE_TIMEOUT',
+        code: 'SERVICE_TIMEOUT',
         message: 'Payment dependency timed out',
       },
     };
@@ -185,6 +192,7 @@ export function paymentProxyFailure(error: unknown): {
     status: 503,
     body: {
       error: 'SERVICE_UNAVAILABLE',
+      code: 'SERVICE_UNAVAILABLE',
       message: 'Payment service is currently unavailable',
     },
   };
@@ -199,22 +207,39 @@ function failure(
   response
     .status(status)
     .setHeader('Cache-Control', 'private, no-store')
-    .json({error, message});
+    .json({error, code: error, message});
 }
 
-function pricingPlanBody(value: unknown): {pricingPlanId: string} | undefined {
+function checkoutBody(value: unknown): {
+  billingCountry: 'GB';
+  cancellationRightLossAcknowledged: true;
+  immediateSupplyRequested: true;
+  pricingPlanId: string;
+} | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const keys = Object.keys(value);
-  const pricingPlanId = (value as Record<string, unknown>)['pricingPlanId'];
-  return keys.length === 1
-    && keys[0] === 'pricingPlanId'
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  const pricingPlanId = record['pricingPlanId'];
+  return keys.length === 4
+    && keys[0] === 'billingCountry'
+    && keys[1] === 'cancellationRightLossAcknowledged'
+    && keys[2] === 'immediateSupplyRequested'
+    && keys[3] === 'pricingPlanId'
     && typeof pricingPlanId === 'string'
     && PRICING_PLAN_ID.test(pricingPlanId)
-    ? {pricingPlanId}
+    && record['billingCountry'] === 'GB'
+    && record['cancellationRightLossAcknowledged'] === true
+    && record['immediateSupplyRequested'] === true
+    ? {
+      pricingPlanId,
+      billingCountry: 'GB',
+      immediateSupplyRequested: true,
+      cancellationRightLossAcknowledged: true,
+    }
     : undefined;
 }
 
-function transactionsPath(request: Request): string | undefined {
+function transactionsPath(request: Request, prefix = '/api/v2/payments'): string | undefined {
   if (Object.keys(request.query).some(key => key !== 'limit')) return undefined;
   const limit = request.query['limit'];
   if (Array.isArray(limit) || (limit !== undefined && typeof limit !== 'string')) {
@@ -222,7 +247,7 @@ function transactionsPath(request: Request): string | undefined {
   }
   const normalised = limit ?? '20';
   return /^[1-9]\d?$|^100$/.test(normalised)
-    ? `/api/v1/payment/transactions?limit=${normalised}`
+    ? `${prefix}/transactions?limit=${normalised}`
     : undefined;
 }
 
@@ -234,6 +259,7 @@ async function proxyPayment(
   path: string,
   body: unknown,
   fetchImplementation: typeof fetch,
+  idempotencyKey?: string,
 ): Promise<void> {
   if (method === 'POST') {
     const credentials = jobFinderCredentials(
@@ -258,6 +284,7 @@ async function proxyPayment(
       browserHeaders: request.headers,
       body,
       fetchImplementation,
+      idempotencyKey,
       method,
       path,
       paymentGatewayOrigin: config.paymentGatewayOrigin,
@@ -301,6 +328,29 @@ export function registerPaymentRoutes(
     );
   });
   app.get('/api/v1/payment/transactions', (request, response) => {
+    const path = transactionsPath(request, '/api/v1/payment');
+    if (!path) {
+      failure(response, 400, 'INVALID_REQUEST', 'Payment request is invalid');
+      return;
+    }
+    void proxyPayment(
+      request, response, config, 'GET', path, undefined, fetchImplementation,
+    );
+  });
+  for (const suffix of ['catalog', 'wallet', 'checkout-readiness']) {
+    const path = `/api/v2/payments/${suffix}`;
+    app.get(path, (request, response) => {
+      if (Object.keys(request.query).length > 0) {
+        failure(response, 400, 'INVALID_REQUEST', 'Payment request is invalid');
+        return;
+      }
+      void proxyPayment(
+        request, response, config, 'GET', path, undefined, fetchImplementation,
+      );
+    });
+  }
+
+  app.get('/api/v2/payments/transactions', (request, response) => {
     const path = transactionsPath(request);
     if (!path) {
       failure(response, 400, 'INVALID_REQUEST', 'Payment request is invalid');
@@ -310,19 +360,43 @@ export function registerPaymentRoutes(
       request, response, config, 'GET', path, undefined, fetchImplementation,
     );
   });
-  for (const path of [
-    '/api/v1/payment/demo-purchase',
-    '/api/v1/payment/checkout',
-  ]) {
-    app.post(path, (request, response) => {
-      const body = pricingPlanBody(request.body);
-      if (!body || Object.keys(request.query).length > 0) {
-        failure(response, 400, 'INVALID_REQUEST', 'Payment request is invalid');
-        return;
-      }
-      void proxyPayment(
-        request, response, config, 'POST', path, body, fetchImplementation,
-      );
-    });
-  }
+
+  app.get('/api/v2/payments/orders/:orderId/status', (request, response) => {
+    const orderId = request.params['orderId'];
+    if (!ORDER_ID.test(orderId) || Object.keys(request.query).length > 0) {
+      failure(response, 400, 'INVALID_REQUEST', 'Payment request is invalid');
+      return;
+    }
+    void proxyPayment(
+      request,
+      response,
+      config,
+      'GET',
+      `/api/v2/payments/orders/${orderId.toLowerCase()}/status`,
+      undefined,
+      fetchImplementation,
+    );
+  });
+
+  app.post('/api/v2/payments/checkout', (request, response) => {
+    const body = checkoutBody(request.body);
+    const header = request.header('Idempotency-Key')?.trim();
+    if (!body
+      || !header
+      || !IDEMPOTENCY_KEY.test(header)
+      || Object.keys(request.query).length > 0) {
+      failure(response, 400, 'INVALID_REQUEST', 'Payment request is invalid');
+      return;
+    }
+    void proxyPayment(
+      request,
+      response,
+      config,
+      'POST',
+      '/api/v2/payments/checkout',
+      body,
+      fetchImplementation,
+      header,
+    );
+  });
 }
