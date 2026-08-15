@@ -287,6 +287,8 @@ describe('App', () => {
       .mockReturnValueOnce(of({
         ...fulfilledOrder,
         status: 'CHECKOUT_OPEN',
+        totalGrantedDocumentCredits: 0,
+        fulfilledAt: null,
         creditsAdded: false,
         messageCode: 'PAYMENT_PENDING',
       }))
@@ -305,6 +307,99 @@ describe('App', () => {
     fixture.destroy();
     vi.useRealTimers();
   });
+
+  it.each([
+    ['PENDING_CHECKOUT', 'PAYMENT_PENDING'],
+    ['CHECKOUT_OPEN', 'PAYMENT_PENDING'],
+  ] as const)(
+    'keeps polling a canonical zero-grant %s order',
+    async (pendingStatus, messageCode) => {
+      vi.useFakeTimers();
+      orderStatus
+        .mockReturnValueOnce(of({
+          ...fulfilledOrder,
+          status: pendingStatus,
+          totalGrantedDocumentCredits: 0,
+          fulfilledAt: null,
+          creditsAdded: false,
+          messageCode,
+        }))
+        .mockReturnValueOnce(of(fulfilledOrder));
+      window.history.replaceState({}, '', `/payment/success?order_id=${orderId}`);
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.paymentOrderState()).toBe('checking');
+      await vi.advanceTimersByTimeAsync(1_000);
+      fixture.detectChanges();
+
+      expect(orderStatus).toHaveBeenCalledTimes(2);
+      expect(fixture.componentInstance.paymentOrderState()).toBe('fulfilled');
+      fixture.destroy();
+      vi.useRealTimers();
+    },
+  );
+
+  it.each([
+    ['CANCELLED', 'CHECKOUT_CANCELLED', 'cancelled', null],
+    ['EXPIRED', 'CHECKOUT_EXPIRED', 'expired', null],
+    ['REFUNDED', 'PAYMENT_REFUNDED', 'refunded', fulfilledOrder.fulfilledAt],
+    ['PARTIALLY_REFUNDED', 'PAYMENT_PARTIALLY_REFUNDED', 'refunded', fulfilledOrder.fulfilledAt],
+    ['DISPUTED', 'PAYMENT_DISPUTED', 'disputed', fulfilledOrder.fulfilledAt],
+    ['MANUAL_REVIEW', 'PAYMENT_REVIEW_REQUIRED', 'manual-review', null],
+  ] as const)(
+    'stops polling a canonical zero-grant %s order',
+    async (terminalStatus, messageCode, expectedState, fulfilledAt) => {
+      vi.useFakeTimers();
+      orderStatus.mockReturnValue(of({
+        ...fulfilledOrder,
+        status: terminalStatus,
+        totalGrantedDocumentCredits: 0,
+        fulfilledAt,
+        creditsAdded: false,
+        messageCode,
+      }));
+      window.history.replaceState({}, '', `/payment/cancel?order_id=${orderId}`);
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      await vi.advanceTimersByTimeAsync(30_000);
+      fixture.detectChanges();
+
+      expect(orderStatus).toHaveBeenCalledTimes(1);
+      expect(fixture.componentInstance.paymentOrderState()).toBe(expectedState);
+      fixture.destroy();
+      vi.useRealTimers();
+    },
+  );
+
+  it.each([
+    ['pending order that claims granted credits', 'CHECKOUT_OPEN', 15],
+    ['fulfilled order that reports zero granted credits', 'FULFILLED', 0],
+  ] as const)(
+    'rejects a malformed total: %s',
+    async (_case, responseStatus, totalGrantedDocumentCredits) => {
+      orderStatus.mockReturnValue(of({
+        ...fulfilledOrder,
+        status: responseStatus,
+        totalGrantedDocumentCredits,
+        fulfilledAt: responseStatus === 'FULFILLED'
+          ? fulfilledOrder.fulfilledAt
+          : null,
+        creditsAdded: responseStatus === 'FULFILLED',
+        messageCode: responseStatus === 'FULFILLED'
+          ? 'CREDITS_ADDED'
+          : 'PAYMENT_PENDING',
+      }));
+      window.history.replaceState({}, '', `/payment/success?order_id=${orderId}`);
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.paymentOrderState()).toBe('unavailable');
+      expect(fixture.nativeElement.textContent).not.toContain('credits were added');
+    },
+  );
 
   it('does not call payment status for a malformed return identifier', () => {
     window.history.replaceState({}, '', '/payment/success?order_id=not-an-order&price=799');

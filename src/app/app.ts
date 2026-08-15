@@ -502,6 +502,10 @@ export class App implements OnInit, OnDestroy {
     const fulfilledAtIsSafe = response.status !== 'FULFILLED'
       || (typeof response.fulfilledAt === 'string'
         && Number.isFinite(Date.parse(response.fulfilledAt)));
+    const grantedCreditsAreSafe = response.status === 'FULFILLED'
+      ? response.totalGrantedDocumentCredits
+        === response.documentCredits + response.promotionBonusDocumentCredits
+      : response.totalGrantedDocumentCredits === 0;
     return typeof response?.orderId === 'string'
       && response.orderId.toLowerCase() === expectedOrderId
       && PAYMENT_ORDER_STATUSES.has(response.status)
@@ -519,8 +523,7 @@ export class App implements OnInit, OnDestroy {
       && Number.isInteger(response.promotionBonusDocumentCredits)
       && promotionIsSafe
       && Number.isInteger(response.totalGrantedDocumentCredits)
-      && response.totalGrantedDocumentCredits
-        === response.documentCredits + response.promotionBonusDocumentCredits
+      && grantedCreditsAreSafe
       && Number.isInteger(response.priceMinor)
       && response.priceMinor === plan.priceMinor
       && Number.isFinite(Date.parse(response.createdAt))

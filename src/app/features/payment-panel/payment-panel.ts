@@ -20,12 +20,19 @@ interface ExpectedPlan {
   bonusCredits: number;
   name: string;
   priceMinor: number;
+  sortOrder: number;
 }
 
 const EXPECTED_PLANS: Readonly<Record<string, ExpectedPlan>> = {
-  starter: {credits: 10, applications: 5, bonusCredits: 5, name: 'Starter', priceMinor: 799},
-  active: {credits: 25, applications: 12, bonusCredits: 13, name: 'Active', priceMinor: 1699},
-  power: {credits: 60, applications: 30, bonusCredits: 30, name: 'Power', priceMinor: 3499},
+  starter: {
+    credits: 10, applications: 5, bonusCredits: 5, name: 'Starter', priceMinor: 799, sortOrder: 1,
+  },
+  active: {
+    credits: 25, applications: 12, bonusCredits: 13, name: 'Active', priceMinor: 1699, sortOrder: 2,
+  },
+  power: {
+    credits: 60, applications: 30, bonusCredits: 30, name: 'Power', priceMinor: 3499, sortOrder: 3,
+  },
 };
 
 const ORDER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -422,6 +429,13 @@ export class PaymentPanelComponent {
       && typeof plan === 'object'
       && plan.active === true);
     if (plans.length !== Object.keys(EXPECTED_PLANS).length) return false;
+    if (new Set(plans.map(plan => plan.id)).size !== plans.length) return false;
+    const promotionAvailable = catalog.promotion.enabled === true
+      && catalog.promotion.status === 'AVAILABLE';
+    const promotionStateIsSafe = promotionAvailable
+      || (catalog.promotion.enabled === true && catalog.promotion.status === 'EXHAUSTED')
+      || (catalog.promotion.enabled === false && catalog.promotion.status === 'DISABLED');
+    if (!promotionStateIsSafe) return false;
     return plans.every(plan => {
       const expected = EXPECTED_PLANS[plan.id];
       return expected !== undefined
@@ -432,9 +446,10 @@ export class PaymentPanelComponent {
         && plan.currency === 'GBP'
         && plan.documentCredits === expected.credits
         && plan.fullApplicationEquivalent === expected.applications
-        && plan.promotionBonusDocumentCredits === expected.bonusCredits
+        && plan.promotionBonusDocumentCredits
+          === (promotionAvailable ? expected.bonusCredits : 0)
         && plan.priceMinor === expected.priceMinor
-        && Number.isInteger(plan.sortOrder);
+        && plan.sortOrder === expected.sortOrder;
     });
   }
 

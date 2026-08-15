@@ -248,6 +248,116 @@ describe('PaymentPanelComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('.pricing-card')).toHaveLength(0);
   });
 
+  it.each([
+    ['DISABLED', false],
+    ['EXHAUSTED', true],
+  ] as const)(
+    'renders base packs without advertising an unavailable %s promotion',
+    async (status, enabled) => {
+      const unavailablePromotionCatalog = {
+        ...catalog,
+        promotion: {...catalog.promotion, enabled, status},
+        plans: catalog.plans.map(plan => ({
+          ...plan,
+          promotionBonusDocumentCredits: 0,
+        })),
+      };
+      await TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [PaymentPanelComponent],
+        providers: [{
+          provide: PaymentService,
+          useValue: {
+            ...paymentService,
+            catalog: () => of(unavailablePromotionCatalog),
+          },
+        }],
+      }).compileComponents();
+      const fixture = TestBed.createComponent(PaymentPanelComponent);
+      fixture.componentRef.setInput('userId', 'user-1');
+      fixture.componentRef.setInput('legalReady', true);
+      fixture.componentRef.setInput('legalVersion', checkoutResponse.consumerTermsVersion);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelectorAll('.pricing-card')).toHaveLength(3);
+      expect(fixture.nativeElement.textContent).not.toContain(
+        'Pricing is unavailable because the current catalogue could not be verified.',
+      );
+      expect(fixture.nativeElement.textContent).not.toContain(
+        'Founding customer offer currently available',
+      );
+    },
+  );
+
+  it.each([
+    ['available promotion with zero bonuses', true, 'AVAILABLE', 0],
+    ['disabled promotion with advertised bonuses', false, 'DISABLED', 5],
+    ['exhausted promotion with advertised bonuses', true, 'EXHAUSTED', 5],
+    ['available status while promotion is disabled', false, 'AVAILABLE', 5],
+    ['exhausted status while promotion is disabled', false, 'EXHAUSTED', 0],
+  ] as const)(
+    'fails closed for malformed catalogue state: %s',
+    async (_case, enabled, status, starterBonus) => {
+      const malformedCatalog = {
+        ...catalog,
+        promotion: {...catalog.promotion, enabled, status},
+        plans: catalog.plans.map(plan => ({
+          ...plan,
+          promotionBonusDocumentCredits: starterBonus === 0
+            ? 0
+            : plan.promotionBonusDocumentCredits,
+        })),
+      };
+      await TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [PaymentPanelComponent],
+        providers: [{
+          provide: PaymentService,
+          useValue: {...paymentService, catalog: () => of(malformedCatalog)},
+        }],
+      }).compileComponents();
+      const fixture = TestBed.createComponent(PaymentPanelComponent);
+      fixture.componentRef.setInput('userId', 'user-1');
+      fixture.componentRef.setInput('legalReady', true);
+      fixture.componentRef.setInput('legalVersion', checkoutResponse.consumerTermsVersion);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain(
+        'Pricing is unavailable because the current catalogue could not be verified.',
+      );
+      expect(fixture.nativeElement.querySelectorAll('.pricing-card')).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ['duplicate plan ids', catalog.plans.map((plan, index) => index === 1
+      ? {...plan, id: 'starter'}
+      : plan)],
+    ['non-canonical sort order', catalog.plans.map(plan => plan.id === 'power'
+      ? {...plan, sortOrder: 2}
+      : plan)],
+  ])('fails closed for %s in the server catalogue', async (_case, plans) => {
+    const malformedCatalog = {...catalog, plans};
+    await TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [PaymentPanelComponent],
+      providers: [{
+        provide: PaymentService,
+        useValue: {...paymentService, catalog: () => of(malformedCatalog)},
+      }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(PaymentPanelComponent);
+    fixture.componentRef.setInput('userId', 'user-1');
+    fixture.componentRef.setInput('legalReady', true);
+    fixture.componentRef.setInput('legalVersion', checkoutResponse.consumerTermsVersion);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain(
+      'Pricing is unavailable because the current catalogue could not be verified.',
+    );
+    expect(fixture.nativeElement.querySelectorAll('.pricing-card')).toHaveLength(0);
+  });
+
   it('fails closed when founding-offer availability is not canonical', async () => {
     const unsafeCatalog = {
       ...catalog,
@@ -667,7 +777,7 @@ describe('PaymentPanelComponent', () => {
 
     expect(redirectSpy).not.toHaveBeenCalled();
     expect(fixture.componentInstance.checkoutError()).toContain(
-      'pricing that could not be verified',
+      'terms or pricing details that could not be verified',
     );
   });
 
@@ -702,7 +812,7 @@ describe('PaymentPanelComponent', () => {
 
     expect(redirectSpy).not.toHaveBeenCalled();
     expect(fixture.componentInstance.checkoutError()).toContain(
-      'pricing that could not be verified',
+      'terms or pricing details that could not be verified',
     );
   });
 

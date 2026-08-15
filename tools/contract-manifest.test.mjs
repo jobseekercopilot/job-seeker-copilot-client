@@ -77,7 +77,7 @@ test('pins the registration-consent, progressive-profile and Evidence Library UM
   assert.equal(contract.info.version, '4.1.0');
   assert.equal(
     umg.sourceCommit,
-    '90ad2721e39fe5d0896211c4bf235a62667e2bd1',
+    '5dc8aa1e7afb9492a96d3dedde847c530b6209b0',
   );
   assert.equal(
     umg.sha256,
