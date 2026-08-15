@@ -1,4 +1,9 @@
-import {ChangeDetectionStrategy, Component, input} from '@angular/core';
+import {ChangeDetectionStrategy, Component, computed, input} from '@angular/core';
+import {
+  DRAFT_LEGAL_CONFIGURATION,
+  isReviewedLegalConfiguration,
+  PublicLegalConfiguration,
+} from '../../services/runtime-configuration.service';
 
 @Component({
   selector: 'app-legal-notice',
@@ -9,4 +14,6 @@ import {ChangeDetectionStrategy, Component, input} from '@angular/core';
 })
 export class LegalNoticeComponent {
   mode = input.required<'privacy' | 'terms'>();
+  configuration = input<PublicLegalConfiguration>(DRAFT_LEGAL_CONFIGURATION);
+  legalReady = computed(() => isReviewedLegalConfiguration(this.configuration()));
 }

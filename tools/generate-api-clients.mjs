@@ -4,6 +4,7 @@ import {dirname, resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {verifyContractManifest} from './contract-manifest.mjs';
+import {verifyManualBoundaryContracts} from './manual-boundary-contract.mjs';
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const generatorDir = resolve(rootDir, '.cache/openapi-generator');
@@ -41,6 +42,7 @@ async function verifiedGeneratorJar(lock) {
 }
 
 export async function generateApiClients(outputRoot = rootDir) {
+  await verifyManualBoundaryContracts(rootDir);
   const lock = await verifyContractManifest(rootDir);
   const verifiedGenerator = await verifiedGeneratorJar(lock);
 

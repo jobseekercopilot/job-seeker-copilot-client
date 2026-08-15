@@ -883,7 +883,7 @@ describe('DocumentGenerationService', () => {
       TestBed.inject(DocumentGenerationService).resume(canonicalJobId),
     )).rejects.toMatchObject({
       code: 'DESCRIPTION_REQUIRED',
-      message: expect.stringContaining('No AI credit was used'),
+      message: expect.stringContaining('No document credit was used'),
     });
   });
 

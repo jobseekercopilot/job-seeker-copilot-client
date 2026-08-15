@@ -53,3 +53,16 @@ a {
 .back-link {
   font-weight: 700;
 }
+
+.legal-gate {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 0.75rem;
+  color: #9a3412;
+  margin-top: 1.25rem;
+  padding: 1rem;
+}
+
+.legal-gate p {
+  margin-bottom: 0;
+}

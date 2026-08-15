@@ -59,7 +59,12 @@
                    (input)="onSetupLocationInput($any($event.target).value)"
                    (focus)="showSetupLocationDropdown.set(setupLocationSuggestions().length > 0)" />
             @if (setupLocationLookup().message) {
-              <p role="status">{{ setupLocationLookup().message }}</p>
+              <p [attr.role]="setupLocationLookup().status === 'unsupported'
+                || setupLocationLookup().status === 'invalid'
+                || setupLocationLookup().status === 'rate-limited'
+                || setupLocationLookup().status === 'unavailable' ? 'alert' : 'status'">
+                {{ setupLocationLookup().message }}
+              </p>
             }
             @if (setupLocationLookup().attributionProvider === 'GOOGLE_MAPS') {
               <p>Suggestions provided by Google Maps</p>
@@ -151,6 +156,18 @@
               <p class="text-xs text-slate-600 mt-1">No CV, work history, skills or postcode required.</p>
             </div>
 
+            @if (registrationRequirementsState() === 'checking') {
+              <p class="registration-legal-status" role="status">
+                Checking the current account terms and eligibility…
+              </p>
+            } @else if (!registrationLegalReady()) {
+              <div class="registration-legal-unavailable" role="alert">
+                <strong>Account creation is temporarily unavailable</strong>
+                <p>The current legal documents could not be verified. You can still sign in, or check again.</p>
+                <button type="button" (click)="loadRegistrationRequirements()">Check again</button>
+              </div>
+            }
+
             <div class="flex flex-col gap-1">
               <label for="reg-name" class="text-xs font-bold text-slate-700">Full name</label>
               <input id="reg-name" type="text" autocomplete="name" required
@@ -187,7 +204,38 @@
               }
             </div>
 
-            <button id="btn-submit-signup" type="submit" [disabled]="isLoading()"
+            @if (registrationLegalReady() && registrationRequirements(); as requirements) {
+              <fieldset class="registration-legal-acceptance">
+                <legend>Account eligibility and legal documents</legend>
+                <p>
+                  Read the current
+                  <a [href]="requirements.termsUrl" target="_blank" rel="noopener noreferrer">Terms of Use</a>
+                  and
+                  <a [href]="requirements.privacyNoticeUrl" target="_blank" rel="noopener noreferrer">Privacy Notice</a>
+                  (version {{ requirements.legalVersion }}). Links open in a new tab.
+                </p>
+                <label>
+                  <input
+                    id="registration-legal-acknowledgement"
+                    type="checkbox"
+                    required
+                    [checked]="registrationLegalAcknowledged()"
+                    [attr.aria-invalid]="validationAttempted() && !registrationLegalAcknowledged()"
+                    [attr.aria-describedby]="validationAttempted() && !registrationLegalAcknowledged() ? 'registration-legal-help registration-legal-error' : 'registration-legal-help'"
+                    (change)="registrationLegalAcknowledged.set($any($event.target).checked)" />
+                  <span>I confirm that I am a UK resident aged 18 or over, accept the Terms of Use and acknowledge the Privacy Notice.</span>
+                </label>
+                <p id="registration-legal-help">This confirmation is required to create an account and is not selected for you.</p>
+                @if (validationAttempted() && !registrationLegalAcknowledged()) {
+                  <p id="registration-legal-error" class="registration-legal-error">
+                    Confirm the current documents and eligibility before continuing.
+                  </p>
+                }
+              </fieldset>
+            }
+
+            <button id="btn-submit-signup" type="submit"
+                    [disabled]="isLoading() || !registrationLegalReady()"
                     class="w-full py-3 rounded-xl bg-slate-900 text-white text-sm font-bold disabled:opacity-50">
               {{ isLoading() ? 'Creating account…' : 'Create account' }}
             </button>

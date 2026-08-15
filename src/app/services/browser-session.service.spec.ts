@@ -82,9 +82,12 @@ describe('browser session security', () => {
     const state = TestBed.inject(BrowserSessionState);
     state.acceptBootstrap({headerName: 'X-CSRF-Token', token: '0123456789-secure-csrf-value'});
     const httpClient = TestBed.inject(HttpClient);
-    httpClient.post('/api/v1/payment/checkout', {pricingPlanId: 'starter'}).subscribe();
+    httpClient.post('/api/v2/payments/checkout', {
+      pricingPlanId: 'starter',
+      billingCountry: 'GB',
+    }).subscribe();
     const request = TestBed.inject(HttpTestingController)
-      .expectOne('/api/v1/payment/checkout');
+      .expectOne('/api/v2/payments/checkout');
     expect(request.request.withCredentials).toBe(true);
     expect(request.request.headers.get('X-CSRF-Token'))
       .toBe('0123456789-secure-csrf-value');

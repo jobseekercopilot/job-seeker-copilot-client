@@ -25,7 +25,9 @@
 
 <div class="app-shell min-h-screen font-sans antialiased pb-16">
   @if (publicAccountRoute() === 'privacy' || publicAccountRoute() === 'terms') {
-    <app-legal-notice [mode]="publicAccountRoute() === 'privacy' ? 'privacy' : 'terms'">
+    <app-legal-notice
+      [mode]="publicAccountRoute() === 'privacy' ? 'privacy' : 'terms'"
+      [configuration]="legalConfiguration()">
     </app-legal-notice>
   } @else if (publicAccountRoute() === 'forgot' || publicAccountRoute() === 'reset') {
     <app-password-recovery
@@ -35,6 +37,7 @@
     <app-landing-auth
       role="main"
       [initialMode]="publicAccountRoute() === 'signin' ? 'signin' : 'create'"
+      [legalConfiguration]="legalConfiguration()"
       (onboarded)="handleOnboarded($event)">
     </app-landing-auth>
   } @else if (sessionStatus() === 'checking') {
@@ -53,30 +56,41 @@
   } @else if (paymentReturnStatus()) {
     <main class="payment-return-page mx-auto px-4 sm:px-6 lg:px-8 mt-8">
       <section class="payment-return-card">
-        <span class="eyebrow">AI Credit checkout</span>
+        <span class="eyebrow">Document-credit checkout</span>
         <h1>{{ paymentReturnTitle() }}</h1>
-        <p>{{ paymentReturnMessage() }}</p>
-        <button type="button" class="return-button" (click)="goToDashboard()">Return to dashboard</button>
+        <p role="status" aria-live="polite">{{ paymentReturnMessage() }}</p>
+        <div class="payment-return-actions">
+          @if (canRefreshPaymentStatus()) {
+            <button type="button" class="return-button" (click)="refreshPaymentStatus()">
+              Check status again
+            </button>
+          }
+          <button type="button" class="return-button" (click)="goToDashboard()">Return to dashboard</button>
+        </div>
       </section>
 
-      @if (isLoggedIn() && paymentReturnStatus() === 'success') {
-        <section class="capability-placeholder">
-          <span class="capability-state state-unavailable">Not enabled for this beta</span>
-          <h2>AI Credit and payments</h2>
-          <p>Checkout confirmation will be enabled after the secure payment integration is approved.</p>
-        </section>
+      @if (isLoggedIn() && paymentOrderState() === 'fulfilled') {
+        <app-payment-panel
+          mode="summary"
+          [userId]="userAccountId()"
+          [legalReady]="legalConfiguration().ready"
+          [legalVersion]="legalConfiguration().version ?? ''"
+          (balanceChanged)="updateDocumentCreditBalance($event)" />
       }
     </main>
   } @else if (!isLoggedIn()) {
     <!-- Splash Landing Page Onboarding flow -->
-    <app-landing-auth role="main" (onboarded)="handleOnboarded($event)"></app-landing-auth>
+    <app-landing-auth
+      role="main"
+      [legalConfiguration]="legalConfiguration()"
+      (onboarded)="handleOnboarded($event)">
+    </app-landing-auth>
   } @else {
     <!-- Top Navigation Header -->
     <app-navigation-bar [userName]="profileName()"
                         [userEmail]="profileEmail()"
-                        [aiTokenBalance]="aiTokenBalance()"
-                        [aiCreditPencePerToken]="aiCreditPencePerToken()"
-                        (refreshTokens)="refreshAiTokenBalance()"
+                        [documentCreditBalance]="documentCreditBalance()"
+                        (refreshCredits)="refreshDocumentCreditBalance()"
                         (openProfile)="openMyProfile()"
                         (openExperience)="openExperienceAndAchievements('navigation')"
                         (logout)="logout()"></app-navigation-bar>
@@ -87,31 +101,35 @@
         <section class="tokens-page">
           <div class="tokens-page-header">
             <div>
-              <span class="eyebrow">AI Credit</span>
-              <h1>Buy AI Credit</h1>
-              <p>Choose an AI Credit package when secure purchasing is enabled.</p>
+              <span class="eyebrow">Document credits</span>
+              <h1>Document-credit packs</h1>
+              <p>Choose a one-off pack. There is no subscription or automatic renewal.</p>
             </div>
           </div>
-          <section class="capability-placeholder" data-testid="workspace-payment">
-            <span class="capability-state state-unavailable">Not enabled for this beta</span>
-            <h2>Payments</h2>
-            <p>Purchasing is unavailable until the secure session-derived payment path is enabled.</p>
-          </section>
+          <app-payment-panel
+            data-testid="workspace-payment"
+            mode="purchase"
+            [userId]="userAccountId()"
+            [legalReady]="legalConfiguration().ready"
+            [legalVersion]="legalConfiguration().version ?? ''"
+            (balanceChanged)="updateDocumentCreditBalance($event)" />
         </section>
       } @else if (currentRoute() === 'history') {
         <section class="tokens-page">
           <div class="tokens-page-header">
             <div>
-              <span class="eyebrow">AI Credit</span>
-              <h1>Spending Log</h1>
-              <p>Track AI Credit purchases, AI feature usage, and running balances.</p>
+              <span class="eyebrow">Document credits</span>
+              <h1>Credit history</h1>
+              <p>Track purchases, successful document generation, restored credits and running balances.</p>
             </div>
           </div>
-          <section class="capability-placeholder" data-testid="workspace-ai-credit-history">
-            <span class="capability-state state-unavailable">Not enabled for this beta</span>
-            <h2>AI Credit history</h2>
-            <p>The spending log will be enabled after its secure payment integration is confirmed.</p>
-          </section>
+          <app-payment-panel
+            data-testid="workspace-document-credit-history"
+            mode="history"
+            [userId]="userAccountId()"
+            [legalReady]="legalConfiguration().ready"
+            [legalVersion]="legalConfiguration().version ?? ''"
+            (balanceChanged)="updateDocumentCreditBalance($event)" />
         </section>
       } @else {
         <div class="dashboard-grid grid grid-cols-1 gap-5 items-start">
@@ -132,6 +150,7 @@
                                 [experience]="profileExperience()"
                                 [aspirations]="profileAspirations()"
                                 [workPrefs]="profileWorkPrefs()"
+                                [commuteRoutingAvailable]="commuteRoutingMode() === 'GOOGLE_ROUTES'"
                                 (profileSaved)="handleSaveProfile($event)"
                                 (manageEvidenceRequested)="openExperienceAndAchievements('summary')"
                                 (findJobsRequested)="triggerJobSearch()">
@@ -255,12 +274,13 @@
         </section>
 
         <aside id="right-sidebar" class="dashboard-right flex flex-col gap-5">
-          <section class="capability-placeholder" data-testid="workspace-ai-credit">
-            <span class="capability-state state-unavailable">Not enabled for this beta</span>
-            <h2>AI Credit &amp; Payments</h2>
-            <p>Wallet balance and purchasing will be enabled after the secure payment integration is approved.</p>
-            <a class="return-button" href="/payment">Open AI Credit area</a>
-          </section>
+          <app-payment-panel
+            data-testid="workspace-document-credit"
+            mode="summary"
+            [userId]="userAccountId()"
+            [legalReady]="legalConfiguration().ready"
+            [legalVersion]="legalConfiguration().version ?? ''"
+            (balanceChanged)="updateDocumentCreditBalance($event)" />
 
           <section data-testid="workspace-reporting">
             <div class="workspace-status-line">

@@ -212,7 +212,8 @@ export const browserSessionInterceptor: HttpInterceptorFn = (request, next) => {
   const isSessionBoundWrite = path.startsWith('/api/auth/')
     || path.startsWith('/api/jobs/')
     || path.startsWith('/api/v1/document-generation/')
-    || path.startsWith('/api/v1/payment/');
+    || path.startsWith('/api/v1/payment/')
+    || path.startsWith('/api/v2/payments/');
   if (!methodRequiresCsrf || !isSessionBoundWrite) return next(request);
 
   const csrf = inject(BrowserSessionState).currentCsrf();

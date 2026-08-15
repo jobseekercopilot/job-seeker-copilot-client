@@ -1426,7 +1426,7 @@ export class DocumentGenerationService {
     if (code.includes('JOB_DESCRIPTION_REVIEW_REQUIRED')) {
       return new DocumentGenerationError(
         'DESCRIPTION_REQUIRED',
-        'Review and confirm the complete job advert before generating. No AI credit was used.',
+        'Review and confirm the complete job advert before generating. No document credit was used.',
       );
     }
     if (
@@ -1449,7 +1449,7 @@ export class DocumentGenerationService {
     if (code.includes('CREDIT') || code.includes('QUOTA')) {
       return new DocumentGenerationError(
         'QUOTA_EXHAUSTED',
-        'There is not enough AI credit to generate both documents.',
+        'There are not enough document credits to generate both documents.',
       );
     }
     if (code.includes('RATE_LIMIT')) {
@@ -1508,7 +1508,7 @@ export class DocumentGenerationService {
     if (upstreamCode.includes('JOB_DESCRIPTION_REVIEW_REQUIRED')) {
       return new DocumentGenerationError(
         'DESCRIPTION_REQUIRED',
-        'Review and confirm the complete job advert before generating. No AI credit was used.',
+        'Review and confirm the complete job advert before generating. No document credit was used.',
       );
     }
     if (status === 401 || status === 403 || upstreamCode.includes('AUTH')) {
@@ -1524,7 +1524,7 @@ export class DocumentGenerationService {
     ) {
       return new DocumentGenerationError(
         'QUOTA_EXHAUSTED',
-        'There is not enough AI credit to generate both documents.',
+        'There are not enough document credits to generate both documents.',
       );
     }
     if (status === 429 || upstreamCode.includes('RATE_LIMIT')) {

@@ -10,10 +10,10 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "pretest": "npm run api:generate && npm run test:contracts",
-    "test:contracts": "node --test tools/contract-manifest.test.mjs",
+    "test:contracts": "node --test tools/contract-manifest.test.mjs tools/manual-boundary-contract.test.mjs",
     "lint": "ng lint",
     "prelint": "npm run api:generate",
-    "api:verify": "node tools/contract-manifest.mjs",
+    "api:verify": "node tools/contract-manifest.mjs && node tools/manual-boundary-contract.mjs",
     "api:generate": "node tools/generate-api-clients.mjs",
     "api:generate:verify": "node tools/verify-api-generation.mjs && npm run api:generate && tsc --noEmit --skipLibCheck --experimentalDecorators --target ES2022 --module ES2022 --moduleResolution bundler src/app/api/job-finder/index.ts src/app/api/document-generation-gateway/index.ts",
     "serve:ssr:job-seeker-copilot-client": "node dist/job-seeker-copilot-client/server/server.mjs"

@@ -268,6 +268,12 @@ h1, h2, h3, h4 {
   margin: 0 0 1rem;
 }
 
+.payment-return-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
 .return-button {
   background: #2563eb;
   border: 1px solid #2563eb;
@@ -276,6 +282,11 @@ h1, h2, h3, h4 {
   cursor: pointer;
   font-weight: 700;
   padding: 0.55rem 0.8rem;
+}
+
+.return-button:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 2px;
 }
 
 .tokens-page {

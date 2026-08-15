@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, OnInit, signal, PLATFORM_ID, inject, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, OnDestroy, OnInit, signal, PLATFORM_ID, inject, ViewChild } from '@angular/core';
 import { isPlatformBrowser, CommonModule } from '@angular/common';
 import { NavigationEnd, Router } from '@angular/router';
 import {MatDialog, MatDialogModule, MatDialogRef} from '@angular/material/dialog';
@@ -15,20 +15,74 @@ import { PaymentPanelComponent } from './features/payment-panel/payment-panel';
 import { MyApplicationsComponent } from './features/my-applications/my-applications.component';
 import { DocumentsWorkspaceComponent } from './features/documents-workspace/documents-workspace.component';
 import { EvidenceLibraryComponent } from './features/evidence-library/evidence-library';
-import { PaymentService } from './services/payment.service';
+import {
+  PaymentOrderStatus,
+  PaymentOrderStatusResponse,
+  PaymentService,
+} from './services/payment.service';
 import type { GatewayResponse, UserProfile } from './api';
 import { normaliseProfile, profileToSearchText } from './models/user-profile.model';
 import {searchReadiness} from './models/search-readiness';
-import { FALLBACK_PENCE_PER_TOKEN, pencePerTokenFromPlans } from './utils/ai-credit';
 import {removeLegacySessionData} from './services/browser-storage';
 import {BrowserSessionService} from './services/browser-session.service';
 import {
+  CommuteRoutingMode,
   JobSearchProviderMode,
   DocumentGenerationMode,
+  DRAFT_LEGAL_CONFIGURATION,
+  isReviewedLegalConfiguration,
   RuntimeConfigurationService,
+  PublicLegalConfiguration,
 } from './services/runtime-configuration.service';
 
 type WorkspaceTab = 'search' | 'applications' | 'documents';
+type PaymentOrderViewState =
+  | 'idle'
+  | 'checking'
+  | 'pending'
+  | 'fulfilled'
+  | 'expired'
+  | 'cancelled'
+  | 'refunded'
+  | 'disputed'
+  | 'manual-review'
+  | 'invalid'
+  | 'unavailable';
+
+const PAYMENT_ORDER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PAYMENT_POLL_DELAYS_MS = [1_000, 2_000, 3_000, 5_000] as const;
+const PAYMENT_POLL_LIMIT_MS = 30_000;
+const PAYMENT_ORDER_STATUSES = new Set<PaymentOrderStatus>([
+  'PENDING_CHECKOUT',
+  'CHECKOUT_OPEN',
+  'FULFILLED',
+  'EXPIRED',
+  'CANCELLED',
+  'REFUNDED',
+  'PARTIALLY_REFUNDED',
+  'DISPUTED',
+  'MANUAL_REVIEW',
+]);
+const PAYMENT_ORDER_MESSAGE_CODES: Readonly<Record<PaymentOrderStatus, string>> = {
+  PENDING_CHECKOUT: 'PAYMENT_PENDING',
+  CHECKOUT_OPEN: 'PAYMENT_PENDING',
+  FULFILLED: 'CREDITS_ADDED',
+  EXPIRED: 'CHECKOUT_EXPIRED',
+  CANCELLED: 'CHECKOUT_CANCELLED',
+  REFUNDED: 'PAYMENT_REFUNDED',
+  PARTIALLY_REFUNDED: 'PAYMENT_PARTIALLY_REFUNDED',
+  DISPUTED: 'PAYMENT_DISPUTED',
+  MANUAL_REVIEW: 'PAYMENT_REVIEW_REQUIRED',
+};
+const PAYMENT_ORDER_PLANS: Readonly<Record<string, {
+  bonusDocumentCredits: number;
+  documentCredits: number;
+  priceMinor: number;
+}>> = {
+  starter: {bonusDocumentCredits: 5, documentCredits: 10, priceMinor: 799},
+  active: {bonusDocumentCredits: 13, documentCredits: 25, priceMinor: 1699},
+  power: {bonusDocumentCredits: 30, documentCredits: 60, priceMinor: 3499},
+};
 
 @Component({
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -46,11 +100,12 @@ type WorkspaceTab = 'search' | 'applications' | 'documents';
     MyApplicationsComponent,
     DocumentsWorkspaceComponent,
     ReportingPanelComponent,
+    PaymentPanelComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
-export class App implements OnInit {
+export class App implements OnInit, OnDestroy {
   private platformId = inject(PLATFORM_ID);
   private router = inject(Router);
   private paymentService = inject(PaymentService);
@@ -64,9 +119,10 @@ export class App implements OnInit {
   profileName = signal('');
   profileEmail = signal('');
   userAccountId = signal('');
-  aiTokenBalance = signal<number | null>(null);
-  aiCreditPencePerToken = signal(FALLBACK_PENCE_PER_TOKEN);
+  documentCreditBalance = signal<number | null>(null);
   paymentReturnStatus = signal<'success' | 'cancel' | null>(null);
+  paymentOrderState = signal<PaymentOrderViewState>('idle');
+  paymentOrder = signal<PaymentOrderStatusResponse | null>(null);
   currentRoute = signal<'dashboard' | 'payment' | 'history'>('dashboard');
   publicAccountRoute = signal<
     'register' | 'signin' | 'forgot' | 'reset' | 'privacy' | 'terms' | null>(null);
@@ -87,6 +143,8 @@ export class App implements OnInit {
   isSearching = signal(false);
   jobSearchProviderMode = signal<JobSearchProviderMode>('REQUIRED_VALIDATION');
   documentGenerationMode = signal<DocumentGenerationMode>('REQUIRED_VALIDATION');
+  commuteRoutingMode = signal<CommuteRoutingMode>('DISTANCE_ONLY');
+  legalConfiguration = signal<PublicLegalConfiguration>(DRAFT_LEGAL_CONFIGURATION);
   jobSearchProviderModeLabel = computed(() => {
     switch (this.jobSearchProviderMode()) {
       case 'FIXTURE': return 'Fixture-backed';
@@ -116,6 +174,11 @@ export class App implements OnInit {
   toastType = signal<'success' | 'info' | 'error'>('success');
   private walletSessionKey = '';
   private evidenceDialogRef?: MatDialogRef<EvidenceLibraryComponent>;
+  private paymentOrderId: string | null = null;
+  private paymentPollStartedAt = 0;
+  private paymentPollStep = 0;
+  private paymentPollTimer: ReturnType<typeof setTimeout> | undefined;
+  private destroyed = false;
 
   constructor() {
     effect(() => {
@@ -135,7 +198,7 @@ export class App implements OnInit {
         if (walletSessionKey
             && walletSessionKey !== this.walletSessionKey) {
           this.walletSessionKey = walletSessionKey;
-          this.refreshAiTokenBalance();
+          this.refreshDocumentCreditBalance();
         }
         return;
       }
@@ -148,14 +211,14 @@ export class App implements OnInit {
   ngOnInit() {
     // Only run this logic if we are actually in a browser
     if (isPlatformBrowser(this.platformId)) {
-      this.syncRouteState(window.location.pathname);
+      this.syncRouteState(`${window.location.pathname}${window.location.search}${window.location.hash}`);
       this.router.events.subscribe(event => {
         if (event instanceof NavigationEnd) {
           this.syncRouteState(event.urlAfterRedirects);
         }
       });
       window.addEventListener('popstate', () => {
-        this.syncRouteState(window.location.pathname);
+        this.syncRouteState(`${window.location.pathname}${window.location.search}${window.location.hash}`);
       });
       try {
         removeLegacySessionData(localStorage, sessionStorage);
@@ -167,7 +230,14 @@ export class App implements OnInit {
       }
       void this.loadJobSearchProviderMode();
       void this.loadDocumentGenerationMode();
+      void this.loadCommuteRoutingMode();
+      void this.loadLegalConfiguration();
     }
+  }
+
+  ngOnDestroy(): void {
+    this.destroyed = true;
+    this.stopPaymentPolling();
   }
 
   private async loadJobSearchProviderMode(): Promise<void> {
@@ -192,20 +262,87 @@ export class App implements OnInit {
     }
   }
 
+  private async loadCommuteRoutingMode(): Promise<void> {
+    try {
+      const response = await firstValueFrom(
+        this.runtimeConfiguration.commuteRoutingMode(),
+      );
+      this.commuteRoutingMode.set(response.mode);
+    } catch {
+      this.commuteRoutingMode.set('DISTANCE_ONLY');
+    }
+  }
+
+  private async loadLegalConfiguration(): Promise<void> {
+    try {
+      const response = await firstValueFrom(
+        this.runtimeConfiguration.legalConfiguration(),
+      );
+      this.legalConfiguration.set(isReviewedLegalConfiguration(response)
+        ? response
+        : DRAFT_LEGAL_CONFIGURATION);
+    } catch {
+      this.legalConfiguration.set(DRAFT_LEGAL_CONFIGURATION);
+    }
+  }
+
   async retrySession(): Promise<void> {
     await firstValueFrom(this.browserSession.restore());
   }
 
   paymentReturnTitle(): string {
-    return this.paymentReturnStatus() === 'success'
-      ? 'Stripe payment received'
-      : 'Stripe checkout cancelled';
+    switch (this.paymentOrderState()) {
+      case 'fulfilled': return 'Payment confirmed';
+      case 'expired': return 'Checkout expired';
+      case 'cancelled': return 'Checkout cancelled';
+      case 'refunded': return 'Payment refund recorded';
+      case 'disputed': return 'Payment under dispute';
+      case 'manual-review': return 'Payment needs review';
+      case 'invalid': return 'Unable to verify this checkout return';
+      case 'unavailable': return 'Payment status is temporarily unavailable';
+      case 'pending': return 'Payment is still processing';
+      default: return 'Checking payment status';
+    }
   }
 
   paymentReturnMessage(): string {
-    return this.paymentReturnStatus() === 'success'
-      ? 'Thanks. Stripe is confirming the payment with Job Seeker Copilot, and your wallet is refreshed below.'
-      : 'No payment was taken. You can return to the dashboard and choose an AI Credit package when you are ready.';
+    const order = this.paymentOrder();
+    switch (this.paymentOrderState()) {
+      case 'fulfilled':
+        return `${order?.totalGrantedDocumentCredits ?? 0} document credits were added after secure server confirmation.`;
+      case 'expired':
+        return 'The secure checkout expired before payment was confirmed. No document credits were added for this order.';
+      case 'cancelled':
+        return 'The secure server confirms that this checkout was cancelled. No document credits were added for this order.';
+      case 'refunded':
+        return 'The payment service has recorded a refund or partial refund. Your document-credit balance reflects the authoritative payment record.';
+      case 'disputed':
+        return 'The payment service has recorded a dispute. Your balance may be restricted while the payment is reviewed.';
+      case 'manual-review':
+        return 'This payment needs manual review. Document credits are not described as added unless fulfilment is securely confirmed.';
+      case 'invalid':
+        return 'This page did not contain one valid order reference. No payment or document-credit outcome can be inferred from the return link.';
+      case 'unavailable':
+        return 'We could not securely check the order. No payment or document-credit outcome can be inferred from this page; try the status check again.';
+      case 'pending':
+        return 'The secure payment record is not final yet. No document credits are described as added unless fulfilment is confirmed. You can check again.';
+      default:
+        return 'We are checking the owner-scoped server record. The return URL itself never confirms payment or adds document credits.';
+    }
+  }
+
+  canRefreshPaymentStatus(): boolean {
+    return this.paymentOrderId !== null
+      && ['pending', 'unavailable'].includes(this.paymentOrderState());
+  }
+
+  refreshPaymentStatus(): void {
+    if (!this.paymentOrderId) return;
+    this.stopPaymentPolling();
+    this.paymentPollStartedAt = Date.now();
+    this.paymentPollStep = 0;
+    this.paymentOrderState.set('checking');
+    this.checkPaymentOrderStatus();
   }
 
   goToDashboard(): void {
@@ -232,8 +369,168 @@ export class App implements OnInit {
   private syncRouteState(url: string): void {
     const pathname = this.routePath(url);
     this.publicAccountRoute.set(this.detectPublicAccountRoute(pathname));
-    this.paymentReturnStatus.set(this.detectPaymentReturnStatus(pathname));
+    const paymentReturnStatus = this.detectPaymentReturnStatus(pathname);
+    this.paymentReturnStatus.set(paymentReturnStatus);
+    if (paymentReturnStatus) {
+      this.capturePaymentReturn(url, pathname);
+    } else {
+      this.stopPaymentPolling();
+      this.paymentOrderId = null;
+      this.paymentOrder.set(null);
+      this.paymentOrderState.set('idle');
+    }
     this.currentRoute.set(this.detectRoute(pathname));
+  }
+
+  private capturePaymentReturn(url: string, pathname: string): void {
+    if (this.paymentOrderId || this.paymentOrderState() !== 'idle') return;
+
+    let parsed: URL;
+    try {
+      parsed = new URL(url, window.location.origin);
+    } catch {
+      this.paymentOrderState.set('invalid');
+      return;
+    }
+    const orderIds = parsed.searchParams.getAll('order_id');
+    const onlyOrderId = [...parsed.searchParams.keys()].every(key => key === 'order_id');
+
+    // Remove even a malformed return query before rendering or making any request.
+    window.history.replaceState(window.history.state, '', `${pathname}${parsed.hash}`);
+
+    if (orderIds.length !== 1 || !onlyOrderId || !PAYMENT_ORDER_ID.test(orderIds[0])) {
+      this.paymentOrderState.set('invalid');
+      return;
+    }
+    this.paymentOrderId = orderIds[0].toLowerCase();
+    this.refreshPaymentStatus();
+  }
+
+  private checkPaymentOrderStatus(): void {
+    const orderId = this.paymentOrderId;
+    if (!orderId || this.destroyed) return;
+
+    this.paymentService.orderStatus(orderId).subscribe({
+      next: response => {
+        if (this.destroyed || orderId !== this.paymentOrderId) return;
+        if (!this.paymentOrderResponseIsSafe(response, orderId)) {
+          this.paymentOrder.set(null);
+          this.paymentOrderState.set('unavailable');
+          this.stopPaymentPolling();
+          return;
+        }
+        this.paymentOrder.set(response);
+        this.applyPaymentOrderStatus(response);
+      },
+      error: () => {
+        if (this.destroyed || orderId !== this.paymentOrderId) return;
+        this.schedulePaymentStatusCheck();
+      },
+    });
+  }
+
+  private applyPaymentOrderStatus(response: PaymentOrderStatusResponse): void {
+    switch (response.status) {
+      case 'FULFILLED':
+        this.stopPaymentPolling();
+        this.paymentOrderState.set('fulfilled');
+        this.refreshDocumentCreditBalance();
+        return;
+      case 'EXPIRED':
+        this.stopPaymentPolling();
+        this.paymentOrderState.set('expired');
+        return;
+      case 'CANCELLED':
+        this.stopPaymentPolling();
+        this.paymentOrderState.set('cancelled');
+        return;
+      case 'REFUNDED':
+      case 'PARTIALLY_REFUNDED':
+        this.stopPaymentPolling();
+        this.paymentOrderState.set('refunded');
+        return;
+      case 'DISPUTED':
+        this.stopPaymentPolling();
+        this.paymentOrderState.set('disputed');
+        return;
+      case 'MANUAL_REVIEW':
+        this.stopPaymentPolling();
+        this.paymentOrderState.set('manual-review');
+        return;
+      case 'PENDING_CHECKOUT':
+      case 'CHECKOUT_OPEN':
+        this.schedulePaymentStatusCheck();
+    }
+  }
+
+  private schedulePaymentStatusCheck(): void {
+    this.stopPaymentPolling();
+    const elapsed = Date.now() - this.paymentPollStartedAt;
+    const remaining = PAYMENT_POLL_LIMIT_MS - elapsed;
+    if (remaining <= 0) {
+      this.paymentOrderState.set('pending');
+      return;
+    }
+    const configuredDelay = PAYMENT_POLL_DELAYS_MS[
+      Math.min(this.paymentPollStep, PAYMENT_POLL_DELAYS_MS.length - 1)
+    ];
+    this.paymentPollStep += 1;
+    const delay = Math.min(configuredDelay, remaining);
+    this.paymentOrderState.set('checking');
+    this.paymentPollTimer = setTimeout(() => {
+      this.paymentPollTimer = undefined;
+      this.checkPaymentOrderStatus();
+    }, delay);
+  }
+
+  private stopPaymentPolling(): void {
+    if (this.paymentPollTimer !== undefined) {
+      clearTimeout(this.paymentPollTimer);
+      this.paymentPollTimer = undefined;
+    }
+  }
+
+  private paymentOrderResponseIsSafe(
+    response: PaymentOrderStatusResponse,
+    expectedOrderId: string,
+  ): boolean {
+    if (!response || typeof response.pricingPlanId !== 'string') return false;
+    const plan = PAYMENT_ORDER_PLANS[response.pricingPlanId];
+    const promotionIsSafe = plan !== undefined
+      && (response.promotionBonusDocumentCredits === 0
+        || response.promotionBonusDocumentCredits === plan.bonusDocumentCredits);
+    const fulfilledAtIsSafe = response.status !== 'FULFILLED'
+      || (typeof response.fulfilledAt === 'string'
+        && Number.isFinite(Date.parse(response.fulfilledAt)));
+    const grantedCreditsAreSafe = response.status === 'FULFILLED'
+      ? response.totalGrantedDocumentCredits
+        === response.documentCredits + response.promotionBonusDocumentCredits
+      : response.totalGrantedDocumentCredits === 0;
+    return typeof response?.orderId === 'string'
+      && response.orderId.toLowerCase() === expectedOrderId
+      && PAYMENT_ORDER_STATUSES.has(response.status)
+      && plan !== undefined
+      && response.currency === 'GBP'
+      && ['NOT_VAT_REGISTERED', 'VAT_REGISTERED'].includes(response.taxStatus)
+      && ['VAT_NOT_CHARGED', 'VAT_INCLUDED'].includes(response.taxTreatment)
+      && (response.taxStatus === 'VAT_REGISTERED')
+        === (response.taxTreatment === 'VAT_INCLUDED')
+      && ['SOLE_TRADER', 'LIMITED_COMPANY'].includes(response.legalEntityType)
+      && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/
+        .test(response.legalEntityConfigurationVersion)
+      && Number.isInteger(response.documentCredits)
+      && response.documentCredits === plan.documentCredits
+      && Number.isInteger(response.promotionBonusDocumentCredits)
+      && promotionIsSafe
+      && Number.isInteger(response.totalGrantedDocumentCredits)
+      && grantedCreditsAreSafe
+      && Number.isInteger(response.priceMinor)
+      && response.priceMinor === plan.priceMinor
+      && Number.isFinite(Date.parse(response.createdAt))
+      && Number.isFinite(Date.parse(response.expiresAt))
+      && fulfilledAtIsSafe
+      && response.messageCode === PAYMENT_ORDER_MESSAGE_CODES[response.status]
+      && response.creditsAdded === (response.status === 'FULFILLED');
   }
 
   private routePath(url: string): string {
@@ -362,7 +659,7 @@ export class App implements OnInit {
     this.profileAspirations.set('');
     this.profileWorkPrefs.set('');
     this.userAccountId.set('');
-    this.aiTokenBalance.set(null);
+    this.documentCreditBalance.set(null);
     this.walletSessionKey = '';
   }
 
@@ -440,8 +737,7 @@ export class App implements OnInit {
     this.myApplications?.refresh();
     this.documentsWorkspace?.refresh();
     this.refreshReporting();
-    this.refreshAiTokenBalance();
-    this.refreshAiCreditPricing();
+    this.refreshDocumentCreditBalance();
   }
 
   refreshApplicationTracking(): void {
@@ -454,23 +750,15 @@ export class App implements OnInit {
     this.selectWorkspace('applications');
   }
 
-  updateAiTokenBalance(balance: number) {
-    this.aiTokenBalance.set(balance);
+  updateDocumentCreditBalance(balance: number) {
+    this.documentCreditBalance.set(balance);
   }
 
-  refreshAiTokenBalance() {
+  refreshDocumentCreditBalance() {
     if (!this.isLoggedIn()) return;
-    this.refreshAiCreditPricing();
-    this.paymentService.wallet(this.userAccountId(), '').subscribe({
-      next: (wallet) => this.updateAiTokenBalance(wallet.balanceTokens ?? 0),
-      error: (error) => console.warn('Unable to refresh AI token balance:', error),
-    });
-  }
-
-  private refreshAiCreditPricing(): void {
-    this.paymentService.pricing().subscribe({
-      next: (response) => this.aiCreditPencePerToken.set(pencePerTokenFromPlans(response.plans)),
-      error: (error) => console.warn('Unable to refresh AI Credit pricing:', error),
+    this.paymentService.wallet().subscribe({
+      next: (wallet) => this.updateDocumentCreditBalance(wallet.balanceDocumentCredits),
+      error: (error) => console.warn('Unable to refresh document-credit balance:', error),
     });
   }
 }

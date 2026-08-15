@@ -5,13 +5,15 @@ import type {UserProfile} from '../../api';
 import {AuthenticationService, ProfileService} from '../../api';
 import {BrowserSessionService} from '../../services/browser-session.service';
 import {idleLocationLookup, LocationService} from '../../services/location.service';
+import type {PublicLegalConfiguration} from '../../services/runtime-configuration.service';
 import {registrationPasswordError, unicodeCodePointLength} from './credential-policy';
 import {LandingAuthComponent} from './landing-auth';
 
-describe('LandingAuthComponent credential-only registration', () => {
+describe('LandingAuthComponent account access', () => {
   const events: string[] = [];
   const login = vi.fn();
   const register = vi.fn();
+  const getRegistrationLegalRequirements = vi.fn();
   const ensureCsrf = vi.fn();
   const invalidateCsrf = vi.fn();
   const acceptAuthenticatedUser = vi.fn();
@@ -19,11 +21,53 @@ describe('LandingAuthComponent credential-only registration', () => {
   const updatePreferences = vi.fn();
   const locationLookup = vi.fn(() => of(idleLocationLookup));
   const resolveLocation = vi.fn();
+  const legalRequirements = {
+    legalVersion: 'public-beta-v1',
+    minimumAge: 18,
+    termsUrl: 'https://app.jobseekercopilot.com/terms',
+    privacyNoticeUrl: 'https://app.jobseekercopilot.com/privacy',
+  };
+  const reviewedLegalConfiguration: PublicLegalConfiguration = {
+    ready: true,
+    status: 'REVIEWED',
+    minimumUserAge: 18,
+    legalEntityType: 'SOLE_TRADER',
+    taxStatus: 'NOT_VAT_REGISTERED',
+    effectiveDate: '2026-08-15',
+    version: 'public-beta-v1',
+    controllerName: 'Northstar Career Services',
+    tradingName: 'Job Seeker Copilot',
+    businessAddress: '10 High Street, London, SW1A 1AA',
+    privacyEmail: 'privacy@example.test',
+    supportEmail: 'support@example.test',
+    icoRegistrationStatus: 'NOT_REQUIRED_CONFIRMED',
+    accountDeletionCompletionDays: 30,
+    documentDeletionCompletionDays: 30,
+    securityLogRetentionDays: 90,
+    supportRecordRetentionDays: 365,
+    financialRecordRetentionYears: 6,
+  };
+
+  function createFixture(legalConfiguration = reviewedLegalConfiguration) {
+    const fixture = TestBed.createComponent(LandingAuthComponent);
+    fixture.componentRef.setInput('legalConfiguration', legalConfiguration);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function createSignInFixture() {
+    const fixture = TestBed.createComponent(LandingAuthComponent);
+    fixture.componentRef.setInput('initialMode', 'signin');
+    fixture.componentRef.setInput('legalConfiguration', reviewedLegalConfiguration);
+    fixture.detectChanges();
+    return fixture;
+  }
 
   beforeEach(async () => {
     events.length = 0;
     login.mockReset();
     register.mockReset();
+    getRegistrationLegalRequirements.mockReset();
     ensureCsrf.mockReset();
     invalidateCsrf.mockReset();
     acceptAuthenticatedUser.mockReset();
@@ -31,6 +75,7 @@ describe('LandingAuthComponent credential-only registration', () => {
     updatePreferences.mockReset();
     locationLookup.mockClear();
     resolveLocation.mockReset();
+    getRegistrationLegalRequirements.mockReturnValue(of(legalRequirements));
     updatePreferences.mockReturnValue(of({
       statusCode: 200,
       success: true,
@@ -64,7 +109,10 @@ describe('LandingAuthComponent credential-only registration', () => {
     await TestBed.configureTestingModule({
       imports: [LandingAuthComponent],
       providers: [
-        {provide: AuthenticationService, useValue: {login, register}},
+        {
+          provide: AuthenticationService,
+          useValue: {getRegistrationLegalRequirements, login, register},
+        },
         {provide: ProfileService, useValue: {updatePreferences}},
         {provide: LocationService, useValue: {lookup: locationLookup, resolve: resolveLocation}},
         {provide: BrowserSessionService, useValue: {
@@ -88,7 +136,7 @@ describe('LandingAuthComponent credential-only registration', () => {
         }},
       });
     });
-    const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
+    const component = createFixture().componentInstance;
     let onboarded: {
       profile: UserProfile;
       id?: string;
@@ -99,6 +147,7 @@ describe('LandingAuthComponent credential-only registration', () => {
     component.formName.set(' New User ');
     component.formEmail.set('NEW@EXAMPLE.TEST');
     component.formPassword.set('safe-password-value');
+    component.registrationLegalAcknowledged.set(true);
 
     await component.completeRegistration();
 
@@ -107,6 +156,10 @@ describe('LandingAuthComponent credential-only registration', () => {
       name: 'New User',
       email: 'new@example.test',
       password: 'safe-password-value',
+      termsAccepted: true,
+      privacyNoticeAcknowledged: true,
+      ageEligibilityConfirmed: true,
+      legalVersion: 'public-beta-v1',
     });
     expect(register.mock.calls[0][0]).not.toHaveProperty('profile');
     expect(acceptAuthenticatedUser).not.toHaveBeenCalled();
@@ -134,7 +187,7 @@ describe('LandingAuthComponent credential-only registration', () => {
         profile: {revision: 1, skills: [], qualifications: [], roles: []},
       },
     }));
-    const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
+    const component = createFixture().componentInstance;
     let onboarded: {
       profile: UserProfile;
       id?: string;
@@ -145,6 +198,7 @@ describe('LandingAuthComponent credential-only registration', () => {
     component.formName.set('New User');
     component.formEmail.set('new@example.test');
     component.formPassword.set('safe-password-value');
+    component.registrationLegalAcknowledged.set(true);
     await component.completeRegistration();
 
     component.setupTargetRoles.set('Support analyst');
@@ -204,7 +258,7 @@ describe('LandingAuthComponent credential-only registration', () => {
   });
 
   it('uses a three-step job-preference setup without asking for skills', () => {
-    const fixture = TestBed.createComponent(LandingAuthComponent);
+    const fixture = createFixture();
     fixture.componentInstance.setupStep.set(1);
     fixture.detectChanges();
 
@@ -221,7 +275,7 @@ describe('LandingAuthComponent credential-only registration', () => {
   });
 
   it('does not advance past search location without a canonical selection', () => {
-    const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
+    const component = createFixture().componentInstance;
     component.setupStep.set(2);
 
     component.continueSetup();
@@ -233,7 +287,7 @@ describe('LandingAuthComponent credential-only registration', () => {
   });
 
   it('bootstraps CSRF before login and preserves password whitespace', async () => {
-    const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
+    const component = createFixture().componentInstance;
     component.loginEmail.set('BETA@EXAMPLE.TEST');
     component.loginPassword.set('  legacy password  ');
 
@@ -249,7 +303,7 @@ describe('LandingAuthComponent credential-only registration', () => {
 
   it('fails closed without CSRF and never sends credentials', async () => {
     ensureCsrf.mockReturnValue(throwError(() => new Error('invalid CSRF bootstrap')));
-    const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
+    const component = createFixture().componentInstance;
     component.loginEmail.set('beta@example.test');
     component.loginPassword.set('safe-password');
 
@@ -265,10 +319,11 @@ describe('LandingAuthComponent credential-only registration', () => {
       success: true,
       user: {id: 'new-account', name: 'New User', email: 'new@example.test', profile: {}},
     }));
-    const component = TestBed.createComponent(LandingAuthComponent).componentInstance;
+    const component = createFixture().componentInstance;
     component.formName.set('New User');
     component.formEmail.set('new@example.test');
     component.formPassword.set('🌱'.repeat(14));
+    component.registrationLegalAcknowledged.set(true);
 
     await component.completeRegistration();
     expect(register).not.toHaveBeenCalled();
@@ -285,8 +340,7 @@ describe('LandingAuthComponent credential-only registration', () => {
   it('supports keyboard account tabs and focuses the error summary', () => {
     vi.useFakeTimers();
     try {
-      const fixture = TestBed.createComponent(LandingAuthComponent);
-      fixture.detectChanges();
+      const fixture = createFixture();
       const createTab = fixture.nativeElement.querySelector('#tab-btn-create') as HTMLButtonElement;
       createTab.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
       fixture.detectChanges();
@@ -298,6 +352,7 @@ describe('LandingAuthComponent credential-only registration', () => {
       expect(fixture.nativeElement.querySelector('#login-password').autocomplete).toBe('current-password');
 
       fixture.componentInstance.setMode('create');
+      fixture.componentInstance.registrationLegalAcknowledged.set(true);
       fixture.componentInstance.completeRegistration();
       fixture.detectChanges();
       vi.runAllTimers();
@@ -309,8 +364,7 @@ describe('LandingAuthComponent credential-only registration', () => {
   });
 
   it('has no automated accessibility violations in either account mode', async () => {
-    const fixture = TestBed.createComponent(LandingAuthComponent);
-    fixture.detectChanges();
+    const fixture = createFixture();
     expect((await axe.run(fixture.nativeElement)).violations).toEqual([]);
     fixture.componentInstance.setMode('signin');
     fixture.detectChanges();
@@ -321,5 +375,98 @@ describe('LandingAuthComponent credential-only registration', () => {
     fixture.componentInstance.setupStep.set(3);
     fixture.detectChanges();
     expect((await axe.run(fixture.nativeElement)).violations).toEqual([]);
+  });
+
+  it('requires one unchecked, versioned UK-adult legal acknowledgement', async () => {
+    const fixture = createFixture();
+    const component = fixture.componentInstance;
+    component.formName.set('New User');
+    component.formEmail.set('new@example.test');
+    component.formPassword.set('safe-password-value');
+    fixture.detectChanges();
+
+    const checkbox = fixture.nativeElement.querySelector(
+      '#registration-legal-acknowledgement',
+    ) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    expect(fixture.nativeElement.querySelector(
+      'a[href="https://app.jobseekercopilot.com/terms"]',
+    )).toBeTruthy();
+    expect(fixture.nativeElement.querySelector(
+      'a[href="https://app.jobseekercopilot.com/privacy"]',
+    )).toBeTruthy();
+    expect(fixture.nativeElement.textContent).toContain('UK resident aged 18 or over');
+    expect(fixture.nativeElement.textContent).toContain('version public-beta-v1');
+
+    await component.completeRegistration();
+    fixture.detectChanges();
+
+    expect(ensureCsrf).not.toHaveBeenCalled();
+    expect(register).not.toHaveBeenCalled();
+    expect(checkbox.getAttribute('aria-invalid')).toBe('true');
+    expect(component.errorMessage()).toContain('UK 18+ eligibility');
+  });
+
+  it('fails closed when the displayed legal version does not match server requirements', async () => {
+    const fixture = createFixture({
+      ...reviewedLegalConfiguration,
+      version: 'older-reviewed-version',
+    });
+    const component = fixture.componentInstance;
+    component.formName.set('New User');
+    component.formEmail.set('new@example.test');
+    component.formPassword.set('safe-password-value');
+    component.registrationLegalAcknowledged.set(true);
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement.querySelector('#btn-submit-signup') as HTMLButtonElement).disabled)
+      .toBe(true);
+    expect(fixture.nativeElement.textContent).toContain(
+      'Account creation is temporarily unavailable',
+    );
+    await component.completeRegistration();
+    expect(register).not.toHaveBeenCalled();
+  });
+
+  it('keeps sign-in available without fetching registration terms until account creation is opened', () => {
+    const fixture = createSignInFixture();
+
+    expect(fixture.componentInstance.mode()).toBe('signin');
+    expect(getRegistrationLegalRequirements).not.toHaveBeenCalled();
+
+    fixture.componentInstance.setMode('create');
+
+    expect(getRegistrationLegalRequirements).toHaveBeenCalledOnce();
+    expect(fixture.componentInstance.registrationLegalReady()).toBe(true);
+  });
+
+  it('requires a fresh acknowledgement when the registration legal version changes', async () => {
+    register.mockReturnValue(throwError(() => ({
+      error: {
+        statusCode: 409,
+        success: false,
+        message: 'Registration could not be completed.',
+        error: {
+          code: 'LEGAL_VERSION_OUTDATED',
+          message: 'The legal version changed.',
+        },
+      },
+    })));
+    getRegistrationLegalRequirements
+      .mockReturnValueOnce(of(legalRequirements))
+      .mockReturnValueOnce(of({...legalRequirements, legalVersion: 'public-beta-v2'}));
+    const component = createFixture().componentInstance;
+    component.formName.set('New User');
+    component.formEmail.set('new@example.test');
+    component.formPassword.set('safe-password-value');
+    component.registrationLegalAcknowledged.set(true);
+
+    await component.completeRegistration();
+
+    expect(register).toHaveBeenCalledOnce();
+    expect(component.registrationLegalAcknowledged()).toBe(false);
+    expect(component.registrationRequirements()?.legalVersion).toBe('public-beta-v2');
+    expect(component.registrationLegalReady()).toBe(false);
+    expect(component.errorMessage()).toContain('changed before registration completed');
   });
 });

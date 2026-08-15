@@ -1714,7 +1714,10 @@ export class JobResultsComponent implements OnInit, OnDestroy {
   generationActionLabel(): string {
     const outputs = this.activeEvidencePurposes();
     const names = outputs.map(purpose => this.documentPurposeLabel(purpose));
-    return `Generate ${names.join(' and ')} (${outputs.length} AI Credit${outputs.length === 1 ? '' : 's'})`;
+    const charge = outputs.length === 1
+      ? '1 document credit if delivered'
+      : `${outputs.length} document credits if both are delivered`;
+    return `Generate ${names.join(' and ')} (${charge})`;
   }
 
   evidenceSelectorDomId(job: Job, suffix: string): string {
@@ -1861,8 +1864,8 @@ export class JobResultsComponent implements OnInit, OnDestroy {
             && typeof (responseError as {message?: unknown}).message === 'string'
           ? (responseError as {message: string}).message
           : '';
-    const message = detail.includes('Insufficient AI Credit')
-      ? 'Insufficient AI Credit for this job. No OpenAI request was made.'
+    const message = detail.includes('Insufficient AI Credit') || detail.includes('Insufficient document credit')
+      ? 'There are not enough document credits for this job. No generation request was made.'
       : status === 400 || status === 409
         ? 'One of the selected entries changed or is no longer eligible. Review Experience & achievements and choose again.'
         : 'Generation failed. Please try again.';
@@ -2053,12 +2056,12 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       if (!summary) return [];
       const label = this.documentPurposeLabel(output);
       if (summary.deterministicFallbackUsed) {
-        return [`${label} recovered with an evidence-based fallback — no AI Credit charged.`];
+        return [`${label} recovered with an evidence-based fallback — no document credit used.`];
       }
       if (summary.reconciliationStatus === 'RECOVERED') {
         return [summary.charged
           ? `${label} recovered safely without a duplicate request.`
-          : `${label} recovered safely without a duplicate request or AI Credit charge.`];
+          : `${label} recovered safely without a duplicate request or document-credit charge.`];
       }
       if (summary.retried) {
         return [`${label} completed after an automatic provider retry.`];

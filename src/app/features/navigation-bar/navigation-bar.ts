@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, input, output, signal } from '@angu
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
-import { formatGbpPence, tokensToGbpPence } from '../../utils/ai-credit';
 
 @Component({
   selector: 'app-navigation-bar',
@@ -14,11 +13,10 @@ import { formatGbpPence, tokensToGbpPence } from '../../utils/ai-credit';
 export class NavigationBar {
   userName = input<string>('');
   userEmail = input<string>('');
-  aiTokenBalance = input<number | null>(null);
-  aiCreditPencePerToken = input<number | null>(null);
+  documentCreditBalance = input<number | null>(null);
 
   logout = output<void>();
-  refreshTokens = output<void>();
+  refreshCredits = output<void>();
   openProfile = output<void>();
   openExperience = output<void>();
 
@@ -44,7 +42,7 @@ export class NavigationBar {
   }
 
   refreshBalance() {
-    this.refreshTokens.emit();
+    this.refreshCredits.emit();
     this.tokenDropdownOpen.set(false);
   }
 
@@ -63,11 +61,8 @@ export class NavigationBar {
     this.closeDropdown();
   }
 
-  formatTokens(value: number | null): string {
-    return (value ?? 0).toLocaleString();
-  }
-
-  formatCredit(value: number | null): string {
-    return formatGbpPence(tokensToGbpPence(value, this.aiCreditPencePerToken() ?? undefined));
+  formatCredits(value: number | null): string {
+    const count = value ?? 0;
+    return `${count.toLocaleString('en-GB')} ${count === 1 ? 'credit' : 'credits'}`;
   }
 }

@@ -27,10 +27,16 @@ function options(fetchImplementation: typeof fetch, serviceToken: string | undef
       'x-user-id': 'victim-456',
       cookie: '__Host-jsc-access=opaque-session',
     },
-    body: {pricingPlanId: 'starter'},
+    body: {
+      billingCountry: 'GB',
+      cancellationRightLossAcknowledged: true,
+      immediateSupplyRequested: true,
+      pricingPlanId: 'starter',
+    },
     fetchImplementation,
+    idempotencyKey: 'checkout-attempt-00000001',
     method: 'POST' as const,
-    path: '/api/v1/payment/checkout',
+    path: '/api/v2/payments/checkout',
     paymentGatewayOrigin: 'https://payment.example.test',
     serviceToken,
     timeoutMs: 100,
@@ -65,16 +71,22 @@ describe('trusted payment BFF proxy', () => {
     expect(profileInit.headers['X-User-Id']).toBeUndefined();
 
     const [paymentUrl, paymentInit] = fetchMock.mock.calls[1];
-    expect(paymentUrl).toBe('https://payment.example.test/api/v1/payment/checkout');
+    expect(paymentUrl).toBe('https://payment.example.test/api/v2/payments/checkout');
     expect(paymentInit.headers).toEqual({
       Accept: 'application/json',
       'Content-Type': 'application/json',
+      'Idempotency-Key': 'checkout-attempt-00000001',
       'X-Payment-Owner': 'session-owner-123',
       'X-Service-Token': SERVICE_TOKEN,
     });
     expect(paymentInit.headers['Authorization']).toBeUndefined();
     expect(paymentInit.headers['X-User-Id']).toBeUndefined();
-    expect(paymentInit.body).toBe('{"pricingPlanId":"starter"}');
+    expect(JSON.parse(paymentInit.body)).toEqual({
+      billingCountry: 'GB',
+      cancellationRightLossAcknowledged: true,
+      immediateSupplyRequested: true,
+      pricingPlanId: 'starter',
+    });
   });
 
   it('maps a stalled Payment response body to the existing timeout contract', async () => {
@@ -104,6 +116,7 @@ describe('trusted payment BFF proxy', () => {
       status: 504,
       body: {
         error: 'SERVICE_TIMEOUT',
+        code: 'SERVICE_TIMEOUT',
         message: 'Payment dependency timed out',
       },
     });
@@ -128,6 +141,7 @@ describe('trusted payment BFF proxy', () => {
       status: 401,
       body: {
         error: 'AUTHENTICATION_REQUIRED',
+        code: 'AUTHENTICATION_REQUIRED',
         message: 'Valid browser session required',
       },
     });
@@ -213,13 +227,19 @@ describe('payment BFF routes', () => {
     const fetchMock = vi.fn();
     const origin = await start(fetchMock as typeof fetch);
 
-    const response = await fetch(`${origin}/api/v1/payment/checkout`, {
+    const response = await fetch(`${origin}/api/v2/payments/checkout`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Cookie: 'jsc-access-local=aaa.bbb.ccc; jsc-csrf-local=csrf-token-123',
+        'Idempotency-Key': 'checkout-attempt-00000001',
       },
-      body: '{"pricingPlanId":"starter"}',
+      body: JSON.stringify({
+        pricingPlanId: 'starter',
+        billingCountry: 'GB',
+        immediateSupplyRequested: true,
+        cancellationRightLossAcknowledged: true,
+      }),
     });
 
     expect(response.status).toBe(403);
@@ -235,22 +255,127 @@ describe('payment BFF routes', () => {
       }));
     const origin = await start(fetchMock as typeof fetch);
 
-    const response = await fetch(`${origin}/api/v1/payment/checkout`, {
+    const response = await fetch(`${origin}/api/v2/payments/checkout`, {
       method: 'POST',
       headers: {
         Authorization: 'Bearer attacker-selected',
         'Content-Type': 'application/json',
         Cookie: 'jsc-access-local=aaa.bbb.ccc; jsc-csrf-local=csrf-token-123',
+        'Idempotency-Key': 'checkout-attempt-00000001',
         'X-CSRF-Token': 'csrf-token-123',
         'X-User-Id': 'victim-456',
       },
-      body: '{"pricingPlanId":"starter"}',
+      body: JSON.stringify({
+        pricingPlanId: 'starter',
+        billingCountry: 'GB',
+        immediateSupplyRequested: true,
+        cancellationRightLossAcknowledged: true,
+      }),
     });
 
     expect(response.status).toBe(200);
     const paymentInit = fetchMock.mock.calls[1][1];
     expect(paymentInit.headers['X-Payment-Owner']).toBe('session-owner-123');
+    expect(paymentInit.headers['Idempotency-Key']).toBe('checkout-attempt-00000001');
     expect(paymentInit.headers['Authorization']).toBeUndefined();
     expect(paymentInit.headers['X-User-Id']).toBeUndefined();
+    expect(JSON.parse(paymentInit.body)).toEqual({
+      pricingPlanId: 'starter',
+      billingCountry: 'GB',
+      immediateSupplyRequested: true,
+      cancellationRightLossAcknowledged: true,
+    });
+  });
+
+  it('does not expose the legacy browser-controlled checkout mutation', async () => {
+    const fetchMock = vi.fn();
+    const origin = await start(fetchMock as typeof fetch);
+
+    const response = await fetch(`${origin}/api/v1/payment/checkout`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: '{"pricingPlanId":"starter"}',
+    });
+
+    expect(response.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects v2 checkout without a bounded idempotency key or GB-only body', async () => {
+    const fetchMock = vi.fn();
+    const origin = await start(fetchMock as typeof fetch);
+
+    const response = await fetch(`${origin}/api/v2/payments/checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'jsc-access-local=aaa.bbb.ccc; jsc-csrf-local=csrf-token-123',
+        'X-CSRF-Token': 'csrf-token-123',
+      },
+      body: JSON.stringify({
+        pricingPlanId: 'starter',
+        billingCountry: 'US',
+        immediateSupplyRequested: true,
+        cancellationRightLossAcknowledged: true,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects checkout unless both consumer acknowledgements are explicitly true', async () => {
+    const fetchMock = vi.fn();
+    const origin = await start(fetchMock as typeof fetch);
+
+    const response = await fetch(`${origin}/api/v2/payments/checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'jsc-access-local=aaa.bbb.ccc; jsc-csrf-local=csrf-token-123',
+        'Idempotency-Key': 'checkout-attempt-00000001',
+        'X-CSRF-Token': 'csrf-token-123',
+      },
+      body: JSON.stringify({
+        pricingPlanId: 'starter',
+        billingCountry: 'GB',
+        immediateSupplyRequested: true,
+        cancellationRightLossAcknowledged: false,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('forwards only a canonical owner-scoped order status path', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(profileResponse())
+      .mockResolvedValueOnce(new Response('{"status":"CHECKOUT_OPEN"}', {
+        status: 200,
+        headers: {'Content-Type': 'application/json'},
+      }));
+    const origin = await start(fetchMock as typeof fetch);
+    const orderId = 'c89d9cbb-9dfe-4f7b-9cbf-82ec67cfe9ef';
+
+    const response = await fetch(`${origin}/api/v2/payments/orders/${orderId}/status`, {
+      headers: {Cookie: 'jsc-access-local=session-cookie'},
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      `https://payment.example.test/api/v2/payments/orders/${orderId}/status`,
+    );
+    expect(fetchMock.mock.calls[1][1].method).toBe('GET');
+  });
+
+  it('rejects malformed order status identifiers without a downstream call', async () => {
+    const fetchMock = vi.fn();
+    const origin = await start(fetchMock as typeof fetch);
+
+    const response = await fetch(`${origin}/api/v2/payments/orders/not-an-order/status`);
+
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
