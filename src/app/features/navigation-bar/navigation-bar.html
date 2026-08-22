@@ -37,18 +37,18 @@
             <button type="button"
                     class="fixed inset-0 z-40 bg-transparent w-full h-full cursor-default focus:outline-none"
                     (click)="closeTokenDropdown()">
-              <span class="sr-only">Close document-credit menu</span>
+              <span class="sr-only">Close document generation menu</span>
             </button>
 
             <div class="token-dropdown absolute right-0 mt-2.5 w-64 rounded-2xl shadow-lg z-50 py-3.5 px-4 text-left animate-fade-in origin-top-right">
               <div class="token-dropdown-header">
-                <span>Document credits</span>
+                <span>Document generations</span>
                 <strong>{{ formatCredits(documentCreditBalance()) }}</strong>
               </div>
-              <p>One successfully delivered CV or cover letter uses one credit.</p>
+              <p>One successfully delivered CV or cover letter uses one generation.</p>
               <div class="token-dropdown-actions">
-                <a class="token-primary-action" href="/payment" (click)="closeTokenDropdown()">View credit packs</a>
-                <a class="token-secondary-action" href="/payment/history" (click)="closeTokenDropdown()">View credit history</a>
+                <a class="token-primary-action" href="/payment" (click)="closeTokenDropdown()">View generation packs</a>
+                <a class="token-secondary-action" href="/payment/history" (click)="closeTokenDropdown()">View generation history</a>
                 <button type="button" class="token-secondary-action" (click)="refreshBalance()">Refresh balance</button>
               </div>
             </div>

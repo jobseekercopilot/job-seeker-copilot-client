@@ -1,10 +1,10 @@
 # Payment BFF identity boundary
 
-Payment Gateway OpenAPI 2.1.1 is vendored from
+Payment Gateway OpenAPI 2.2.0 is vendored from
 `jobseekercopilot/payment-gateway` commit
-`c49f9dc7441d146e58b428793a9c1a833c24aec5` and pinned as a
+`6db53bd9b98cbaac081fdd7c06cf95687f29e222` and pinned as a
 `manual_boundary` in `contracts/manual-boundaries.lock.json`. Its SHA-256 and the
-required v2 paths, headers, acknowledgement fields, document-credit schemas,
+required v2 paths, headers, acknowledgement fields, document-generation schemas,
 readiness codes, tax/seller snapshots, transaction semantics and order states
 are verified before builds and tests. No Payment Gateway client is generated:
 the small hand-written BFF and Angular boundary types remain reviewable alongside
@@ -14,8 +14,7 @@ The current `/api/v2/payments` prefix is exposed only through the same-origin
 Express BFF. Its explicit route allowlist covers the server-owned catalogue,
 wallet, transaction history, checkout readiness, idempotent checkout and
 owner-scoped order status. The
-legacy `/api/v1/payment` boundary is read-only; its browser checkout and demo
-purchase mutations are deliberately not registered:
+legacy `/api/v1/payment` boundary is not registered:
 
 1. It ignores browser `Authorization`, `X-User-Id`, and other identity
    selectors.
@@ -34,7 +33,7 @@ or a response that reflects its service token. Checkout accepts only a bounded
 server-known plan identifier, `billingCountry: "GB"`,
 `immediateSupplyRequested: true`, and
 `cancellationRightLossAcknowledged: true`; it forwards the validated
-`Idempotency-Key` and never accepts a browser-selected price, credit amount,
+`Idempotency-Key` and never accepts a browser-selected price, generation amount,
 currency, success URL, terms version, acceptance time or owner. Payment Gateway
 records the authoritative terms version and server acceptance time before
 creating checkout.
@@ -42,8 +41,8 @@ creating checkout.
 Hosted checkout return URLs contain only a bounded `order_id`. Both success and
 cancel routes remove that query from browser history, then reconcile it through
 `GET /api/v2/payments/orders/{orderId}/status`. The page polls for no more than
-30 seconds and says credits were added only for a durable `FULFILLED` response
-with `creditsAdded: true`; route names and query values never grant entitlement.
+30 seconds and says generations were added only for a durable `FULFILLED` response
+with `generationsAdded: true`; route names and query values never grant entitlement.
 
 The BFF service token must contain at least 32 UTF-8 bytes; it is read only by
 the SSR process and must be supplied through the runtime secret store. Missing

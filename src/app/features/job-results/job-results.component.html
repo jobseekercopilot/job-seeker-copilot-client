@@ -236,8 +236,8 @@
                       Choose documents for {{ jobTitle(choiceJob) }}
                     </h3>
                     <p>
-                      Choose each document independently. Uploading is free; one credit is spent only after each
-                      selected document is successfully delivered. Failed or cancelled delivery uses no credit.
+                      Choose each document independently. Uploading does not use your allowance; one generation is used only after each
+                      selected document is successfully delivered. Failed or cancelled delivery uses no generation.
                     </p>
                   </div>
                   <button type="button" class="selector-close" (click)="closeDocumentChoice()"
@@ -260,7 +260,7 @@
                                  [name]="evidenceSelectorDomId(choiceJob, 'choice-' + purpose)"
                                  [checked]="documentChoices()[purpose] === 'GENERATE'"
                                  (change)="chooseDocumentAction(purpose, 'GENERATE')" />
-                          <span><strong>Generate</strong><small>1 document credit after successful delivery; no charge if delivery fails.</small></span>
+                          <span><strong>Generate</strong><small>1 document generation after successful delivery; no charge if delivery fails.</small></span>
                         </label>
                       }
                       <label>
@@ -296,7 +296,7 @@
 
                 @if (documentChoiceEntryPoint() === 'GENERATE') {
                   <p class="selector-note">
-                    Select Generate for at least one document. You will review the exact document-credit cost
+                    Select Generate for at least one document. You will review the exact document-generation allowance
                     before generation starts.
                   </p>
                 }

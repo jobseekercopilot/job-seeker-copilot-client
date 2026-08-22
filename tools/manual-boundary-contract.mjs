@@ -120,12 +120,12 @@ function validatePaymentGatewayContract(document) {
     'active',
     'currency',
     'description',
-    'documentCredits',
+    'documentGenerations',
     'fullApplicationEquivalent',
     'id',
     'name',
     'priceMinor',
-    'promotionBonusDocumentCredits',
+    'promotionBonusDocumentGenerations',
     'sortOrder',
   ], 'Plan');
   assertEnum(plan.properties?.currency, ['GBP'], 'Plan.currency');
@@ -149,10 +149,10 @@ function validatePaymentGatewayContract(document) {
     'automaticRenewal',
     'billingCountry',
     'catalogVersion',
-    'creditUnit',
+    'generationUnit',
     'currency',
     'displayedPriceIsCheckoutTotal',
-    'freeAllowanceCredits',
+    'freeAllowanceGenerations',
     'plans',
     'promotion',
     'taxStatus',
@@ -160,16 +160,16 @@ function validatePaymentGatewayContract(document) {
   ], 'DocumentCreditCatalogResponse');
   assertEnum(catalog.properties?.currency, ['GBP'], 'catalog.currency');
   assertEnum(catalog.properties?.billingCountry, ['GB'], 'catalog.billingCountry');
-  assertEnum(catalog.properties?.creditUnit, ['DOCUMENT'], 'catalog.creditUnit');
+  assertEnum(catalog.properties?.generationUnit, ['DOCUMENT'], 'catalog.generationUnit');
 
   const wallet = schema(document, 'DocumentCreditWalletResponse');
   assertExactMembers(wallet.required, [
-    'balanceDocumentCredits',
+    'remainingDocumentGenerations',
     'freeAllowanceGranted',
-    'lifetimePurchasedDocumentCredits',
-    'lifetimeReversedDocumentCredits',
-    'lifetimeSpentDocumentCredits',
-    'reviewDebtDocumentCredits',
+    'lifetimePurchasedDocumentGenerations',
+    'lifetimeReversedDocumentGenerations',
+    'lifetimeUsedDocumentGenerations',
+    'reviewDebtDocumentGenerations',
     'status',
   ], 'DocumentCreditWalletResponse');
   assertEnum(
@@ -180,11 +180,11 @@ function validatePaymentGatewayContract(document) {
 
   const transaction = schema(document, 'Transaction');
   assertExactMembers(transaction.required, [
-    'balanceAfterDocumentCredits',
-    'balanceBeforeDocumentCredits',
+    'balanceAfterDocumentGenerations',
+    'balanceBeforeDocumentGenerations',
     'createdAt',
     'description',
-    'documentCredits',
+    'documentGenerations',
     'id',
     'operationId',
     'type',
@@ -277,7 +277,7 @@ function validatePaymentGatewayContract(document) {
     'expiresAt',
     'orderId',
     'pricingSnapshot',
-    'promotionBonusDocumentCredits',
+    'promotionBonusDocumentGenerations',
     'promotionGuaranteed',
     'status',
     'url',
@@ -290,7 +290,7 @@ function validatePaymentGatewayContract(document) {
     'catalogVersion',
     'currency',
     'displayedPriceIsCheckoutTotal',
-    'documentCredits',
+    'documentGenerations',
     'legalEntityConfigurationVersion',
     'legalEntityType',
     'priceMinor',
@@ -303,9 +303,9 @@ function validatePaymentGatewayContract(document) {
   const orderStatus = schema(document, 'PaymentOrderStatusResponse');
   assertExactMembers(orderStatus.required, [
     'createdAt',
-    'creditsAdded',
+    'generationsAdded',
     'currency',
-    'documentCredits',
+    'documentGenerations',
     'expiresAt',
     'legalEntityConfigurationVersion',
     'legalEntityType',
@@ -313,11 +313,11 @@ function validatePaymentGatewayContract(document) {
     'orderId',
     'priceMinor',
     'pricingPlanId',
-    'promotionBonusDocumentCredits',
+    'promotionBonusDocumentGenerations',
     'status',
     'taxStatus',
     'taxTreatment',
-    'totalGrantedDocumentCredits',
+    'totalGrantedDocumentGenerations',
   ], 'PaymentOrderStatusResponse');
   assertEnum(orderStatus.properties?.status, [
     'CANCELLED',
@@ -333,7 +333,7 @@ function validatePaymentGatewayContract(document) {
   assertEnum(orderStatus.properties?.messageCode, [
     'CHECKOUT_CANCELLED',
     'CHECKOUT_EXPIRED',
-    'CREDITS_ADDED',
+    'GENERATIONS_ADDED',
     'PAYMENT_DISPUTED',
     'PAYMENT_PARTIALLY_REFUNDED',
     'PAYMENT_PENDING',

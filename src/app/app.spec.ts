@@ -33,11 +33,11 @@ describe('App', () => {
   });
   const searchJobs = vi.fn(() => of({jobs: [], totalResults: 0}));
   const wallet = vi.fn(() => of({
-    balanceDocumentCredits: 7,
-    lifetimePurchasedDocumentCredits: 7,
-    lifetimeSpentDocumentCredits: 0,
-    lifetimeReversedDocumentCredits: 0,
-    reviewDebtDocumentCredits: 0,
+    remainingDocumentGenerations: 7,
+    lifetimePurchasedDocumentGenerations: 7,
+    lifetimeUsedDocumentGenerations: 0,
+    lifetimeReversedDocumentGenerations: 0,
+    reviewDebtDocumentGenerations: 0,
     freeAllowanceGranted: true,
     status: 'ACTIVE' as const,
   }));
@@ -46,16 +46,16 @@ describe('App', () => {
     orderId,
     status: 'FULFILLED' as const,
     pricingPlanId: 'starter',
-    documentCredits: 10,
-    promotionBonusDocumentCredits: 5,
-    totalGrantedDocumentCredits: 15,
+    documentGenerations: 10,
+    promotionBonusDocumentGenerations: 5,
+    totalGrantedDocumentGenerations: 15,
     priceMinor: 499,
     currency: 'GBP' as const,
     createdAt: '2026-08-15T10:00:00Z',
     expiresAt: '2026-08-15T11:00:00Z',
     fulfilledAt: '2026-08-15T10:02:00Z',
-    creditsAdded: true,
-    messageCode: 'CREDITS_ADDED',
+    generationsAdded: true,
+    messageCode: 'GENERATIONS_ADDED',
     taxStatus: 'NOT_VAT_REGISTERED' as const,
     taxTreatment: 'VAT_NOT_CHARGED' as const,
     legalEntityType: 'SOLE_TRADER' as const,
@@ -164,7 +164,7 @@ describe('App', () => {
     TestBed.inject(MatDialog).closeAll();
   });
 
-  it('refreshes and displays document credits when the secure session is restored', async () => {
+  it('refreshes and displays document generations when the secure session is restored', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -172,7 +172,7 @@ describe('App', () => {
 
     expect(wallet).toHaveBeenCalledWith();
     expect(fixture.componentInstance.documentCreditBalance()).toBe(7);
-    expect(fixture.nativeElement.textContent).toContain('Documents: 7 credits');
+    expect(fixture.nativeElement.textContent).toContain('Documents: 7 generations');
   });
 
   it('renders the canonical product workspace with honest capability states', async () => {
@@ -187,7 +187,7 @@ describe('App', () => {
     expect(text).toContain('Applications');
     expect(text).toContain('Documents');
     expect(text).toContain('Reporting & job-search evidence');
-    expect(text).toContain('Document credits');
+    expect(text).toContain('Document generations');
     expect(text).toContain('Fixture-backed');
     expect(fixture.componentInstance.commuteRoutingMode()).toBe('DISTANCE_ONLY');
     expect(searchJobs).toHaveBeenCalled();
@@ -260,7 +260,7 @@ describe('App', () => {
     window.dispatchEvent(new PopStateEvent('popstate'));
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Terms of Use');
-    expect(fixture.nativeElement.textContent).toContain('One document credit covers one successfully delivered tailored CV');
+    expect(fixture.nativeElement.textContent).toContain('One document generation covers one successfully delivered tailored CV');
     window.history.pushState({}, '', '/dashboard');
   });
 
@@ -276,7 +276,7 @@ describe('App', () => {
     expect(fixture.componentInstance.paymentOrderState()).toBe('fulfilled');
     expect(fixture.nativeElement.textContent).toContain('Payment confirmed');
     expect(fixture.nativeElement.textContent).toContain(
-      '15 document credits were added after secure server confirmation',
+      '15 document generations were added after secure server confirmation',
     );
     expect(fixture.nativeElement.textContent).not.toContain('Stripe payment received');
   });
@@ -287,9 +287,9 @@ describe('App', () => {
       .mockReturnValueOnce(of({
         ...fulfilledOrder,
         status: 'CHECKOUT_OPEN',
-        totalGrantedDocumentCredits: 0,
+        totalGrantedDocumentGenerations: 0,
         fulfilledAt: null,
-        creditsAdded: false,
+        generationsAdded: false,
         messageCode: 'PAYMENT_PENDING',
       }))
       .mockReturnValueOnce(of(fulfilledOrder));
@@ -319,9 +319,9 @@ describe('App', () => {
         .mockReturnValueOnce(of({
           ...fulfilledOrder,
           status: pendingStatus,
-          totalGrantedDocumentCredits: 0,
+          totalGrantedDocumentGenerations: 0,
           fulfilledAt: null,
-          creditsAdded: false,
+          generationsAdded: false,
           messageCode,
         }))
         .mockReturnValueOnce(of(fulfilledOrder));
@@ -354,9 +354,9 @@ describe('App', () => {
       orderStatus.mockReturnValue(of({
         ...fulfilledOrder,
         status: terminalStatus,
-        totalGrantedDocumentCredits: 0,
+        totalGrantedDocumentGenerations: 0,
         fulfilledAt,
-        creditsAdded: false,
+        generationsAdded: false,
         messageCode,
       }));
       window.history.replaceState({}, '', `/payment/cancel?order_id=${orderId}`);
@@ -377,17 +377,17 @@ describe('App', () => {
     ['fulfilled order that reports zero granted credits', 'FULFILLED', 0],
   ] as const)(
     'rejects a malformed total: %s',
-    async (_case, responseStatus, totalGrantedDocumentCredits) => {
+    async (_case, responseStatus, totalGrantedDocumentGenerations) => {
       orderStatus.mockReturnValue(of({
         ...fulfilledOrder,
         status: responseStatus,
-        totalGrantedDocumentCredits,
+        totalGrantedDocumentGenerations,
         fulfilledAt: responseStatus === 'FULFILLED'
           ? fulfilledOrder.fulfilledAt
           : null,
-        creditsAdded: responseStatus === 'FULFILLED',
+        generationsAdded: responseStatus === 'FULFILLED',
         messageCode: responseStatus === 'FULFILLED'
-          ? 'CREDITS_ADDED'
+          ? 'GENERATIONS_ADDED'
           : 'PAYMENT_PENDING',
       }));
       window.history.replaceState({}, '', `/payment/success?order_id=${orderId}`);
@@ -397,7 +397,7 @@ describe('App', () => {
       fixture.detectChanges();
 
       expect(fixture.componentInstance.paymentOrderState()).toBe('unavailable');
-      expect(fixture.nativeElement.textContent).not.toContain('credits were added');
+      expect(fixture.nativeElement.textContent).not.toContain('generations were added');
     },
   );
 
@@ -410,7 +410,7 @@ describe('App', () => {
     expect(window.location.search).toBe('');
     expect(fixture.componentInstance.paymentOrderState()).toBe('invalid');
     expect(fixture.nativeElement.textContent).toContain(
-      'No payment or document-credit outcome can be inferred',
+      'No payment or document-generation outcome can be inferred',
     );
   });
 
@@ -418,9 +418,9 @@ describe('App', () => {
     orderStatus.mockReturnValue(of({
       ...fulfilledOrder,
       pricingPlanId: 'unexpected-plan',
-      documentCredits: 99,
-      promotionBonusDocumentCredits: 0,
-      totalGrantedDocumentCredits: 99,
+      documentGenerations: 99,
+      promotionBonusDocumentGenerations: 0,
+      totalGrantedDocumentGenerations: 99,
       priceMinor: 1,
     }));
     window.history.replaceState({}, '', `/payment/success?order_id=${orderId}`);
@@ -431,9 +431,9 @@ describe('App', () => {
 
     expect(fixture.componentInstance.paymentOrderState()).toBe('unavailable');
     expect(fixture.nativeElement.textContent).toContain(
-      'No payment or document-credit outcome can be inferred',
+      'No payment or document-generation outcome can be inferred',
     );
-    expect(fixture.nativeElement.textContent).not.toContain('credits were added');
+    expect(fixture.nativeElement.textContent).not.toContain('generations were added');
   });
 
   it('does not trust a fulfilled order without matching reviewed seller and tax provenance', async () => {
@@ -451,7 +451,7 @@ describe('App', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.paymentOrderState()).toBe('unavailable');
-    expect(fixture.nativeElement.textContent).not.toContain('credits were added');
+    expect(fixture.nativeElement.textContent).not.toContain('generations were added');
   });
 
   it('enables the documents workspace for validated real OpenAI generation', async () => {

@@ -1165,9 +1165,9 @@ describe('JobResultsComponent', () => {
     expect(fixture.componentInstance.documentChoiceJob()).toMatchObject({applicationId});
     expect(fixture.componentInstance.canContinueDocumentChoice()).toBe(false);
     expect(fixture.nativeElement.textContent).toContain('Application saved');
-    expect(fixture.nativeElement.textContent).toContain('Uploading is free');
+    expect(fixture.nativeElement.textContent).toContain('Uploading does not use your allowance');
     expect(fixture.nativeElement.textContent).toContain(
-      '1 document credit after successful delivery; no charge if delivery fails.',
+      '1 document generation after successful delivery; no charge if delivery fails.',
     );
 
     fixture.componentInstance.chooseDocumentAction('CV', 'GENERATE');
@@ -1178,7 +1178,7 @@ describe('JobResultsComponent', () => {
 
     expect(fixture.componentInstance.evidenceSelectionJob()).toMatchObject({applicationId});
     expect(fixture.componentInstance.activeEvidencePurposes()).toEqual(['CV']);
-    expect(fixture.nativeElement.textContent).toContain('Generate CV (1 document credit if delivered)');
+    expect(fixture.nativeElement.textContent).toContain('Generate CV (1 document generation if delivered)');
     expect(fixture.nativeElement.textContent).not.toContain('Cover letter evidence');
   });
 
@@ -2016,7 +2016,7 @@ describe('JobResultsComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.generationMessages()[selectedJob.id!])
-      .toBe('CV and Cover letter ready. CV recovered with an evidence-based fallback — no document credit used.');
+      .toBe('CV and Cover letter ready. CV recovery did not deliver a chargeable document, so no document generation was used.');
     expect(fixture.componentInstance.generationMessages()[selectedJob.id!])
       .not.toContain('generated successfully');
   });
@@ -2482,7 +2482,7 @@ describe('JobResultsComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.generationErrors()[selectedJob.id!])
-      .toBe('There are not enough document credits for this job. No generation request was made.');
+      .toBe('There are not enough document generations for this job. No generation request was made.');
   });
 
   function createFixture(

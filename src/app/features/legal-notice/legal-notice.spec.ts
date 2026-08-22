@@ -33,7 +33,7 @@ describe('LegalNoticeComponent', () => {
 
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('Terms of Use');
-    expect(text).toContain('One document credit covers one successfully delivered tailored CV');
+    expect(text).toContain('One document generation covers one successfully delivered tailored CV');
     expect(text).toContain('do not renew automatically');
     expect(text).toContain('14-day cancellation right');
     expect(text).toContain('Consumer rights are not affected');
