@@ -1346,8 +1346,6 @@ export class DocumentGenerationService {
         || summary['released'] !== billingStatus.startsWith('RELEASED_')
         || summary['deterministicFallbackUsed']
           !== (generationSource === 'DETERMINISTIC_FALLBACK')
-        || (generationSource === 'DETERMINISTIC_FALLBACK'
-          && billingStatus !== 'RELEASED_NO_CHARGE')
       ) {
         continue;
       }
