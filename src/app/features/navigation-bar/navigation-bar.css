@@ -57,6 +57,7 @@
 
 .user-menu-button {
   border-radius: var(--radius-control) !important;
+  min-height: 44px;
   padding: 0.35rem 0.6rem !important;
 }
 

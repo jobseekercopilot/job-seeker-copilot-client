@@ -3,7 +3,7 @@
      [class.job-card-expanded]="detailsExpanded()">
 
   <div class="job-card-trigger w-full text-left px-5 py-4 rounded-xl">
-    <div class="flex items-start justify-between gap-4">
+    <div class="job-card-header-row flex items-start justify-between gap-4">
       <button type="button"
               (click)="toggle()"
               [attr.aria-controls]="detailsId()"
@@ -12,7 +12,7 @@
         <h3 class="job-title text-base font-semibold m-0 truncate">{{ job().title ?? 'Untitled Role' }}</h3>
         <p class="job-company text-sm m-0 mt-0.5">{{ job().company ?? 'Unknown Company' }}</p>
       </button>
-      <div class="flex-shrink-0 flex items-center gap-2">
+      <div class="job-card-actions flex-shrink-0 flex items-center gap-2">
         @if (specialistLabel(); as label) {
           <span class="source-badge" data-testid="specialist-job-badge">{{ label }}</span>
         }
