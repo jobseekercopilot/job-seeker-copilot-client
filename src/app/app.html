@@ -1,6 +1,9 @@
 <!-- Interactive Notice Toast Feed -->
 @if (toastMessage()) {
   <div id="toast-notification" 
+       [attr.role]="toastType() === 'error' ? 'alert' : 'status'"
+       [attr.aria-live]="toastType() === 'error' ? 'assertive' : 'polite'"
+       aria-atomic="true"
        class="fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl border transition-all duration-300 transform animate-fade-in"
        [class.bg-emerald-50]="toastType() === 'success'"
        [class.border-emerald-200]="toastType() === 'success'"
@@ -20,50 +23,281 @@
   </div>
 }
 
-<div class="min-h-screen bg-slate-50/60 font-sans antialiased text-slate-800 pb-16">
-  @if (!isLoggedIn()) {
+<div class="app-shell min-h-screen font-sans antialiased pb-16">
+  @if (publicAccountRoute() === 'privacy' || publicAccountRoute() === 'terms') {
+    <app-legal-notice
+      [mode]="publicAccountRoute() === 'privacy' ? 'privacy' : 'terms'"
+      [configuration]="legalConfiguration()">
+    </app-legal-notice>
+  } @else if (publicAccountRoute() === 'forgot' || publicAccountRoute() === 'reset') {
+    <app-password-recovery
+      [mode]="publicAccountRoute() === 'forgot' ? 'forgot' : 'reset'">
+    </app-password-recovery>
+  } @else if (publicAccountRoute() === 'register' || publicAccountRoute() === 'signin') {
+    <app-landing-auth
+      role="main"
+      [initialMode]="publicAccountRoute() === 'signin' ? 'signin' : 'create'"
+      [legalConfiguration]="legalConfiguration()"
+      (onboarded)="handleOnboarded($event)">
+    </app-landing-auth>
+  } @else if (sessionStatus() === 'checking') {
+    <main class="dashboard-main mx-auto px-4 sm:px-6 lg:px-8 py-12" aria-live="polite">
+      <p class="eyebrow">Secure session</p>
+      <h1>Opening your Job Seeker Copilot workspace</h1>
+      <p role="status">Checking your session before displaying personal information.</p>
+    </main>
+  } @else if (sessionStatus() === 'unavailable') {
+    <main class="dashboard-main mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <p class="eyebrow">Secure session</p>
+      <h1>Session service temporarily unavailable</h1>
+      <p role="alert">Your personal workspace has not been displayed because the session could not be verified.</p>
+      <button type="button" class="return-button" (click)="retrySession()">Try again</button>
+    </main>
+  } @else if (paymentReturnStatus()) {
+    <main class="payment-return-page mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+      <section class="payment-return-card">
+        <span class="eyebrow">Document generation checkout</span>
+        <h1>{{ paymentReturnTitle() }}</h1>
+        <p role="status" aria-live="polite">{{ paymentReturnMessage() }}</p>
+        <div class="payment-return-actions">
+          @if (canRefreshPaymentStatus()) {
+            <button type="button" class="return-button" (click)="refreshPaymentStatus()">
+              Check status again
+            </button>
+          }
+          <button type="button" class="return-button" (click)="goToDashboard()">Return to dashboard</button>
+        </div>
+      </section>
+
+      @if (isLoggedIn() && paymentOrderState() === 'fulfilled') {
+        <app-payment-panel
+          mode="summary"
+          [userId]="userAccountId()"
+          [legalReady]="legalConfiguration().ready"
+          [legalVersion]="legalConfiguration().version ?? ''"
+          (balanceChanged)="updateDocumentCreditBalance($event)" />
+      }
+    </main>
+  } @else if (!isLoggedIn()) {
     <!-- Splash Landing Page Onboarding flow -->
-    <app-landing-auth (onboarded)="handleOnboarded($event)"></app-landing-auth>
+    <app-landing-auth
+      role="main"
+      [legalConfiguration]="legalConfiguration()"
+      (onboarded)="handleOnboarded($event)">
+    </app-landing-auth>
   } @else {
     <!-- Top Navigation Header -->
     <app-navigation-bar [userName]="profileName()"
                         [userEmail]="profileEmail()"
-                        (resetClaimant)="resetDemoProfile()"
+                        [documentCreditBalance]="documentCreditBalance()"
+                        (refreshCredits)="refreshDocumentCreditBalance()"
+                        (openProfile)="openMyProfile()"
+                        (openExperience)="openExperienceAndAchievements('navigation')"
                         (logout)="logout()"></app-navigation-bar>
 
     <!-- Main Grid Workspace Content wrapper -->
-    <main id="app-main-content" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    <main id="app-main-content" class="dashboard-main mx-auto px-4 sm:px-6 lg:px-8 mt-5">
+      @if (currentRoute() === 'payment') {
+        <section class="tokens-page">
+          <div class="tokens-page-header">
+            <div>
+              <span class="eyebrow">Document generations</span>
+              <h1>Document generation packs</h1>
+              <p>Choose a one-off pack. There is no subscription or automatic renewal.</p>
+            </div>
+          </div>
+          <app-payment-panel
+            data-testid="workspace-payment"
+            mode="purchase"
+            [userId]="userAccountId()"
+            [legalReady]="legalConfiguration().ready"
+            [legalVersion]="legalConfiguration().version ?? ''"
+            (balanceChanged)="updateDocumentCreditBalance($event)" />
+        </section>
+      } @else if (currentRoute() === 'history') {
+        <section class="tokens-page">
+          <div class="tokens-page-header">
+            <div>
+              <span class="eyebrow">Document generations</span>
+              <h1>Generation history</h1>
+              <p>Track purchases, successful document deliveries, restored generations and your remaining allowance.</p>
+            </div>
+          </div>
+          <app-payment-panel
+            data-testid="workspace-document-credit-history"
+            mode="history"
+            [userId]="userAccountId()"
+            [legalReady]="legalConfiguration().ready"
+            [legalVersion]="legalConfiguration().version ?? ''"
+            (balanceChanged)="updateDocumentCreditBalance($event)" />
+        </section>
+      } @else {
+        <div class="dashboard-grid grid grid-cols-1 gap-5 items-start">
         
         <!-- ================= LEFT COLUMN: CLAIMANT PROFILE (4 Cols) ================= -->
-        <section id="left-sidebar" class="lg:col-span-4 flex flex-col gap-6">
+        <section id="left-sidebar" class="dashboard-left flex flex-col gap-5">
+          <div class="workspace-status-line">
+            <span class="capability-state state-available">Available</span>
+            <strong>Profile</strong>
+          </div>
           
           <!-- Claimant Professional Profile -->
-          <app-claimant-profile [claimantName]="profileName()"
+          <app-claimant-profile #claimantProfile
+                                [claimantName]="profileName()"
                                 [claimantEmail]="profileEmail()"
+                                [profile]="structuredProfile()"
                                 [skills]="profileSkills()"
                                 [experience]="profileExperience()"
                                 [aspirations]="profileAspirations()"
                                 [workPrefs]="profileWorkPrefs()"
+                                [commuteRoutingAvailable]="commuteRoutingMode() === 'GOOGLE_ROUTES'"
                                 (profileSaved)="handleSaveProfile($event)"
-                                (logoutRequested)="logout()">
+                                (manageEvidenceRequested)="openExperienceAndAchievements('summary')"
+                                (findJobsRequested)="triggerJobSearch()">
           </app-claimant-profile>
 
         </section>
 
-        <!-- ================= RIGHT COLUMN: JOB RESULTS (8 Cols) ================= -->
-        <section id="right-workspace" class="lg:col-span-8 flex flex-col gap-6">
-          <app-job-results
-            [skills]="profileSkills()"
-            [experience]="profileExperience()"
-            [aspirations]="profileAspirations()"
-            [workPrefs]="profileWorkPrefs()"
-            [authToken]="authToken"
-            (notify)="showToast($event.message, $event.type)">
-          </app-job-results>
+        <!-- ================= CENTER COLUMN: WORKSPACE ================= -->
+        <section id="center-workspace" class="dashboard-center flex flex-col gap-5">
+          <div class="workspace-tabs">
+            <button type="button"
+                    class="workspace-tab"
+                    data-testid="workspace-tab-search"
+                    [class.workspace-tab-active]="activeWorkspaceTab() === 'search'"
+                    [attr.aria-current]="activeWorkspaceTab() === 'search' ? 'page' : null"
+                    (click)="selectWorkspace('search')">
+              <mat-icon>search</mat-icon>
+              <span>Search</span>
+            </button>
+            <button type="button"
+                    class="workspace-tab"
+                    data-testid="workspace-tab-applications"
+                    [class.workspace-tab-active]="activeWorkspaceTab() === 'applications'"
+                    [attr.aria-current]="activeWorkspaceTab() === 'applications' ? 'page' : null"
+                    (click)="selectWorkspace('applications')">
+              <mat-icon>work_history</mat-icon>
+              <span>Applications</span>
+            </button>
+            <button type="button"
+                    class="workspace-tab"
+                    data-testid="workspace-tab-documents"
+                    [class.workspace-tab-active]="activeWorkspaceTab() === 'documents'"
+                    [attr.aria-current]="activeWorkspaceTab() === 'documents' ? 'page' : null"
+                    (click)="selectWorkspace('documents')">
+              <mat-icon>description</mat-icon>
+              <span>Documents</span>
+            </button>
+          </div>
+
+          <div data-testid="workspace-panel-search"
+               [hidden]="activeWorkspaceTab() !== 'search'">
+            <div class="workspace-status-line">
+              <span class="capability-state"
+                    [class.state-fixture]="jobSearchProviderMode() === 'FIXTURE'"
+                    [class.state-available]="jobSearchProviderMode() === 'REAL_PROVIDERS'"
+                    [class.state-unavailable]="jobSearchProviderMode() === 'REQUIRED_VALIDATION'">
+                {{ jobSearchProviderModeLabel() }}
+              </span>
+              <strong>Job search, matching and details</strong>
+            </div>
+            @if (jobSearchReadiness().ready) {
+              <app-job-results #jobResults
+                [skills]="profileSkills()"
+                [experience]="profileExperience()"
+                [aspirations]="profileAspirations()"
+                [workPrefs]="profileWorkPrefs()"
+                [providerMode]="jobSearchProviderMode()"
+                [applicationTrackingAvailable]="true"
+                [applicationToolsAvailable]="documentGenerationMode() !== 'REQUIRED_VALIDATION'"
+                (notify)="showToast($event.message, $event.type)"
+                (applicationChanged)="refreshApplicationTracking()">
+              </app-job-results>
+            } @else {
+              <section class="search-setup-prompt" data-testid="search-setup-prompt">
+                <mat-icon>manage_search</mat-icon>
+                <h2>Tell us what kind of work you want</h2>
+                <p>
+                  Add a target role, workplace preference and search location before searching.
+                  We have not sent a job-search request.
+                </p>
+                <button type="button" (click)="openMyProfile()">Complete job preferences</button>
+              </section>
+            }
+          </div>
+          @if (activeWorkspaceTab() === 'applications') {
+          <div data-testid="workspace-panel-applications">
+            <div class="workspace-status-line">
+              <span class="capability-state state-available">Available</span>
+              <strong>Application tracking and status history</strong>
+            </div>
+            <app-my-applications #myApplications
+              [selectedApplicationId]="selectedApplicationId()"
+              (notify)="showToast($event.message, $event.type)"
+              (applicationUpdated)="jobResults.applyApplicationRecord($event.canonicalJobId || $event.jobId || '', $event)"
+              (applicationChanged)="refreshApplicationTracking()">
+            </app-my-applications>
+          </div>
+          } @else if (activeWorkspaceTab() === 'documents') {
+          <div data-testid="workspace-panel-documents">
+            <div class="workspace-status-line">
+              <span class="capability-state"
+                    [class.state-fixture]="documentGenerationMode() === 'FIXTURE_LLM'"
+                    [class.state-available]="documentGenerationMode() === 'REAL_LLM'"
+                    [class.state-unavailable]="documentGenerationMode() === 'REQUIRED_VALIDATION'">
+                {{ documentGenerationModeLabel() }}
+              </span>
+              <strong>Documents, storage and export</strong>
+            </div>
+            @if (documentGenerationMode() !== 'REQUIRED_VALIDATION') {
+              @if (documentGenerationMode() === 'FIXTURE_LLM') {
+                <p class="capability-fixture-notice" role="status">
+                  Document wording is fixture-generated by the mock AI provider. Storage, DOCX/PDF export and downloads use the real internal services.
+                </p>
+              }
+              <app-documents-workspace #documentsWorkspace
+                [enabled]="true"
+                [selectedApplicationId]="selectedApplicationId()"
+                (notify)="showToast($event.message, $event.type)"
+                (applicationChanged)="refreshApplicationTracking()"
+                (openApplication)="openApplicationFromDocument($event)">
+              </app-documents-workspace>
+            } @else {
+              <section class="capability-placeholder" data-testid="workspace-documents">
+                <span class="capability-state state-unavailable">Not enabled for this beta</span>
+                <h2>Documents, storage and export</h2>
+                <p>The secure document runtime has not been validated in this environment.</p>
+              </section>
+            }
+          </div>
+          }
         </section>
 
+        <aside id="right-sidebar" class="dashboard-right flex flex-col gap-5">
+          <app-payment-panel
+            data-testid="workspace-document-credit"
+            mode="summary"
+            [userId]="userAccountId()"
+            [legalReady]="legalConfiguration().ready"
+            [legalVersion]="legalConfiguration().version ?? ''"
+            (balanceChanged)="updateDocumentCreditBalance($event)" />
+
+          <section data-testid="workspace-reporting">
+            <div class="workspace-status-line">
+              <span class="capability-state state-available">Available</span>
+              <strong>Reporting &amp; job-search evidence</strong>
+            </div>
+            <app-reporting-panel #reportingPanel></app-reporting-panel>
+          </section>
+        </aside>
+
       </div>
+      }
     </main>
   }
 </div>
+<footer class="public-legal-footer">
+  <span>Job Seeker Copilot</span>
+  <a href="/privacy">Privacy Policy</a>
+  <a href="/terms">Terms of Use</a>
+</footer>

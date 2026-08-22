@@ -1,0 +1,107 @@
+<div class="bg-white rounded-2xl border border-slate-200 overflow-hidden transition-all">
+  @if (editingIndex() !== null) {
+    <div class="p-3 bg-slate-50/50 border-b border-slate-100">
+      <h4 class="text-2xs uppercase font-extrabold tracking-widest text-slate-500 mb-3">
+        {{ isNew() ? 'Add Work History' : 'Edit Role' }}
+      </h4>
+      <div class="grid grid-cols-1 gap-2.5">
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label for="role-job-title" class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Job Title *</label>
+            <input id="role-job-title" type="text" [(ngModel)]="editForm.jobTitle"
+                   class="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-slate-900" />
+            @if (editFormErrors()['jobTitle']) {
+              <p class="text-[10px] font-semibold text-rose-500">{{ editFormErrors()['jobTitle'] }}</p>
+            }
+          </div>
+          <div>
+            <label for="role-employer" class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Employer *</label>
+            <input id="role-employer" type="text" [(ngModel)]="editForm.employer"
+                   class="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-slate-900" />
+            @if (editFormErrors()['employer']) {
+              <p class="text-[10px] font-semibold text-rose-500">{{ editFormErrors()['employer'] }}</p>
+            }
+          </div>
+        </div>
+        <div>
+          <label for="role-status" class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Status *</label>
+          <select id="role-status" [(ngModel)]="editForm.status"
+                  class="w-full text-xs font-semibold py-2 px-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-800 cursor-pointer">
+            <option value="CURRENT">Current Position</option>
+            <option value="PREVIOUS_ROLE">Previous Role</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label for="role-start-date" class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Start Date *</label>
+            <input id="role-start-date" type="month" [(ngModel)]="editForm.startDate"
+                   class="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-slate-900" />
+            @if (editFormErrors()['startDate']) {
+              <p class="text-[10px] font-semibold text-rose-500">{{ editFormErrors()['startDate'] }}</p>
+            }
+          </div>
+          @if (editForm.status === 'PREVIOUS_ROLE') {
+            <div>
+              <label for="role-end-date" class="text-[10px] font-bold uppercase tracking-wider text-slate-500">End Date</label>
+              <input id="role-end-date" type="month" [(ngModel)]="editForm.endDate"
+                     class="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-slate-900" />
+            </div>
+          }
+        </div>
+        <div>
+          <label for="role-responsibilities" class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Key Responsibilities</label>
+          <textarea id="role-responsibilities" [(ngModel)]="editForm.keyResponsibilities" rows="3"
+                    class="w-full text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-slate-900 leading-relaxed"
+                    placeholder="Describe your responsibilities in this role..."></textarea>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 mt-3">
+        <button type="button" (click)="cancelEdit()" class="text-xs font-semibold text-slate-600 bg-white hover:bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-300 transition-colors cursor-pointer">
+          Cancel
+        </button>
+        <button type="button" (click)="saveEdit()" class="text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 px-3 py-1.5 rounded-lg transition-colors cursor-pointer">
+          {{ isNew() ? 'Add' : 'Save' }}
+        </button>
+      </div>
+    </div>
+  }
+
+  <div class="divide-y divide-slate-100">
+    @for (role of items(); track role; let i = $index) {
+      <div class="flex items-start justify-between p-3 hover:bg-slate-50/50 transition-colors">
+        <div class="min-w-0 flex-1">
+          <p class="text-xs font-bold text-slate-900 truncate">{{ role.jobTitle }}</p>
+          <p class="text-[10px] font-medium text-slate-500">{{ role.employer }}</p>
+          <p class="text-[10px] font-semibold text-slate-400">
+            <span [class.text-emerald-600]="role.status === 'CURRENT'"
+                  [class.text-slate-500]="role.status === 'PREVIOUS_ROLE'">
+              {{ role.status === 'CURRENT' ? 'Current' : 'Previous' }}
+            </span>
+            &middot; {{ role.startDate }}@if (role.endDate) { &ndash; {{ role.endDate }} }
+          </p>
+          @if (role.keyResponsibilities) {
+            <p class="text-[10px] text-slate-500 mt-0.5 line-clamp-2">{{ role.keyResponsibilities }}</p>
+          }
+        </div>
+        <div class="flex items-center gap-1 ml-2 shrink-0">
+          <button type="button" (click)="startEdit(i)" class="text-slate-400 hover:text-slate-700 p-1 cursor-pointer border-none bg-transparent" title="Edit">
+            <mat-icon class="text-sm">edit</mat-icon>
+          </button>
+          <button type="button" (click)="deleteItem(i)" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer border-none bg-transparent" title="Delete">
+            <mat-icon class="text-sm">delete</mat-icon>
+          </button>
+        </div>
+      </div>
+    } @empty {
+      <p class="text-[10px] font-medium text-slate-600 text-center py-4">No work history added yet.</p>
+    }
+  </div>
+
+  @if (editingIndex() === null) {
+    <button type="button" (click)="startNew()"
+            class="w-full text-xs font-bold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50 py-2.5 border-t border-slate-100 transition-colors cursor-pointer flex items-center justify-center gap-1 border-none bg-transparent">
+      <mat-icon class="text-sm">add</mat-icon>
+      Add Work History
+    </button>
+  }
+</div>

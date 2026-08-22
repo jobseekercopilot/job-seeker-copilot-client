@@ -1,0 +1,121 @@
+<section class="reporting-panel" data-testid="reporting-panel">
+  <div class="reporting-header">
+    <div>
+      <h2>Your job search progress</h2>
+      @if (summary()?.commitmentProgress?.remainingText) {
+        <p>{{ summary()?.commitmentProgress?.remainingText }}</p>
+      }
+    </div>
+    <button type="button" class="secondary-button" (click)="refresh()" [disabled]="loading()">Refresh</button>
+  </div>
+
+  @if (error()) {
+    <div class="reporting-error">{{ error() }}</div>
+  }
+
+  @if (summary(); as report) {
+    <article class="reporting-card summary-card" data-testid="reporting-summary">
+      <div class="summary-total">
+        <span>Applications</span>
+        <strong>{{ report.applicationSummary?.total ?? 0 }}</strong>
+      </div>
+      <div class="summary-rows">
+        <div class="summary-row summary-new">
+          <span>Generated documents</span>
+          <strong>{{ report.applicationSummary?.documentsGenerated ?? 0 }}</strong>
+          <em>{{ pct(report.applicationSummary?.documentsGenerated, report.applicationSummary?.total) }}%</em>
+        </div>
+        <div class="summary-row summary-applied">
+          <span>Applied</span>
+          <strong>{{ report.applicationSummary?.applied ?? 0 }}</strong>
+          <em>{{ pct(report.applicationSummary?.applied, report.applicationSummary?.total) }}%</em>
+        </div>
+        <div class="summary-row summary-interview">
+          <span>Interviews</span>
+          <strong>{{ report.applicationSummary?.interview ?? 0 }}</strong>
+          <em>{{ pct(report.applicationSummary?.interview, report.applicationSummary?.total) }}%</em>
+        </div>
+        <div class="summary-row summary-offer">
+          <span>Offers</span>
+          <strong>{{ report.applicationSummary?.offer ?? 0 }}</strong>
+          <em>{{ pct(report.applicationSummary?.offer, report.applicationSummary?.total) }}%</em>
+        </div>
+        <div class="summary-row summary-unsuccessful">
+          <span>Unsuccessful</span>
+          <strong>{{ report.applicationSummary?.unsuccessful ?? 0 }}</strong>
+          <em>{{ pct(report.applicationSummary?.unsuccessful, report.applicationSummary?.total) }}%</em>
+        </div>
+      </div>
+    </article>
+
+    <article class="reporting-card timeline-card" data-testid="reporting-activity">
+      <h3>Recent activity</h3>
+      @if (displayActivity().length > 0) {
+        <ol>
+          @for (item of displayActivity(); track item.id) {
+            <li>
+              <time>{{ item.timestamp | date:'dd/MM HH:mm' }}</time>
+              <span class="evidence-category">{{ item.category === 'JOB_SEARCH' ? 'Job search' : item.category === 'DOCUMENT' ? 'Documents' : 'Application' }}</span>
+              <div>
+                <strong>{{ item.label }}</strong>
+                @if (item.jobTitle) {
+                  <span>{{ item.jobTitle }}</span>
+                }
+                @if (item.companyName) {
+                  <span>{{ item.companyName }}</span>
+                }
+                @if (item.provider) {
+                  <small>Source: {{ item.provider }}</small>
+                }
+                @if (item.status) {
+                  <small>Status: {{ item.status }}</small>
+                }
+              </div>
+            </li>
+          }
+        </ol>
+      } @else {
+        <p>No activity yet.</p>
+      }
+    </article>
+
+    <article class="reporting-card journal-card">
+      <div class="journal-header">
+        <h3>Journal preview</h3>
+        <div class="journal-actions">
+          <button type="button" class="secondary-button" (click)="copyJournal()" [disabled]="!displayJournal()">
+            {{ copied() ? 'Copied' : 'Copy journal' }}
+          </button>
+          <a class="secondary-button" href="/api/v1/reports/evidence.txt" download="job-search-evidence.txt">Download evidence</a>
+        </div>
+      </div>
+      <pre>{{ displayJournal() || 'No journal entries yet.' }}</pre>
+      @if (copied()) {
+        <p class="copy-success">Copied to clipboard.</p>
+      }
+      @if (copyError()) {
+        <p class="reporting-error">{{ copyError() }}</p>
+      }
+      <p class="evidence-note">Review this evidence before sharing it. It is a summary of your stored Job Seeker Copilot records, not an official Universal Credit submission.</p>
+    </article>
+
+    @if (report.commitmentProgress; as progress) {
+      <article class="reporting-card commitment">
+        <div class="commitment-line">
+          <span>Indicative activity estimate</span>
+          <strong>{{ progress.percentageComplete ?? 0 }}%</strong>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <div class="progress-fill" [style.width.%]="progress.percentageComplete ?? 0"></div>
+        </div>
+        <div class="commitment-meta">
+          <span>{{ progress.completedHours ?? 0 }} of {{ progress.requiredHours ?? 35 }} hours</span>
+          <span>{{ progress.remainingHours ?? 0 }} remaining</span>
+        </div>
+        <p class="evidence-note">This planning estimate uses your stored profile preference and tracked application activity. It is not a measured time log.</p>
+      </article>
+    }
+  } @else if (loading()) {
+    <div class="reporting-empty">Loading reporting data...</div>
+  }
+</section>

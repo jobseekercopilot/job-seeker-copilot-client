@@ -1,109 +1,659 @@
-<div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+<div class="job-results-panel rounded-2xl overflow-hidden" data-testid="job-results-workspace">
 
   <!-- Header bar -->
-  <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-    <div class="flex items-center gap-3">
-      <mat-icon class="text-slate-400">work</mat-icon>
-      <h2 class="text-lg font-semibold text-slate-800 m-0">Job Matches</h2>
+  <div class="job-results-header flex flex-col gap-4 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="min-w-0">
+      <div class="flex items-center gap-3">
+        <mat-icon class="panel-icon">work</mat-icon>
+        <h2 class="text-lg font-semibold m-0">Job Matches</h2>
+        <span class="provider-mode-badge"
+              [class.provider-mode-partial]="providerProvenanceCaution()"
+              data-testid="job-search-provider-mode">
+          {{ providerModeLabel() }}
+        </span>
+      </div>
     </div>
-    <button (click)="refresh()"
-            [disabled]="loading()"
-            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg
-                   bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-800
-                   border border-slate-200 transition-colors duration-150
-                   disabled:opacity-50 disabled:cursor-not-allowed">
-      <mat-icon class="text-lg" [class.animate-spin]="loading()">refresh</mat-icon>
-      <span>{{ loading() ? 'Searching...' : 'Refresh' }}</span>
-    </button>
+    <div class="flex flex-wrap items-center gap-2">
+      @if (!loading() && roleResults().length > 0) {
+        <label class="sort-control inline-flex items-center gap-2">
+          <span class="text-xs font-semibold">Sort</span>
+          <select class="sort-select"
+                  [value]="selectedSort()"
+                  (change)="selectSort($any($event.target).value)">
+            @for (option of sortOptions; track option.value) {
+              <option [value]="option.value">{{ option.label }}</option>
+            }
+            <optgroup label="Coming soon">
+              @for (option of futureSortOptions; track option) {
+                <option disabled>{{ option }}</option>
+              }
+            </optgroup>
+          </select>
+        </label>
+      }
+      @if (!loading() && !error() && publisherOptions().length > 1) {
+        <button type="button"
+                (click)="toggleFilters()"
+                class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150"
+                [class.filter-button-active]="filtersOpen() || sourceFilterActive()"
+                [attr.aria-expanded]="filtersOpen()">
+          <mat-icon class="text-lg">filter_list</mat-icon>
+          <span>
+            @if (sourceFilterActive()) {
+              Filter: {{ selectedPublisher() }}
+            } @else {
+              Filter
+            }
+          </span>
+        </button>
+      }
+      <button (click)="refresh()"
+              [disabled]="loading()"
+              class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
+        <mat-icon class="text-lg" [class.animate-spin]="loading()">refresh</mat-icon>
+        <span>{{ loading() ? 'Searching...' : 'Refresh' }}</span>
+      </button>
+    </div>
   </div>
+
+  @if (!loading() && !error() && filtersOpen() && publisherOptions().length > 1) {
+    <div class="filter-panel mx-4 mt-4 rounded-lg p-4">
+      <div class="mb-3 flex items-center justify-between gap-3">
+        <h3 class="m-0 text-sm font-semibold">Filters</h3>
+      </div>
+      <section class="filter-section">
+        <h4 class="filter-section-title m-0 mb-2 text-xs font-semibold uppercase tracking-wider">Sources</h4>
+        <div class="flex flex-wrap gap-2" aria-label="Job site filters">
+          @for (option of publisherOptions(); track option.label) {
+            <button type="button"
+                    (click)="selectPublisher(option.label)"
+                    class="source-chip inline-flex items-center gap-2 border px-3 py-1.5 text-sm font-medium transition-colors"
+                    [class.source-chip-active]="selectedPublisher() === option.label">
+              <span>{{ option.label }}</span>
+              <span class="text-xs">({{ option.count }})</span>
+            </button>
+          }
+        </div>
+      </section>
+      <div class="future-filter-sections mt-4 grid gap-2 sm:grid-cols-2">
+        @for (section of futureFilterSections; track section) {
+          <div class="future-filter-section rounded-md px-3 py-2">
+            <span class="text-xs font-semibold">{{ section }}</span>
+            <span class="text-xs">Future filter</span>
+          </div>
+        }
+      </div>
+    </div>
+  }
 
   <!-- Content area -->
   <div class="px-6 py-5 space-y-4">
+    @if (roleResults().length > 0) {
+      <div class="flex flex-wrap gap-2" aria-label="Target role filters">
+        @for (group of roleResults(); track group.targetRole) {
+          <button type="button"
+                  (click)="selectTargetRole(group.targetRole)"
+                  class="role-tab inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors"
+                  [class.role-tab-active]="selectedTargetRole() === group.targetRole"
+                  [attr.aria-current]="selectedTargetRole() === group.targetRole ? 'true' : null">
+            <span>{{ group.targetRole }}</span>
+            <span class="text-xs">
+              @if (group.loading && !group.searched) {
+                (Searching…)
+              } @else if (group.error && group.jobs.length === 0) {
+                (Unavailable)
+              } @else if (!group.searched) {
+                (Not searched)
+              } @else {
+                ({{ group.totalResults }})
+              }
+            </span>
+          </button>
+        }
+      </div>
+    }
 
     <!-- Loading skeleton -->
-    @if (loading()) {
+    @if (loading() && activeJobs().length === 0) {
       <div class="space-y-4">
         @for (skeleton of [1, 2, 3]; track skeleton) {
-          <div class="animate-pulse border border-slate-200 rounded-xl p-5">
-            <div class="h-5 bg-slate-200 rounded w-3/4 mb-3"></div>
-            <div class="h-4 bg-slate-200 rounded w-1/2 mb-3"></div>
+          <div class="skeleton-card animate-pulse rounded-xl p-5">
+            <div class="h-5 rounded w-3/4 mb-3"></div>
+            <div class="h-4 rounded w-1/2 mb-3"></div>
             <div class="flex gap-4">
-              <div class="h-4 bg-slate-200 rounded w-1/4"></div>
-              <div class="h-4 bg-slate-200 rounded w-1/4"></div>
+              <div class="h-4 rounded w-1/4"></div>
+              <div class="h-4 rounded w-1/4"></div>
             </div>
           </div>
         }
       </div>
     }
 
+    @if (loading() && activeJobs().length > 0) {
+      <p class="text-sm m-0" role="status">Refreshing {{ selectedTargetRole() }} results…</p>
+    }
+
     <!-- Error state -->
     @if (error(); as errMsg) {
-      <div class="flex items-start gap-3 bg-rose-50 border border-rose-200 rounded-xl p-4">
+      <div class="error-state flex items-start gap-3 rounded-xl p-4">
         <mat-icon class="text-rose-500 text-lg flex-shrink-0">error_outline</mat-icon>
-        <p class="text-sm text-rose-700 m-0">{{ errMsg }}</p>
+        <p class="text-sm m-0">{{ errMsg }}</p>
       </div>
     }
 
+    @for (warning of providerWarnings(); track warning) {
+      <div class="warning-state flex items-start gap-3 rounded-xl p-4">
+        <mat-icon class="text-amber-500 text-lg flex-shrink-0">warning</mat-icon>
+        <p class="text-sm m-0">{{ warning }}</p>
+      </div>
+    }
+
+    @if (!loading() && activeRoleSearched()) {
+      <section class="search-trust-summary"
+               aria-label="Search data and filtering details"
+               data-testid="job-search-trust-summary">
+        <div>
+          <mat-icon aria-hidden="true">verified_user</mat-icon>
+          <span>{{ freshnessLabel() }}</span>
+          @if (retrievedAtLabel(); as retrievedAt) {
+            <span>· oldest result retrieved {{ retrievedAt }}</span>
+          }
+        </div>
+        <p>
+          {{ matchingEvidenceLabel() }}
+          Eligibility and unverified requirements still need your review.
+        </p>
+        @if (filteredResultSummary(); as filteredSummary) {
+          <p class="search-filter-summary">{{ filteredSummary }}</p>
+        }
+      </section>
+    }
+
     <!-- Empty state (no error, not loading, zero jobs) -->
-    @if (!loading() && !error() && jobs().length === 0) {
+    @if (!loading() && !error() && activeRoleSearched() && filteredJobs().length === 0) {
       <div class="flex flex-col items-center justify-center py-12 text-center">
-        <mat-icon class="text-slate-300 text-5xl mb-4">search_off</mat-icon>
-        <p class="text-slate-500 text-sm m-0">No job matches found based on your current profile.</p>
-        <p class="text-slate-400 text-xs mt-1">Try updating your skills, aspirations, or work preferences.</p>
+        <mat-icon class="empty-icon text-5xl mb-4">search_off</mat-icon>
+        <p class="text-sm m-0">{{ emptyStateMessage() }}</p>
+        <p class="text-xs mt-1">Try updating your skills, aspirations, or work preferences.</p>
       </div>
     }
 
     <!-- Results count -->
-    @if (totalResults() > 0 && !loading()) {
-      <p class="text-xs font-medium text-slate-500 uppercase tracking-wider m-0">
-        {{ totalResults() }} match{{ totalResults() === 1 ? '' : 'es' }} found
-      </p>
+    @if (filteredJobs().length > 0) {
+      <div class="results-summary">
+        <p class="results-count text-xs font-medium uppercase tracking-wider m-0">
+          @if (sourceFilterActive()) {
+            Showing {{ filteredJobs().length }} {{ selectedPublisher() }} match{{ filteredJobs().length === 1 ? '' : 'es' }}
+            on page {{ currentPage() }} · {{ totalResults() }} total across all job sites
+          } @else {
+            Showing {{ resultRangeStart() }}-{{ resultRangeEnd() }}
+            of {{ totalResults() }} match{{ totalResults() === 1 ? '' : 'es' }}
+          }
+          for {{ selectedTargetRole() }} · {{ hasMore() ? 'More available' : 'No more results' }}
+        </p>
+      </div>
     }
 
     <!-- Job cards grid -->
     <div class="grid gap-4">
-      @for (job of jobs(); track job.id) {
-        <div class="border border-slate-200 rounded-xl p-5 hover:shadow-md hover:border-slate-300 transition-all duration-150 bg-white">
+      @for (job of paginatedJobs(); track trackByJobId($index, job)) {
+        <app-job-card
+          [job]="job"
+          [generating]="generatingJobIds().has(jobStateKey(job))"
+          [cancellingGeneration]="cancellingGenerationIds().has(jobStateKey(job))"
+          [generationMessage]="generationMessages()[jobStateKey(job)] ?? null"
+          [generationError]="generationErrors()[jobStateKey(job)] ?? null"
+          [downloads]="generationDownloads()[jobStateKey(job)] ?? null"
+          [cvDocumentId]="generatedDocumentIds()[jobStateKey(job)]?.cvDocumentId ?? job.cvDocumentId ?? null"
+          [coverLetterDocumentId]="generatedDocumentIds()[jobStateKey(job)]?.coverLetterDocumentId ?? job.coverLetterDocumentId ?? null"
+          [uploadingDocument]="uploadingDocuments()[jobStateKey(job)] ?? null"
+          [updatingStatus]="updatingApplicationStatuses()[jobStateKey(job)] ?? null"
+          [creatingApplication]="creatingApplicationIds().has(jobStateKey(job))"
+          [applicationTrackingAvailable]="applicationTrackingAvailable()"
+          [applicationToolsAvailable]="applicationToolsAvailable()"
+          [generationPanelActive]="isEvidenceSelectionJob(job) || isDocumentChoiceJob(job) || hasApplicationUploadState(job)"
+          [descriptionLoading]="loadingJobDescriptionIds().has(jobStateKey(job))"
+          [descriptionLoadError]="jobDescriptionErrors()[jobStateKey(job)] ?? null"
+          (trackApplication)="trackApplication($event)"
+          (generateDocuments)="prepareApplicationDocuments($event, 'GENERATE')"
+          (cancelGeneration)="cancelGeneration($event)"
+          (updateApplicationStatus)="updateApplicationStatus(job, $event)"
+          (withdrawGeneratedApplication)="withdrawGeneratedApplication(job)"
+          (downloadFile)="downloadFile($event)"
+          (uploadReplacement)="uploadReplacement(job, $event)"
+          (dismissGenerationError)="dismissGenerationError($event)"
+          (requestFullDescription)="loadFullJobDescription($event)">
+          <ng-container generation-evidence-panel>
+            @if (isDocumentChoiceJob(job)) {
+              @let choiceJob = documentChoiceJob()!;
+              <section class="evidence-selector document-choice-selector"
+                       data-testid="application-document-choice"
+                       [attr.aria-labelledby]="evidenceSelectorDomId(choiceJob, 'document-choice-title')">
+                <header class="evidence-selector-header">
+                  <div>
+                    <p class="evidence-kicker">Application saved</p>
+                    <h3 [id]="evidenceSelectorDomId(choiceJob, 'document-choice-title')">
+                      Choose documents for {{ jobTitle(choiceJob) }}
+                    </h3>
+                    <p>
+                      Choose each document independently. Uploading does not use your allowance; one generation is used only after each
+                      selected document is successfully delivered. Failed or cancelled delivery uses no generation.
+                    </p>
+                  </div>
+                  <button type="button" class="selector-close" (click)="closeDocumentChoice()"
+                          aria-label="Close document choices">
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </header>
 
-          <!-- Top row: title + company -->
-          <div class="flex items-start justify-between gap-4 mb-3">
-            <div class="min-w-0 flex-1">
-              <h3 class="text-base font-semibold text-slate-800 m-0 truncate">{{ job.title }}</h3>
-              <p class="text-sm text-slate-500 m-0 mt-0.5">{{ job.company }}</p>
-            </div>
-            <!-- Match Score Badge -->
-            <div class="flex-shrink-0 flex flex-col items-center px-3 py-2 rounded-xl border
-                        {{ matchScoreBg(job.matchScore) }}">
-              <span class="text-xs font-medium text-slate-500 uppercase tracking-wider">Match</span>
-              <span class="text-lg font-bold {{ matchScoreColor(job.matchScore) }}">
-                {{ (job.matchScore * 100).toFixed(0) }}%
-              </span>
-            </div>
-          </div>
+                @if (documentChoiceError()) {
+                  <p class="selector-error" role="alert">{{ documentChoiceError() }}</p>
+                }
 
-          <!-- Details row -->
-          <div class="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-slate-600">
-            <span class="inline-flex items-center gap-1.5">
-              <mat-icon class="text-base text-slate-400">location_on</mat-icon>
-              {{ job.location }}
-            </span>
-            <span class="inline-flex items-center gap-1.5">
-              <mat-icon class="text-base text-slate-400">payments</mat-icon>
-              {{ formatSalary(job.salary) }}
-            </span>
-            <span class="inline-flex items-center gap-1.5">
-              <mat-icon class="text-base text-slate-400">work_history</mat-icon>
-              {{ job.employmentType }}
-            </span>
-            <span class="inline-flex items-center gap-1.5">
-              <mat-icon class="text-base text-slate-400">calendar_today</mat-icon>
-              Posted {{ formatDate(job.postedDate) }}
-            </span>
-          </div>
+                <div class="document-choice-grid">
+                  @for (purpose of evidencePurposes; track purpose) {
+                    <fieldset class="document-choice-panel">
+                      <legend>{{ documentPurposeLabel(purpose) }}</legend>
+                      @if (documentChoiceEntryPoint() === 'GENERATE') {
+                        <label>
+                          <input type="radio"
+                                 [name]="evidenceSelectorDomId(choiceJob, 'choice-' + purpose)"
+                                 [checked]="documentChoices()[purpose] === 'GENERATE'"
+                                 (change)="chooseDocumentAction(purpose, 'GENERATE')" />
+                          <span><strong>Generate</strong><small>1 document generation after successful delivery; no charge if delivery fails.</small></span>
+                        </label>
+                      }
+                      <label>
+                        <input type="radio"
+                               [name]="evidenceSelectorDomId(choiceJob, 'choice-' + purpose)"
+                               [checked]="documentChoices()[purpose] === 'UPLOAD'"
+                               (change)="chooseDocumentAction(purpose, 'UPLOAD')" />
+                        <span><strong>Upload</strong><small>Free. PDF or DOCX, up to 10 MiB.</small></span>
+                      </label>
+                      <label>
+                        <input type="radio"
+                               [name]="evidenceSelectorDomId(choiceJob, 'choice-' + purpose)"
+                               [checked]="documentChoices()[purpose] === 'OMIT'"
+                               (change)="chooseDocumentAction(purpose, 'OMIT')" />
+                        <span><strong>Not now</strong><small>Keep this document empty.</small></span>
+                      </label>
+                      @if (documentChoices()[purpose] === 'UPLOAD') {
+                        <label class="document-file-choice">
+                          <span>Select {{ documentPurposeLabel(purpose).toLowerCase() }} file</span>
+                          <input type="file"
+                                 accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                 (change)="chooseDocumentFile(purpose, $event)" />
+                        </label>
+                        @if (documentChoiceFiles()[purpose]; as selectedFile) {
+                          <small class="selected-file-name">
+                            {{ selectedFile.name }} · {{ selectedFile.size | number }} bytes
+                          </small>
+                        }
+                      }
+                    </fieldset>
+                  }
+                </div>
 
-        </div>
+                @if (documentChoiceEntryPoint() === 'GENERATE') {
+                  <p class="selector-note">
+                    Select Generate for at least one document. You will review the exact document-generation allowance
+                    before generation starts.
+                  </p>
+                }
+                <footer class="selector-actions">
+                  <button type="button" class="dashboard-button dashboard-button-secondary"
+                          (click)="closeDocumentChoice()">Cancel</button>
+                  <button type="button" class="selector-generate"
+                          [disabled]="!canContinueDocumentChoice()"
+                          (click)="continueDocumentChoice()">
+                    Continue
+                  </button>
+                </footer>
+              </section>
+            }
+
+            @if (hasApplicationUploadState(job)) {
+              <section class="application-upload-statuses" aria-label="Application document upload status">
+                @for (purpose of evidencePurposes; track purpose) {
+                  @if (applicationUploadState(job, purpose); as upload) {
+                    <article [class.upload-error]="upload.phase === 'ERROR'"
+                             [class.upload-complete]="upload.phase === 'COMPLETED'">
+                      <div>
+                        <strong>{{ documentPurposeLabel(purpose) }}</strong>
+                        <span>{{ upload.fileName }}</span>
+                        @if (upload.message) {
+                          <small [attr.role]="upload.phase === 'ERROR' ? 'alert' : 'status'">
+                            {{ upload.message }}
+                          </small>
+                        } @else if (upload.phase === 'UPLOADING') {
+                          <small role="status">Uploading{{ upload.percent != null ? ' · ' + upload.percent + '%' : '…' }}</small>
+                        }
+                      </div>
+                      @if (upload.phase === 'UPLOADING' && upload.percent != null) {
+                        <progress max="100" [value]="upload.percent"
+                                  [attr.aria-label]="documentPurposeLabel(purpose) + ' upload progress'">
+                          {{ upload.percent }}%
+                        </progress>
+                      }
+                      @if (upload.phase === 'ERROR') {
+                        <span class="upload-actions">
+                          @if (upload.canRetry) {
+                            <button type="button" (click)="retryApplicationUpload(job, purpose)">Retry</button>
+                          }
+                          <button type="button" (click)="chooseReplacementApplicationUpload(job, purpose)">
+                            Choose another file
+                          </button>
+                          <button type="button" (click)="skipApplicationUpload(job, purpose)">Skip</button>
+                        </span>
+                      }
+                    </article>
+                  }
+                }
+              </section>
+            }
+
+            @if (isEvidenceSelectionJob(job)) {
+              @let selectionJob = evidenceSelectionJob()!;
+              <section class="evidence-selector"
+                     data-testid="generation-evidence-selector"
+                     [attr.aria-labelledby]="evidenceSelectorDomId(selectionJob, 'title')">
+              <header class="evidence-selector-header">
+                <div>
+                  <p class="evidence-kicker">Prepare documents for this job</p>
+                  <h3 [id]="evidenceSelectorDomId(selectionJob, 'title')">
+                    Choose evidence for {{ jobTitle(selectionJob) }}
+                  </h3>
+                  <dl class="selection-job-context">
+                    <div>
+                      <dt>Employer</dt>
+                      <dd>{{ employerName(selectionJob) }}</dd>
+                    </div>
+                    <div>
+                      <dt>Provider</dt>
+                      <dd>{{ generationProviderLabel(selectionJob) }}</dd>
+                    </div>
+                    <div>
+                      <dt>Job reference</dt>
+                      <dd>{{ canonicalJobReference(selectionJob) }}</dd>
+                    </div>
+                    <div>
+                      <dt>Documents</dt>
+                      <dd>{{ activeEvidencePurposes().length === 2
+                        ? 'CV and cover letter'
+                        : documentPurposeLabel(activeEvidencePurposes()[0]) }}</dd>
+                    </div>
+                  </dl>
+                  <p>
+                    Nothing is included automatically. Choose user-confirmed entries separately for each
+                    document, then review its section preview. The service will freeze the current revisions.
+                  </p>
+                </div>
+                <button type="button" class="selector-close" (click)="closeEvidenceSelection()"
+                        aria-label="Close evidence selector">
+                  <mat-icon>close</mat-icon>
+                </button>
+              </header>
+
+              @if (evidenceSelectionError()) {
+                <p class="selector-error" role="alert">{{ evidenceSelectionError() }}</p>
+              }
+
+              <section class="job-advert-review"
+                       [attr.aria-labelledby]="evidenceSelectorDomId(selectionJob, 'advert-title')">
+                <div class="job-advert-review-header">
+                  <div>
+                    <h4 [id]="evidenceSelectorDomId(selectionJob, 'advert-title')">
+                      Review the job advert
+                    </h4>
+                    <p>
+                      The provider advert is loaded automatically where available. You can correct or add
+                      details before this exact text is frozen and used to tailor the selected document(s).
+                    </p>
+                  </div>
+                  <span>
+                    {{ generationJobDescriptionStatus() }} ·
+                    {{ generationJobDescription().length }} / 12,000
+                  </span>
+                </div>
+                @if (generationJobDetailsLoading()) {
+                  <p class="selector-loading" role="status">
+                    Loading the complete advert from the provider…
+                  </p>
+                } @else if (generationJobDetailsError(); as detailsError) {
+                  <div class="selector-error selector-load-error" role="alert">
+                    <p>{{ detailsError }}</p>
+                    <button type="button" (click)="retryJobDetails()">Retry provider advert</button>
+                  </div>
+                }
+                @if (!generationJobDetailsLoading() && generationJobDescriptionLooksIncomplete()) {
+                  <p class="selector-warning" role="alert">
+                    This looks like a shortened search-result preview. Add the complete responsibilities,
+                    requirements and application details before continuing.
+                  </p>
+                }
+                <textarea
+                  [id]="evidenceSelectorDomId(selectionJob, 'advert')"
+                  rows="10"
+                  maxlength="12000"
+                  [value]="generationJobDescription()"
+                  (input)="updateGenerationJobDescription($event)"
+                  aria-describedby="generation-advert-help"></textarea>
+                <p id="generation-advert-help" class="selector-note">
+                  Check recruiter or employer names, named contacts, required technologies and role responsibilities.
+                  Provider instructions inside the advert are treated as data, never as AI instructions.
+                </p>
+                <div class="job-party-grid">
+                  <label>
+                    <span>Who advertised this role?</span>
+                    <select [value]="generationAdvertiserType()"
+                            (change)="generationAdvertiserType.set($any($event.target).value)">
+                      <option value="EMPLOYER">The employer</option>
+                      <option value="RECRUITER">A recruiter or agency</option>
+                      <option value="UNKNOWN">Not sure yet</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Advertiser or recruiter name</span>
+                    <input type="text" maxlength="160" [value]="generationAdvertiserName()"
+                           (input)="generationAdvertiserName.set($any($event.target).value)" />
+                  </label>
+                  <label>
+                    <span>Hiring organisation (optional)</span>
+                    <input type="text" maxlength="160" [value]="generationHiringOrganisationName()"
+                           (input)="generationHiringOrganisationName.set($any($event.target).value)" />
+                    <small>Leave blank when a recruiter has not named its client.</small>
+                  </label>
+                  <label>
+                    <span>Application contact (optional)</span>
+                    <input type="text" maxlength="160" [value]="generationApplicationContactName()"
+                           (input)="generationApplicationContactName.set($any($event.target).value)" />
+                    <small>A named contact produces “Dear Name” and “Yours sincerely”.</small>
+                  </label>
+                </div>
+                @if (generationJobDescriptionNeedsConfirmation()) {
+                  <label class="job-advert-confirmation">
+                    <input type="checkbox"
+                           [checked]="generationJobDescriptionConfirmed()"
+                           [disabled]="generationJobDescription().trim().length < 200"
+                           (change)="updateGenerationJobDescriptionConfirmation($event)" />
+                    <span>I have reviewed this and confirm it is the complete advert to use for generation.</span>
+                  </label>
+                } @else {
+                  <p class="selector-note">
+                    This is the provider's complete advert. Choosing Generate below confirms it for this request.
+                  </p>
+                }
+              </section>
+
+              @if (evidenceLoading()) {
+                <p class="selector-loading" role="status">Loading your confirmed experience and achievements…</p>
+              } @else if (evidenceLoadError(); as loadError) {
+                <div class="selector-error selector-load-error" role="alert">
+                  <p>{{ loadError }}</p>
+                  <button type="button" (click)="retryEvidenceSelection()">Retry loading evidence</button>
+                </div>
+              } @else if (!eligibleEvidence().length) {
+                <div class="selector-empty">
+                  <mat-icon>fact_check</mat-icon>
+                  <div>
+                    <strong>No evidence is ready for selection</strong>
+                    <p>
+                      Add or review an entry in Experience &amp; achievements, then confirm it before generating documents.
+                    </p>
+                  </div>
+                </div>
+              } @else {
+                @if (ineligibleEvidenceCount() > 0) {
+                  <p class="selector-note">
+                    {{ ineligibleEvidenceCount() }} draft, hidden, review-required, archived or superseded
+                    item(s) are unavailable. Only active, visible entries confirmed by you can be selected.
+                  </p>
+                }
+
+                <div class="purpose-grid">
+                  @for (purpose of activeEvidencePurposes(); track purpose) {
+                    <section class="purpose-panel"
+                             [attr.aria-labelledby]="evidenceSelectorDomId(selectionJob, 'purpose-' + purpose)">
+                      <header>
+                        <span class="purpose-number">{{ purpose === 'CV' ? '1' : '2' }}</span>
+                        <div>
+                          <h4 [id]="evidenceSelectorDomId(selectionJob, 'purpose-' + purpose)">
+                            {{ purpose === 'CV' ? 'CV evidence' : 'Cover letter evidence' }}
+                          </h4>
+                          <p>Select only what is relevant to this document.</p>
+                        </div>
+                        <span class="evidence-selection-actions">
+                          <button type="button"
+                                  class="evidence-recommend"
+                                  [disabled]="recommendedEvidenceSelected(purpose)"
+                                  (click)="applyRecommendedEvidence(purpose)">
+                            {{ recommendedEvidenceSelected(purpose) ? 'Recommended selected' : 'Use recommended' }}
+                          </button>
+                          <button type="button"
+                                  class="evidence-select-all"
+                                  (click)="toggleAllEvidence(purpose)">
+                            {{ allEvidenceSelected(purpose) ? 'Clear all' : 'Select all' }}
+                          </button>
+                        </span>
+                      </header>
+
+                      <div class="evidence-choice-list">
+                        @for (entry of rankedEligibleEvidence(); track entry.entryId) {
+                          @let revision = latestEvidence(entry);
+                          @let match = evidenceMatch(entry);
+                          <label class="evidence-choice"
+                                 [class.evidence-choice-selected]="isEvidenceSelected(purpose, entry.entryId)">
+                            <input type="checkbox"
+                                   [checked]="isEvidenceSelected(purpose, entry.entryId)"
+                                   (change)="toggleEvidence(purpose, entry)" />
+                            <span>
+                              <strong>{{ revision?.heading }}</strong>
+                              <small>
+                                {{ categoryLabel(entry.category) }} · confirmed revision
+                                {{ revision?.revisionNumber }}
+                              </small>
+                              <small class="evidence-match" [class.evidence-match-strong]="match.score >= 10">
+                                {{ match.label }} · {{ match.explanation }}
+                              </small>
+                              @if (entry.category === 'CAREER_BREAK') {
+                                <em>Contains optional career-break context. Include only if you want it used.</em>
+                              }
+                            </span>
+                          </label>
+                        }
+                      </div>
+
+                      @if (selectedEvidence(purpose).length) {
+                        <div class="evidence-preview" data-testid="evidence-selection-preview">
+                          <h5>Document preview</h5>
+                          <p>{{ selectedEvidence(purpose).length }} confirmed entr{{ selectedEvidence(purpose).length === 1 ? 'y' : 'ies' }}</p>
+                          <ol>
+                            @for (preview of evidenceSectionPreview(purpose); track preview.section) {
+                              <li>
+                                <strong>{{ categoryLabel(preview.section) }}</strong>
+                                <span>{{ preview.headings.join(' · ') }}</span>
+                              </li>
+                            }
+                          </ol>
+                        </div>
+                        @if (evidenceSelectionWarnings(purpose).length) {
+                          <div class="evidence-quality-warnings" role="status">
+                            <strong>Review before generating</strong>
+                            <ul>
+                              @for (warning of evidenceSelectionWarnings(purpose); track warning) {
+                                <li>{{ warning }}</li>
+                              }
+                            </ul>
+                          </div>
+                        }
+                        <div class="selection-order">
+                          <h5>Section order</h5>
+                          <ol>
+                            @for (section of sectionOrder(purpose); track section; let index = $index) {
+                              <li>
+                                <span>{{ categoryLabel(section) }}</span>
+                                <span class="order-actions">
+                                  <button type="button" (click)="moveEvidenceSection(purpose, section, -1)"
+                                          [disabled]="index === 0"
+                                          [attr.aria-label]="'Move ' + categoryLabel(section) + ' section up'">
+                                    <mat-icon>arrow_upward</mat-icon>
+                                  </button>
+                                  <button type="button" (click)="moveEvidenceSection(purpose, section, 1)"
+                                          [disabled]="index === sectionOrder(purpose).length - 1"
+                                          [attr.aria-label]="'Move ' + categoryLabel(section) + ' section down'">
+                                    <mat-icon>arrow_downward</mat-icon>
+                                  </button>
+                                </span>
+                              </li>
+                            }
+                          </ol>
+                        </div>
+                      } @else {
+                        <p class="purpose-empty">No evidence selected for this document.</p>
+                      }
+                    </section>
+                  }
+                </div>
+              }
+
+              <footer class="selector-actions">
+                <button type="button" class="dashboard-button dashboard-button-secondary"
+                        (click)="closeEvidenceSelection()">
+                  Cancel
+                </button>
+                <button type="button" class="selector-generate"
+                        (click)="confirmEvidenceGeneration()" [disabled]="!canGenerateFromSelection()">
+                  {{ generationActionLabel() }}
+                </button>
+              </footer>
+              </section>
+            }
+          </ng-container>
+        </app-job-card>
       }
     </div>
+
+    @if (totalPages() > 1) {
+      <div class="pagination-row flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <p class="m-0 text-sm">Page {{ currentPage() }} of {{ totalPages() }}</p>
+        <div class="flex gap-2">
+          <button type="button"
+                  (click)="previousPage()"
+                  [disabled]="loading() || currentPage() === 1"
+                  class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">
+            <mat-icon class="text-base">chevron_left</mat-icon>
+            Previous
+          </button>
+          <button type="button"
+                  (click)="nextPage()"
+                  [disabled]="loading() || !hasMore()"
+                  class="dashboard-button dashboard-button-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50">
+            Next
+            <mat-icon class="text-base">chevron_right</mat-icon>
+          </button>
+        </div>
+      </div>
+    }
 
   </div>
 </div>

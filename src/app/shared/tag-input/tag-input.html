@@ -1,0 +1,33 @@
+<div class="flex flex-col gap-1.5">
+  <label [for]="inputId()" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">{{ label() }}</label>
+  <div class="flex flex-wrap gap-1.5 p-2 bg-white border border-slate-300 rounded-lg min-h-[2.25rem] focus-within:ring-1 focus-within:ring-slate-900 cursor-text"
+       role="group"
+       tabindex="0"
+       (click)="inputRef.focus()"
+       (keydown.enter)="inputRef.focus()">
+    @for (tag of tags(); track tag; let i = $index) {
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-semibold border border-indigo-100">
+        {{ tag }}
+        <button type="button"
+                [attr.aria-label]="'Remove ' + tag"
+                (click)="removeTag(i); $event.stopPropagation()"
+                class="text-indigo-400 hover:text-indigo-700 cursor-pointer leading-none text-sm border-none bg-transparent p-0">
+          &times;
+        </button>
+      </span>
+    }
+    <input #inputRef
+           [id]="inputId()"
+           [attr.aria-describedby]="error() ? inputId() + '-error' : null"
+           [attr.aria-invalid]="error() ? 'true' : null"
+           [placeholder]="tags().length === 0 ? placeholder() : ''"
+           [ngModel]="inputValue()"
+           (ngModelChange)="inputValue.set($event)"
+           (keydown)="handleKeydown($event)"
+           (blur)="commitInput()"
+           class="flex-1 min-w-[80px] text-xs font-medium text-slate-800 outline-none border-none bg-transparent p-0" />
+  </div>
+  @if (error()) {
+    <p [id]="inputId() + '-error'" class="text-[10px] font-semibold text-rose-500">{{ error() }}</p>
+  }
+</div>

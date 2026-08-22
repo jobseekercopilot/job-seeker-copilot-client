@@ -6,5 +6,27 @@
     "outDir": "./out-tsc/spec",
     "types": ["vitest/globals"]
   },
-  "include": ["src/**/*.d.ts", "src/**/*.spec.ts"]
+  "include": [
+    "src/**/*.d.ts",
+    "src/app/app.spec.ts",
+    "src/app/config/**/*.spec.ts",
+    "src/app/features/claimant-profile/claimant-profile.spec.ts",
+    "src/app/features/documents-workspace/documents-workspace.component.spec.ts",
+    "src/app/features/evidence-library/evidence-library.spec.ts",
+    "src/app/features/job-card/job-card.component.spec.ts",
+    "src/app/features/job-results/job-results.component.spec.ts",
+    "src/app/features/landing-auth/landing-auth.spec.ts",
+    "src/app/features/legal-notice/legal-notice.spec.ts",
+    "src/app/features/password-recovery/password-recovery.spec.ts",
+    "src/app/features/my-applications/my-applications.component.spec.ts",
+    "src/app/features/navigation-bar/navigation-bar.spec.ts",
+    "src/app/features/payment-panel/payment-panel.spec.ts",
+    "src/app/services/payment.service.spec.ts",
+    "src/app/gateways/**/*.spec.ts",
+    "src/app/models/**/*.spec.ts",
+    "src/app/services/**/*.spec.ts",
+    "src/server/**/*.spec.ts",
+    "src/app/shared/**/*.spec.ts",
+    "src/shared/**/*.spec.ts"
+  ]
 }

@@ -1,0 +1,114 @@
+<main class="legal-page">
+  <a class="back-link" href="/">← Back to Job Seeker Copilot</a>
+
+  <article>
+    <p class="eyebrow">Public-beta legal notice</p>
+    <h1>{{ mode() === 'privacy' ? 'Privacy Policy' : 'Terms of Use' }}</h1>
+    @if (legalReady()) {
+      <p class="effective-date">Effective {{ configuration().effectiveDate }} · version {{ configuration().version }}</p>
+    } @else {
+      <div class="legal-gate" role="status">
+        <strong>Draft for legal review — not yet effective</strong>
+        <p>Payments and public-beta release must remain disabled until reviewed identity, ICO, retention, contact, version and effective-date configuration is supplied.</p>
+      </div>
+    }
+
+    @if (mode() === 'privacy') {
+      <h2>1. Controller and contact details</h2>
+      @if (legalReady()) {
+        <p>{{ configuration().controllerName }}, trading as {{ configuration().tradingName }}, is the controller for this service.</p>
+        <p>Contact address: {{ configuration().businessAddress }}. Privacy enquiries: <a [href]="'mailto:' + configuration().privacyEmail">{{ configuration().privacyEmail }}</a>. Support: <a [href]="'mailto:' + configuration().supportEmail">{{ configuration().supportEmail }}</a>.</p>
+        <p>ICO status: {{ configuration().icoRegistrationStatus === 'REGISTERED' ? 'registered (' + configuration().icoRegistrationReference + ')' : 'registration not required, confirmed during release review' }}.</p>
+      } @else {
+        <p>The controller identity, trading identity, contact address, privacy contact and ICO position are deliberately not guessed in this draft.</p>
+      }
+
+      <h2>2. Information we process</h2>
+      <ul>
+        <li><strong>Account and security:</strong> name, email, authentication, session, consent and account-state records.</li>
+        <li><strong>Career profile:</strong> skills, work history, qualifications, evidence, preferences, locations and availability you choose to provide.</li>
+        <li><strong>Job-search activity:</strong> search preferences, supported provider results, saved vacancies, application status and reporting activity.</li>
+        <li><strong>Documents and AI requests:</strong> uploaded or generated CVs and cover letters, the selected advert and relevant evidence needed for the generation you request.</li>
+        <li><strong>Payments:</strong> server-owned orders, document-generation allowance ledger, payment state, refunds, disputes and reconciliation records. Stripe processes card details; we do not store your full card number.</li>
+        <li><strong>Support and operations:</strong> support messages and limited security, reliability, audit and diagnostic information.</li>
+      </ul>
+
+      <h2>3. Why we process it and our lawful bases</h2>
+      <p>We process account, profile, search, application, document and entitlement data to perform the service contract you request. We use legitimate interests to secure the service, prevent abuse, diagnose failures and improve reliability in ways that do not override your rights. We use consent where the law requires it, including optional communications. We retain records where a legal obligation applies and process information needed to establish, exercise or defend legal claims.</p>
+      <p>Providing optional career evidence is your choice, but missing information can reduce the usefulness of matching or generated documents. Please do not provide special-category information unless it is genuinely necessary.</p>
+
+      <h2>4. AI, job providers and automated decisions</h2>
+      <p>When you request a tailored document, relevant evidence and vacancy text may be sent through our contracted OpenAI integration. AI output can be inaccurate and must be reviewed by you. Job Seeker Copilot does not make hiring decisions, decide your eligibility for employment or automatically submit an application.</p>
+      <p>Supported vacancy providers supply job information under their own terms. Availability, coverage and accuracy can change. Live providers remain disabled unless their production permissions and runtime checks are satisfied.</p>
+
+      <h2>5. Location and Google routes</h2>
+      <p>Google route and commute-time calculations are not enabled for the initial public beta. Postcode-based search and distance preferences can operate without a Google route request.</p>
+      <p>If Google routes are explicitly enabled later, a requested action may send location text, a place identifier, origin and destination coordinates, travel mode and route options. We do not send Google your name, email, CV, cover letter, evidence or application notes for that calculation. Google processing is subject to the <a href="https://maps.google.com/help/terms_maps/" rel="noopener noreferrer">Google Maps/Google Earth Additional Terms</a> and <a href="https://policies.google.com/privacy" rel="noopener noreferrer">Google Privacy Policy</a>.</p>
+
+      <h2>6. Processors, sharing and international transfers</h2>
+      <p>Service providers may include AWS for hosting, storage, email and logging; OpenAI for requested document generation; Stripe for checkout and payment processing; and approved job or location providers for the feature you use. We do not sell personal information.</p>
+      <p>Where processing occurs outside the UK, we use an applicable adequacy regulation, the UK International Data Transfer Agreement or UK Addendum, and supplementary safeguards where required. We may disclose information where law requires it or to protect legal rights.</p>
+
+      <h2>7. Retention, deletion and export</h2>
+      @if (legalReady()) {
+        <ul>
+          <li>Requested account deletion is completed within {{ configuration().accountDeletionCompletionDays }} days, subject to the exceptions below.</li>
+          <li>Requested document deletion and removal from active storage is completed within {{ configuration().documentDeletionCompletionDays }} days.</li>
+          <li>Security and diagnostic logs are retained for {{ configuration().securityLogRetentionDays }} days.</li>
+          <li>Support records are retained for {{ configuration().supportRecordRetentionDays }} days.</li>
+          <li>Required payment, tax, fraud, refund and dispute records may be retained for {{ configuration().financialRecordRetentionYears }} years.</li>
+        </ul>
+      } @else {
+        <p>Exact reviewed retention periods are release configuration and are intentionally absent from this non-effective draft.</p>
+      }
+      <p>Deletion removes information from active use, but encrypted backups can expire on their controlled schedule. We may retain the minimum records required by law, fraud prevention, unresolved disputes or legal claims. Contact the privacy address to request access, correction, export or deletion.</p>
+
+      <h2>8. Security</h2>
+      <p>We use proportionate controls including HTTPS, restricted service identities, owner-scoped access, encrypted secrets, input limits, malware scanning, audit records, backups and operational monitoring. No internet service can guarantee absolute security.</p>
+
+      <h2>9. Your rights and complaints</h2>
+      <p>UK data-protection law may give you rights of access, correction, erasure, restriction, portability and objection, and the right to withdraw consent. Rights can depend on the circumstances and legal exceptions. You may complain to the <a href="https://ico.org.uk/make-a-complaint/" rel="noopener noreferrer">Information Commissioner’s Office</a>.</p>
+
+      <h2>10. Children and changes</h2>
+      <p>The public beta is intended only for UK residents aged 18 or over managing their own job search. We may update this notice when the service or its providers change; a material change receives a new version and effective date.</p>
+    } @else {
+      <h2>1. Provider and eligibility</h2>
+      @if (legalReady()) {
+        <p>These terms form an agreement with {{ configuration().controllerName }}, trading as {{ configuration().tradingName }}. Contact: {{ configuration().businessAddress }} or <a [href]="'mailto:' + configuration().supportEmail">{{ configuration().supportEmail }}</a>.</p>
+      } @else {
+        <p>The contracting identity and address are a release gate and are not invented in this draft.</p>
+      }
+      <p>The beta is intended only for UK residents aged 18 or over using it for their own job search. Paid checkout is restricted to UK billing addresses.</p>
+
+      <h2>2. What the beta provides</h2>
+      <p>Job Seeker Copilot helps organise supported vacancies, career evidence, tailored application documents and application progress. It does not guarantee vacancies, interviews, offers, employment outcomes or uninterrupted availability. You remain responsible for checking every vacancy and document and submitting applications yourself.</p>
+
+      <h2>3. Document generations</h2>
+      <p>One document generation covers one successfully delivered tailored CV or one successfully delivered cover letter. Generating both uses two generations. A regeneration is a new document and uses another generation after you choose it. Editing, uploading, downloading and exporting do not use generations.</p>
+      <p>A generation may be reserved while work runs, but it is used only after successful delivery. Failed or cancelled generation, duplicate or replayed requests and identified no-charge fallbacks use no generation; the reservation is released. A correction appears as a separate ledger entry.</p>
+
+      <h2>4. Packs, checkout and promotions</h2>
+      <p>Paid packs are one-off purchases and do not renew automatically. The server-owned catalogue and Stripe checkout show the fixed GBP total and applicable tax treatment before payment. The success or cancel URL never grants generations; only durable server confirmation can do so.</p>
+      <p>A founding promotion is not guaranteed by catalogue wording. A bonus becomes guaranteed only if the server atomically reserves an exact amount for that checkout before the stated expiry.</p>
+
+      <h2>5. Cancellation, refunds and statutory rights</h2>
+      <p>Where UK consumer law gives you a cancellation right for digital content, checkout must ask for your express request for immediate supply and acknowledgement of any resulting loss of the 14-day cancellation right before supply begins. This does not affect rights for faulty, misdescribed or undelivered services.</p>
+      <p>Contact support to request a cancellation or refund. A completed refund, partial refund, chargeback or dispute can reverse the corresponding unused document generations and appears in the ledger. If generations from that purchase were already used, the account may require manual review. Generations have no cash value except through a refund required by law or agreed through the payment process.</p>
+
+      <h2>6. Acceptable use</h2>
+      <p>Do not access another person’s account, submit unlawful or infringing content, introduce malware, evade limits, scrape providers, resell the service, automate abusive requests or misrepresent AI-generated material. We may restrict activity necessary to protect users, providers or the service.</p>
+
+      <h2>7. Third-party information and AI</h2>
+      <p>Job listings, maps, payment services and AI are supplied in part by third parties under their own terms. Listings and AI output can be incomplete or inaccurate. Job Seeker Copilot is not a recruiter, legal adviser or automated hiring decision-maker.</p>
+
+      <h2>8. Availability, suspension and ending an account</h2>
+      <p>Beta functionality can change and may be paused for security, legal, provider, capacity or maintenance reasons. We may suspend serious misuse. If the service closes, treatment of unused paid generations will follow applicable law and the reviewed closure process communicated to affected customers.</p>
+
+      <h2>9. Liability and legal rights</h2>
+      <p>Nothing excludes liability that cannot lawfully be excluded, including liability for death or personal injury caused by negligence, fraud or fraudulent misrepresentation. Consumer rights are not affected. Subject to those rights, we are not responsible for an employer’s decision, third-party listing error or loss caused by relying on unreviewed AI output.</p>
+
+      <h2>10. Governing law and changes</h2>
+      <p>These terms are governed by the laws of England and Wales, subject to mandatory consumer protections and jurisdiction rights where you live. Material changes receive a new version and effective date.</p>
+    }
+  </article>
+</main>

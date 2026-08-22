@@ -6,66 +6,214 @@ import {
 } from '@angular/ssr/node';
 import express from 'express';
 import { join } from 'node:path';
-import { UserManagementGateway } from './app/gateways/user-management-gateway';
 import { LocationGateway } from './app/gateways/location-gateway';
+import {
+  downstreamFailureResponse,
+  jsonBodyErrorHandler,
+  loadBffConfig,
+  passwordResetIpRateLimiter,
+  securityHeaders,
+} from './server/bff-boundary';
+import {callUserManagement} from './server/user-management-proxy';
+import {registerUserManagementEvidenceRoutes} from './server/user-management-evidence-routes';
+import {installGracefulShutdown} from './server/graceful-shutdown';
+import {registerJobFinderRoutes} from './server/job-finder-proxy';
+import {registerDocumentGenerationRoutes} from './server/document-generation-proxy';
+import {registerReportingRoutes} from './server/reporting-proxy';
+import {registerPaymentRoutes} from './server/payment-proxy';
+import {
+  commuteRoutingMode,
+  documentGenerationMode,
+  jobSearchProviderMode,
+  publicLegalConfiguration,
+} from './server/runtime-configuration';
+import {
+  setAppShellCacheHeaders,
+  setStaticAssetCacheHeaders,
+} from './server/static-cache-policy';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
+const bffConfig = loadBffConfig();
 
 const app = express();
-app.use(express.json());
+app.disable('x-powered-by');
+if (bffConfig.trustedProxyHops > 0) {
+  app.set('trust proxy', bffConfig.trustedProxyHops);
+}
+app.use(securityHeaders);
+app.use(express.json({limit: bffConfig.jsonBodyLimitBytes}));
+app.use(jsonBodyErrorHandler);
 
-const userGateway = new UserManagementGateway();
-const locationGateway = new LocationGateway();
+const locationGateway = new LocationGateway(bffConfig.downstreamTimeoutMs);
 
-// Job finder gateway URL - configurable via environment variable
-const JOB_FINDER_GATEWAY_URL = process.env['JOB_FINDER_GATEWAY_URL'] || 'http://localhost:8080';
+// User management gateway URL - configurable via environment variable
+const USER_MANAGEMENT_GATEWAY_URL = bffConfig.userManagementGatewayOrigin;
 
-const angularApp = new AngularNodeAppEngine();
+const DOCUMENT_GENERATION_GATEWAY_URL = process.env['DOCUMENT_GENERATION_GATEWAY_URL'] || 'http://localhost:8092';
 
-/**
- * API Route: Register/Onboard Claimant (User Management Gateway)
- */
+const DOCUMENT_STORE_SERVICE_URL = process.env['DOCUMENT_STORE_SERVICE_URL'] || 'http://localhost:8089';
+
+const angularApp = new AngularNodeAppEngine({ allowedHosts: bffConfig.allowedHosts });
+const PUBLIC_ACCOUNT_ROUTES: string[] = [
+  '/register',
+  '/sign-in',
+  '/forgot-password',
+  '/reset-password',
+];
+
+app.get('/api/runtime/job-search-mode', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({mode: jobSearchProviderMode()});
+});
+
+app.get('/api/runtime/document-generation-mode', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({mode: documentGenerationMode()});
+});
+
+app.get('/api/runtime/commute-routing-mode', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({mode: commuteRoutingMode()});
+});
+
+app.get('/api/runtime/legal-configuration', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json(publicLegalConfiguration());
+});
+
+app.get('/api/auth/csrf', async (req, res) => {
+  await proxyUserManagementRequest('/api/auth/csrf', 'GET', req, res, true);
+});
+
+app.get('/api/auth/registration-requirements', async (req, res) => {
+  if (Object.keys(req.query).length > 0) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(400).json({
+      error: 'INVALID_REQUEST',
+      message: 'Registration requirements request is invalid',
+    });
+    return;
+  }
+  await proxyUserManagementRequest(
+    '/api/auth/registration-requirements',
+    'GET',
+    req,
+    res,
+    false,
+    false,
+  );
+});
+
 app.post('/api/auth/register', async (req, res) => {
-  const { name, email, password, profile } = req.body;
-  const result = await userGateway.handleRegistration(name, email, password, profile || {
-    name,
-    email,
-    skills: '',
-    experience: '',
-    aspirations: '',
-    workPrefs: ''
-  });
-  res.status(result.statusCode).json(result);
+  await proxyUserManagementRequest('/api/auth/register', 'POST', req, res, true);
 });
 
 /**
  * API Route: Login Claimant (User Management Gateway Verification)
  */
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body;
-  const result = await userGateway.handleLogin(email, password);
-  res.status(result.statusCode).json(result);
+  await proxyUserManagementRequest('/api/auth/login', 'POST', req, res, true);
+});
+
+const resetRequestIpLimiter = passwordResetIpRateLimiter(
+  bffConfig.passwordResetRateLimitWindowMs,
+  bffConfig.passwordResetRateLimitMaximum,
+);
+
+app.post('/api/auth/password-reset/request', resetRequestIpLimiter, async (req, res) => {
+  await proxyUserManagementRequest(
+    '/api/auth/password-reset/request',
+    'POST',
+    req,
+    res,
+    true,
+  );
+});
+
+app.post('/api/auth/password-reset/complete', async (req, res) => {
+  await proxyUserManagementRequest(
+    '/api/auth/password-reset/complete',
+    'POST',
+    req,
+    res,
+    true,
+  );
 });
 
 /**
  * API Route: Get Claimant Profile (User Management Gateway)
  */
 app.get('/api/auth/profile', async (req, res) => {
-  const email = req.query['email'] as string;
-  const result = await userGateway.handleGetProfile(email);
-  res.status(result.statusCode).json(result);
+  await proxyUserManagementRequest('/api/auth/profile', 'GET', req, res);
 });
 
 /**
  * API Route: Update Claimant Profile (User Management Gateway)
- * Proxies the PUT request to the Java backend, forwarding the Authorization header if present.
+ * Ownership is derived only from the HttpOnly session cookie.
  */
 app.put('/api/auth/profile', async (req, res) => {
-  const email = req.query['email'] as string;
-  const token = req.headers['authorization'] as string;
-  const result = await userGateway.handleUpdateProfile(email, req.body, token);
-  res.status(result.statusCode).json(result);
+  await proxyUserManagementRequest('/api/auth/profile', 'PUT', req, res);
 });
+
+app.patch('/api/auth/profile', async (req, res) => {
+  await proxyUserManagementRequest('/api/auth/profile', 'PATCH', req, res);
+});
+
+app.patch('/api/auth/profile/professional-contact', async (req, res) => {
+  await proxyUserManagementRequest(
+    '/api/auth/profile/professional-contact',
+    'PATCH',
+    req,
+    res,
+  );
+});
+
+app.post('/api/auth/refresh', async (req, res) => {
+  await proxyUserManagementRequest('/api/auth/refresh', 'POST', req, res, true);
+});
+
+app.post('/api/auth/logout', async (req, res) => {
+  await proxyUserManagementRequest('/api/auth/logout', 'POST', req, res, true);
+});
+
+registerUserManagementEvidenceRoutes(app, {
+  origin: USER_MANAGEMENT_GATEWAY_URL,
+  timeoutMs: bffConfig.downstreamTimeoutMs,
+});
+
+async function proxyUserManagementRequest(
+  path: string,
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH',
+  req: express.Request,
+  res: express.Response,
+  forwardSessionCookies = false,
+  forwardRequestCredentials = true,
+): Promise<void> {
+  try {
+    const result = await callUserManagement(
+      USER_MANAGEMENT_GATEWAY_URL,
+      path,
+      method,
+      forwardRequestCredentials ? req.headers : {},
+      req.body,
+      bffConfig.downstreamTimeoutMs,
+    );
+
+    if (forwardSessionCookies && result.setCookies.length) {
+      res.setHeader('Set-Cookie', result.setCookies);
+    }
+    res.setHeader('Cache-Control', result.cacheControl);
+    res.status(result.status).type(result.contentType).send(result.body);
+  } catch (error: unknown) {
+    const failure = downstreamFailureResponse(error);
+    console.error('BFF downstream request failed', {service: 'user-management', category: failure.category});
+    res.status(failure.statusCode).json({
+      statusCode: failure.statusCode,
+      success: false,
+      message: failure.message,
+    });
+  }
+}
 
 /**
  * API Route: Search/Autocomplete UK Locations (Location Gateway)
@@ -101,41 +249,59 @@ app.get('/api/postcodes/:postcode', async (req, res) => {
   res.status(result.statusCode).json(result);
 });
 
-/**
- * API Route: Search Jobs via Job Finder Gateway
- * Proxies POST requests from the Angular frontend to the Java job-finder-gateway.
- * Forwards the Authorization header (JWT Bearer token) for authentication.
- * For demo mode (no JWT token), generates a synthetic X-User-Id for testing.
- */
-app.post('/api/jobs/search', async (req, res) => {
-  try {
-    const token = req.headers['authorization'] as string;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+app.post('/api/v2/locations/autocomplete', async (req, res) => {
+  const result = await locationGateway.handleAutocomplete(req.body);
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(result.statusCode).type(result.contentType).send(result.body);
+});
 
-    if (token) {
-      headers['Authorization'] = token;
-    } else {
-      // Demo mode: use a fixed user ID so the backend returns meaningful errors
-      headers['X-User-Id'] = 'demo-user-001';
-    }
+app.post('/api/v2/locations/resolve', async (req, res) => {
+  const result = await locationGateway.handleResolve(req.body);
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(result.statusCode).type(result.contentType).send(result.body);
+});
 
-    const response = await fetch(`${JOB_FINDER_GATEWAY_URL}/api/jobs/search`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(req.body),
-    });
+registerJobFinderRoutes(app, {
+  accessCookieName: bffConfig.sessionAccessCookieName,
+  csrfCookieName: bffConfig.sessionCsrfCookieName,
+  origin: bffConfig.jobFinderGatewayOrigin,
+  timeoutMs: bffConfig.downstreamTimeoutMs,
+});
+registerDocumentGenerationRoutes(app, {
+  accessCookieName: bffConfig.sessionAccessCookieName,
+  csrfCookieName: bffConfig.sessionCsrfCookieName,
+  origin: DOCUMENT_GENERATION_GATEWAY_URL,
+  documentStoreOrigin: DOCUMENT_STORE_SERVICE_URL,
+  timeoutMs: Math.max(bffConfig.downstreamTimeoutMs, 60_000),
+});
 
-    const data = await response.text();
-    res.status(response.status).send(data);
-  } catch (error: any) {
-    console.error('Job search proxy error:', error);
-    res.status(503).json({
-      error: 'SERVICE_UNAVAILABLE',
-      message: 'Job search service is currently unavailable',
-    });
-  }
+registerReportingRoutes(app, {
+  accessCookieName: bffConfig.sessionAccessCookieName,
+  csrfCookieName: bffConfig.sessionCsrfCookieName,
+  origin: bffConfig.reportingGatewayOrigin,
+  timeoutMs: bffConfig.downstreamTimeoutMs,
+});
+
+registerPaymentRoutes(app, {
+  accessCookieName: bffConfig.sessionAccessCookieName,
+  csrfCookieName: bffConfig.sessionCsrfCookieName,
+  paymentGatewayOrigin: bffConfig.paymentGatewayOrigin,
+  serviceToken: bffConfig.paymentGatewayServiceToken,
+  timeoutMs: bffConfig.downstreamTimeoutMs,
+  userManagementOrigin: bffConfig.userManagementGatewayOrigin,
+});
+
+app.use((req, res, next) => {
+  setAppShellCacheHeaders(res, req.method, req.path);
+  next();
+});
+
+app.get(PUBLIC_ACCOUNT_ROUTES, (req, res, next) => {
+  const routeDirectory = req.path.slice(1);
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(join(browserDistFolder, routeDirectory, 'index.html'), (error) => {
+    if (error) next(error);
+  });
 });
 
 /**
@@ -146,6 +312,7 @@ app.use(
     maxAge: '1y',
     index: false,
     redirect: false,
+    setHeaders: setStaticAssetCacheHeaders,
   }),
 );
 
@@ -163,17 +330,16 @@ app.use((req, res, next) => {
 
 /**
  * Start the server if this module is the main entry point, or it is ran via PM2.
- * The server listens on the port defined by the `PORT` environment variable, or defaults to 4000.
+ * The server listens on the port defined by the `PORT` environment variable, or defaults to 3000.
  */
 if (isMainModule(import.meta.url) || process.env['pm_id']) {
-  const port = process.env['PORT'] || 3000; // Binding to port 3000 as requested
-  app.listen(port, (error) => {
-    if (error) {
-      throw error;
-    }
-
-    console.log(`Node Express server listening on http://localhost:${port}`);
+  const server = app.listen(bffConfig.port, bffConfig.host, () => {
+    console.log(`Node Express server listening on ${bffConfig.host}:${bffConfig.port}`);
   });
+  server.requestTimeout = bffConfig.requestTimeoutMs;
+  server.headersTimeout = bffConfig.headersTimeoutMs;
+  server.keepAliveTimeout = bffConfig.keepAliveTimeoutMs;
+  installGracefulShutdown(server);
 }
 
 /**

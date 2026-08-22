@@ -1,117 +1,274 @@
 # Job Seeker Copilot Client
 
-An Angular-based client application for the Job Seeker Copilot system, designed to help job seekers manage their job search process with AI-powered assistance.
+## Role in Job Seeker Copilot
 
-## Features
+| Role | Called by | Calls | Data | Local port |
+|---|---|---|---|---:|
+| Angular UI plus Express SSR/same-origin BFF | Job seeker's browser | User Management, Location, Job Finder, Document Generation/Store and Reporting | No server database; HttpOnly cookies and in-memory UI state | 3000 |
 
-- **Landing & Authentication**: User authentication and landing page
-- **Claimant Profile**: Manage job seeker profiles and information
-- **Location Services**: Location-based job search capabilities
-- **User Management**: Comprehensive user account management
-- **AI Integration**: Powered by Google Gemini AI for intelligent job matching and assistance
-- **Responsive UI**: Built with Angular Material and Tailwind CSS for a modern, responsive experience
+Reporting and payment routes are registered through session-derived BFF boundaries. See the central [product overview](https://docs.jobseekercopilot.com/product/overview/), [frontend/gateway guide](https://docs.jobseekercopilot.com/services/frontend-gateways/), and [user journeys](https://docs.jobseekercopilot.com/journeys/account-authentication/).
 
-## Tech Stack
+Angular 21 browser application with an Express SSR/BFF layer. The BFF proxies
+authentication, profile, location, Job Search, Application Tracking and
+document-generation, reporting and payment requests through secure
+session-derived boundaries.
 
-- **Framework**: Angular 21
-- **UI Library**: Angular Material
-- **Styling**: Tailwind CSS
-- **AI**: Google Gemini AI
-- **Server**: Express (SSR support)
-- **Language**: TypeScript 5.9
+The normal application is being prepared for public beta. Reproducible builds,
+browser token custody and the client session lifecycle are in place; production
+account creation, providers and payments remain fail-closed until their
+server-owned release gates are explicitly satisfied.
+
+The client/BFF responsibility and the canonical `src/app/api` generated-client
+root are defined in the Infrastructure
+[Job Search architecture ADR](https://github.com/jobseekercopilot/infrastructure/blob/develop/docs/adr/0001-job-search-architecture-and-ownership.md).
 
 ## Prerequisites
 
-- Node.js (v20 or higher recommended)
-- npm or yarn
-- Gemini API key (for AI features)
+- Node.js 24 (CI baseline)
+- Java 17 or newer (OpenAPI Generator runtime)
+- npm and the committed `package-lock.json`
+- user-management-gateway on port 8083, job-finder-gateway on port 8080 and
+  location-gateway on port 8081
 
-## Installation
+Runtime configuration is supplied to the SSR process, not committed:
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/mcgeeverbernard1992/job-seeker-copilot-client.git
-   cd job-seeker-copilot-client
-   ```
+| Variable | Local default | Purpose |
+|---|---|---|
+| `PORT` | `3000` | SSR listen port |
+| `HOST` | `0.0.0.0` | SSR listen host |
+| `USER_MANAGEMENT_GATEWAY_URL` | `http://localhost:8083` | Auth/profile gateway |
+| `JOB_FINDER_GATEWAY_URL` | `http://localhost:8080` | Job Finder gateway |
+| `LOCATION_GATEWAY_URL` | `http://location-gateway:8081` | Location gateway |
+| `PAYMENT_GATEWAY_URL` | `http://localhost:8098` | Payment gateway; server-side only |
+| `BFF_SESSION_COOKIE_PROFILE` | `local` | UMG-owned fixed local/production access and CSRF cookie names; production deployment must explicitly select `production` |
+| `NG_ALLOWED_HOSTS` | local/container hosts | Comma-separated SSR hosts |
+| `BFF_JSON_BODY_LIMIT_BYTES` | `65536` | Maximum parsed JSON request body (max 1 MiB) |
+| `BFF_DOWNSTREAM_TIMEOUT_MS` | `5000` | UMG and Job Finder proxy deadline (max 60 seconds) |
+| `BFF_REQUEST_TIMEOUT_MS` | `15000` | Node request timeout (max 120 seconds) |
+| `BFF_HEADERS_TIMEOUT_MS` | `10000` | Node header timeout; cannot exceed request timeout |
+| `BFF_KEEP_ALIVE_TIMEOUT_MS` | `5000` | Node idle keep-alive timeout (max 60 seconds) |
+| `BFF_TO_PAYMENT_GATEWAY_TOKEN` | none | Server-only payment service identity; at least 32 UTF-8 bytes and required for payment calls |
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+Public-beta legal configuration is also supplied only at runtime. It remains
+draft unless `LEGAL_DOCUMENTS_REVIEWED=true` and every identity, policy and
+retention field is valid. The seller form is explicit through
+`LEGAL_ENTITY_TYPE=SOLE_TRADER|LIMITED_COMPANY`; tax status is explicit through
+`TAX_STATUS=NOT_VAT_REGISTERED|VAT_REGISTERED`. The remaining required values
+are `LEGAL_EFFECTIVE_DATE`, `LEGAL_VERSION`, `LEGAL_ENTITY_NAME`, `TRADING_NAME`,
+`BUSINESS_ADDRESS`, `PRIVACY_EMAIL`, `SUPPORT_EMAIL`,
+`ICO_REGISTRATION_STATUS`, `ACCOUNT_DELETION_COMPLETION_DAYS`,
+`DOCUMENT_DELETION_COMPLETION_DAYS`, `SECURITY_LOG_RETENTION_DAYS`,
+`SUPPORT_RECORD_RETENTION_DAYS` and `FINANCIAL_RECORD_RETENTION_YEARS`.
+No example identity is used as a fallback.
 
-3. Set up environment variables:
-   ```bash
-   cp .env.example .env.local
-   ```
-   
-   Add your Gemini API key to `.env.local`:
-   ```
-   GEMINI_API_KEY=your_api_key_here
-   ```
+Never place provider or production credentials in Angular environment files;
+browser bundles cannot keep a secret.
 
-## Development
+Google-backed location and commute content is obtained only through the
+same-origin BFF and `location-gateway`. Suggestions and route estimates carry
+visible `Google Maps` attribution. Public `/privacy` and `/terms` notices explain
+the bounded provider data flow; the browser never receives the Google API key.
 
-Run the development server:
+The SSR process validates these values before listening. Gateway settings must
+be HTTP(S) origins without credentials, a path, query or fragment. Hosts must
+be explicit IP addresses or DNS names; wildcard host allowlists are rejected.
+All numeric limits are positive bounded integers. The default cookie profile is
+the explicit local HTTP developer boundary, not a production configuration;
+production deployment must select `production`. Invalid configuration terminates
+startup without printing the rejected value.
+
+## Build and test
+
 ```bash
-npm run dev
-```
-
-The application will be available at `http://localhost:3000`
-
-## Build
-
-Build the project for production:
-```bash
+npm ci
+npm run lint
+npm test -- --watch=false
 npm run build
 ```
 
-## Testing
+Each command verifies the pinned contracts and regenerates ignored TypeScript
+clients. `npm run api:verify` checks provenance without generating code. Generated
+contract updates must change the versioned snapshot and
+`contracts/contracts.lock.json` together, with evidence from the owning backend's
+contract tests. Payment Gateway is deliberately a separately pinned
+`manual_boundary`: `contracts/manual-boundaries.lock.json` verifies its exact
+producer revision, version and SHA-256 and the tests enforce the fields used by
+the hand-written BFF and Angular types. It is not an unused generated client.
+`npm run api:generate:verify` performs two isolated generations, compares every
+generated byte and compiles the pinned Job Finder and Document Generation
+Gateway clients.
 
-Run the test suite:
+The first generation downloads the pinned OpenAPI Generator JAR from Maven Central
+into `.cache/`; its locked SHA-256 is verified before execution. See the
+[dependency security baseline](docs/dependency-security.md) for audit policy and
+current residual findings.
+
+The normal application enables credential-only registration, progressive
+profile management, a versioned Evidence Library, Job Search, Application
+Tracking, document generation, storage and export. Generation is fixture-backed
+by default and can use the separately authorised real OpenAI overlay. Evidence can
+be drafted, reviewed, confirmed, hidden, archived, restored or superseded;
+migrated history remains review-required until the claimant confirms it.
+Reporting and payment use the same session-derived boundary pattern. Versioned
+User Management, Location, Job Finder and Document Generation contracts are
+generated reproducibly; the Payment Gateway manual boundary is exact-hash
+verified. See
+[ADR 0001](docs/adr/0001-reproducible-api-clients.md) and the
+[browser-session ADR](docs/adr/0002-browser-session-client.md), plus the
+[document-generation contract ADR](docs/adr/0003-document-generation-typescript-contract.md)
+and [Job Finder contract ADR](docs/adr/0004-job-finder-typescript-contract.md).
+The [Job Finder BFF ADR](docs/adr/0005-session-bound-job-finder-bff.md)
+defines its server-only session translation and route allowlist.
+The [provider content security policy](docs/provider-content-security.md)
+defines text-only rendering, the shared HTTP(S) external-link allowlist,
+accessible duplicate-source handling and privacy-safe Job Search logging.
+The
+[accessibility baseline](docs/accessibility.md) documents the WCAG interaction
+contract, automated evidence and release checklist. The
+[credential-validation guide](docs/credential-validation.md) records the
+registration and sign-in boundaries and password handling rules.
+
+Express registers explicit auth/profile/evidence, location, Job Search, saved
+job, application, document-generation/document-read, reporting and payment
+routes.
+
+The payment proxy resolves
+the stable owner through UMG's HttpOnly browser session profile, ignores browser
+`Authorization` and `X-User-Id`, and sends only the dedicated service token plus
+`X-Payment-Owner` to Payment Gateway. Missing configuration or an unvalidated
+session fails closed. Payment mutations additionally require matching CSRF
+credentials, and live Stripe remains an explicit runtime choice. See the
+[payment identity boundary](docs/payment-identity-boundary.md).
+
+## Browser session security
+
+The browser calls only same-origin `/api/auth/*` routes. Express forwards the
+opaque browser cookies and `X-CSRF-Token` value to user-management-gateway and
+relays each `Set-Cookie` response independently. It deliberately ignores
+browser-supplied `Authorization`, `X-User-Id`, and profile identity selectors.
+Access and refresh tokens remain in UMG-owned HttpOnly cookies and never enter
+Angular state, browser storage, response models, logs, or generated source.
+
+Registration, login, profile and Evidence Library updates, and logout first
+bootstrap CSRF through `GET /api/auth/csrf`. Before registration, the browser
+loads the server-owned legal version, 18+ eligibility and reviewed Terms and
+Privacy URLs. Registration submits name, email and password plus explicit,
+unchecked Terms, Privacy and age confirmations against that exact version; all
+profile sections remain optional and are saved later through the subject-bound
+profile endpoint. A missing or mismatched reviewed runtime legal version keeps
+account creation disabled while sign-in remains available. Angular validates the fixed CSRF
+header name and holds the random value only in application memory. Local HTTP
+cookie names and production Secure `__Host-` names are owned by UMG; Angular
+must not read them. On first load the beta shell deletes all obsolete `jc_*`
+session/profile values from both `localStorage` and `sessionStorage`.
+
+For the reviewed Job Finder routes, the server BFF selects UMG's fixed local or
+production access-cookie name, validates a compact access JWT, and creates the
+downstream Bearer header only in request memory. Browser `Authorization`,
+`X-User-Id`, forwarding and unrelated headers are ignored. POST and DELETE
+routes additionally compare the CSRF cookie/header in constant time. Missing,
+duplicate or malformed credentials fail before any downstream call, and a
+reflected credential fails closed rather than reaching the browser.
+
+UMG/Spring Security can replace the CSRF cookie when an authenticated security
+context is established. After authentication, profile writes, and logout, the
+client therefore discards its in-memory copy and bootstraps again before the next
+write. It never retries a state-changing request automatically.
+
+On startup the root beta shell displays no claimant PII until a subject-bound
+profile read validates the cookie session. One shared refresh may run after a
+401, followed by exactly one safe profile-read retry. Successful validation
+restores the token-free user/profile state after reload. Final expiry clears all
+in-memory PII and returns to sign-in; a network or 5xx failure instead displays a
+retryable unavailable state without claiming logout or clearing remote cookies.
+State-changing requests are never replayed automatically.
+
+The beta route table is intentionally empty: the root shell's session-state gate
+is the current authenticated boundary. Any future protected route must consume
+the same central session decision and add guard coverage.
+
+## SSR/BFF security boundary
+
+Express accepts at most 64 KiB of JSON by default. Oversized and malformed input
+returns stable `413` or `400` JSON without echoing input or parser details. Every
+selected UMG and Job Finder request has a five-second default deadline: expiry
+aborts the fetch and returns `504`; other network failure returns `503`. Logs
+contain only the service name and stable `timeout`/`unavailable` category. They
+do not contain the upstream URL, exception text, request body, cookies or
+tokens.
+
+API, static and SSR responses receive CSP, clickjacking, MIME-sniffing, referrer,
+permissions and cross-origin opener protections. The CSP permits scripts and
+connections only from the same origin; styles/fonts allow only same-origin data,
+inline Angular SSR styles and the existing Google Fonts origins. `X-Powered-By`
+is disabled. Production critical-CSS inlining is disabled because its generated
+inline `onload` handler is intentionally incompatible with the script policy;
+the hashed same-origin stylesheet remains render-blocking. Node request,
+header and keep-alive timeouts are explicitly bounded. UMG continues to own its
+downstream resilience, cookie flags and cache policy; the BFF preserves upstream
+status, content type, cache policy and each `Set-Cookie` header.
+
+Place-search terms and postcodes are sent only in URI-encoded requests to the
+configured location gateway. Client transaction logs record the fixed action and
+bounded result count only. Failure logs use a fixed category and never include
+the query, postcode, upstream URL or raw exception.
+
+The progressive profile location input exposes stable lookup states: loading,
+results, no matches, invalid input, rate limiting and temporary provider failure.
+Only the latest request may update suggestions. Editing a selected location
+clears its derived region, district and coordinates before searching, and
+selecting a canonical result restores those fields. Public messages never render
+raw downstream response details.
+
+Focused service and component tests own deterministic state, routing and race
+coverage. Browser regression evidence reuses the root Playwright/Cucumber suite;
+CLIENT-07 owns its durable beta tags, isolated test-data cleanup, traces and CI
+profile. Accessibility browser checks use that suite's dedicated profile; this
+repository owns component-level axe, keyboard, focus and resilience regression
+tests.
+
+## Local and Docker startup
+
 ```bash
-npm test
+npm run dev
+docker build -t job-seeker-copilot-client .
+docker run --rm -p 3000:3000 job-seeker-copilot-client
+./scripts/verify-container.sh job-seeker-copilot-client:verify
 ```
 
-## Linting
+The final image is digest-pinned, runs as UID/GID `1000:1000`, contains only the
+bundled SSR output (no npm, build dependencies or application `node_modules`),
+and has a loopback SSR health check. PID 1 is Node itself; `SIGTERM` stops new
+work, drains the HTTP server for up to ten seconds and then exits. The verifier
+also proves the image starts read-only and shuts down cleanly. Java dependency
+health is not aggregated. Generated API documentation is contract-derived; do
+not edit generated source manually.
 
-Run ESLint to check code quality:
-```bash
-npm run lint
-```
+The [release artifact contract](docs/release-artifact-contract.md) defines the
+immutable image, runtime configuration and evidence consumed by the central
+infrastructure repository.
 
-## Project Structure
+## Branch workflow
 
-```
-src/
-├── app/
-│   ├── features/
-│   │   ├── landing-auth/       # Authentication feature
-│   │   └── claimant-profile/   # User profile management
-│   ├── gateways/               # API gateway services
-│   └── services/               # Core services
-├── assets/                     # Static assets
-└── public/                     # Public files
-```
+Use `feature/* → develop`. Do not push feature work directly to `develop`.
+`develop` is verify/build-only and never deploys. A reviewed merge from
+`develop` to protected `main` creates a release candidate for the central
+infrastructure gates; this repository does not own AWS deployment.
 
-## API Documentation
+## Troubleshooting
 
-See the `api-read-me/` directory for detailed API documentation:
-- [User Management Gateway](api-read-me/user-management-gateway.md)
-- [Location Gateway](api-read-me/location-gateway.md)
-- [Job Finder Gateway](api-read-me/job-finder-gateway.md)
+- Missing imports below `src/app/api`: run `npm run api:generate`. A checksum
+  mismatch means the reviewed snapshot or lock was changed and generation stops.
+- `503` from `/api/auth/*`: confirm SSR gateway URL and dependency health. `504`
+  means the validated BFF downstream deadline elapsed.
+- `503` from `/api/postcodes/*`: confirm location dependency health.
+- Session service unavailable: use **Try again** after dependency health is
+  restored. Do not inspect, copy, or manually edit cookie values.
 
-## Contributing
+## Licence
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Copyright © 2026 Bernard McGeever. All rights reserved.
 
-## License
-
-This project is private and proprietary.
-
-## Support
-
-For issues and questions, please contact the development team.
+This repository contains proprietary software belonging to Bernard McGeever.
+It may not be used, copied, modified or distributed without express written
+permission. See [LICENSE](./LICENSE).

@@ -1,0 +1,296 @@
+<section class="applications-workspace" data-testid="applications-workspace">
+  <div class="applications-toolbar">
+    <div class="status-filters" aria-label="Application status filters">
+      @for (filter of filters; track filter.key) {
+        <button type="button"
+                class="status-filter"
+                [class.status-filter-active]="selectedFilter() === filter.key"
+                (click)="selectFilter(filter.key)">
+          <span>{{ filter.label }}</span>
+          <strong>{{ countFor(filter.key) }}</strong>
+        </button>
+      }
+    </div>
+    <button type="button" class="refresh-button" (click)="refresh()" [disabled]="loading()">
+      <mat-icon [class.spin]="loading()">refresh</mat-icon>
+      Refresh
+    </button>
+  </div>
+
+  @if (error()) {
+    <div class="applications-error">{{ error() }}</div>
+  }
+
+  @if (loading()) {
+    <div class="applications-loading">Loading saved applications...</div>
+  } @else if (filteredApplications().length === 0) {
+    <div class="applications-empty">
+      <mat-icon>folder_open</mat-icon>
+      <h3>No applications in this view</h3>
+      <p>Generated documents and tracked applications will appear here after you interact with a job.</p>
+    </div>
+  } @else {
+    <div class="application-list">
+      @for (application of filteredApplications(); track applicationId(application)) {
+        <article class="application-card"
+                 data-testid="application-card"
+                 data-demo-focus="application-card"
+                 [attr.data-demo-focus-id]="applicationFocusId(application)"
+                 [attr.data-demo-focus-group]="applicationFocusGroup(application)"
+                 [class.application-card-selected]="isSelected(application)">
+          <div class="application-card-header">
+            <div class="application-title">
+              <h3>{{ application.jobTitle || 'Untitled role' }}</h3>
+              <div class="application-meta">
+                <span>{{ application.companyName || 'Unknown company' }}</span>
+                @if (application.location) {
+                  <span>{{ application.location }}</span>
+                }
+                @if (postedDate(application)) {
+                  <span>Posted {{ formatDate(postedDate(application)) }}</span>
+                }
+              </div>
+            </div>
+            <span class="status-badge" [class]="statusClass(application)">
+              {{ statusLabel(application.status) }}
+            </span>
+          </div>
+
+          <div class="application-details">
+            <span>Created {{ formatDate(createdDate(application), true) }}</span>
+            @if (application.appliedAt) {
+              <span>Applied {{ formatDate(application.appliedAt, true) }}</span>
+            }
+            @if (interviewDate(application)) {
+              <span>Interview {{ formatDate(interviewDate(application), true) }}</span>
+            }
+            @if (offerDate(application)) {
+              <span>Offer {{ formatDate(offerDate(application), true) }}</span>
+            }
+            <span>{{ documentState(application) }}</span>
+          </div>
+
+          <div class="timeline" aria-label="Application progress">
+            @for (step of timeline(application); track step.key) {
+              <div class="timeline-step" [class.timeline-step-done]="step.completedAt">
+                <span class="timeline-dot"></span>
+                <div>
+                  <strong>{{ step.label }}</strong>
+                  @if (step.completedAt) {
+                    <small>{{ formatDate(step.completedAt, true) }}</small>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+
+          <details class="evidence-used document-picker"
+                   data-testid="application-documents"
+                   (toggle)="documentPanelToggled(application, $event)">
+            <summary>
+              <span>
+                <mat-icon>description</mat-icon>
+                {{ canEditDocumentSelections(application)
+                  ? 'Documents for this application'
+                  : 'Documents used for this application' }}
+              </span>
+              <small>
+                {{ canEditDocumentSelections(application)
+                  ? 'Choose exact approved versions; Recommended does not save automatically.'
+                  : 'Frozen when applied; later document changes do not alter this record.' }}
+              </small>
+              <mat-icon class="evidence-expand">expand_more</mat-icon>
+            </summary>
+
+            @if (documentPanel(application); as panel) {
+              <div class="evidence-used-content">
+                @if (panel.loading) {
+                  <p>Loading exact document versions...</p>
+                } @else if (canEditDocumentSelections(application)) {
+                  <section class="evidence-document">
+                    <label [for]="'cv-selection-' + applicationId(application)"><strong>CV</strong></label>
+                    <select [id]="'cv-selection-' + applicationId(application)"
+                            [value]="panel.cvSelection"
+                            (change)="selectionChanged(application, 'CV', $event)">
+                      <option value="" [selected]="!panel.cvSelection">No CV selected</option>
+                      @if (panel.cvSelection && !hasDocumentOption(application, 'CV', panel.cvSelection)) {
+                        <option [value]="panel.cvSelection" selected disabled>Previously selected CV is unavailable</option>
+                      }
+                      @for (option of documentOptions(application, 'CV'); track option.documentId) {
+                        <option [value]="option.documentId"
+                                [selected]="panel.cvSelection === option.documentId">{{ optionLabel(option) }}</option>
+                      }
+                    </select>
+                    <small>Selecting “No CV selected” records that the CV is deliberately omitted.</small>
+                  </section>
+                  <section class="evidence-document">
+                    <label [for]="'cover-selection-' + applicationId(application)"><strong>Cover letter</strong></label>
+                    <select [id]="'cover-selection-' + applicationId(application)"
+                            [value]="panel.coverLetterSelection"
+                            (change)="selectionChanged(application, 'COVER_LETTER', $event)">
+                      <option value="" [selected]="!panel.coverLetterSelection">No cover letter selected</option>
+                      @if (panel.coverLetterSelection
+                        && !hasDocumentOption(application, 'COVER_LETTER', panel.coverLetterSelection)) {
+                        <option [value]="panel.coverLetterSelection" selected disabled>
+                          Previously selected cover letter is unavailable
+                        </option>
+                      }
+                      @for (option of documentOptions(application, 'COVER_LETTER'); track option.documentId) {
+                        <option [value]="option.documentId"
+                                [selected]="panel.coverLetterSelection === option.documentId">{{ optionLabel(option) }}</option>
+                      }
+                    </select>
+                    <small>Selecting “No cover letter selected” records that it is deliberately omitted.</small>
+                  </section>
+                  <button type="button"
+                          class="refresh-button"
+                          [disabled]="panel.saving || !panel.loaded || !selectionsEligible(application)"
+                          (click)="saveDocumentSelections(application)">
+                    {{ panel.saving ? 'Saving selections...' : 'Save document selections' }}
+                  </button>
+                } @else {
+                  @for (documentType of ['CV', 'COVER_LETTER']; track documentType) {
+                    <section class="evidence-document">
+                      <strong>{{ frozenSlotText(application, $any(documentType)) }}</strong>
+                      @if (frozenState(application, $any(documentType)) === 'SELECTED') {
+                        @if (frozenVersion(application, $any(documentType)); as version) {
+                          @if (availableArtifacts(version).length) {
+                            @for (artifact of availableArtifacts(version); track artifact.artifactId) {
+                              <button type="button"
+                                      class="refresh-button"
+                                      (click)="downloadExact(version, artifact)">
+                                {{ artifactLabel(artifact) }} exact version
+                              </button>
+                            }
+                          } @else {
+                            <small>Content no longer available. No other version will be substituted.</small>
+                          }
+                        } @else if (panel.loaded) {
+                          <small>Content no longer available. No other version will be substituted.</small>
+                        }
+                      }
+                    </section>
+                  }
+                }
+              </div>
+              @if (panel.error) {
+                <p class="applications-error" role="alert">{{ panel.error }}</p>
+              }
+              @if (panel.message) {
+                <p role="status">{{ panel.message }}</p>
+              }
+            }
+          </details>
+
+          @if (evidenceReferences(application); as references) {
+            @if (references.length) {
+              <details class="evidence-used" data-testid="evidence-used">
+                <summary>
+                  <span>
+                    <mat-icon>verified_user</mat-icon>
+                    Experience &amp; achievements used
+                  </span>
+                  <small>{{ evidenceScopeText(application) }}</small>
+                  <mat-icon class="evidence-expand">expand_more</mat-icon>
+                </summary>
+                <div class="evidence-used-content">
+                  @for (item of references; track item.reference.documentId) {
+                    <section class="evidence-document"
+                             [attr.aria-label]="item.label + ' evidence provenance'">
+                      <div class="evidence-document-heading">
+                        <div>
+                          <strong>{{ item.label }}</strong>
+                          <span>Version {{ item.reference.version ?? '—' }}</span>
+                        </div>
+                        <span class="grounding-badge"
+                              [class.grounding-review]="groundingNeedsReview(item.reference)">
+                          {{ groundingLabel(item.reference) }}
+                        </span>
+                      </div>
+                      <dl>
+                        <div>
+                          <dt>Profile revision</dt>
+                          <dd [title]="item.reference.evidenceProvenance?.profileRevisionId ?? ''">
+                            {{ compactReference(item.reference.evidenceProvenance?.profileRevisionId) }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Source snapshot</dt>
+                          <dd [title]="item.reference.evidenceProvenance?.evidenceSnapshotId ?? ''">
+                            {{ compactReference(item.reference.evidenceProvenance?.evidenceSnapshotId) }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Source revisions</dt>
+                          <dd>{{ evidenceCount(item.reference) }}</dd>
+                        </div>
+                        <div>
+                          <dt>Sections</dt>
+                          <dd>{{ evidenceSections(item.reference) }}</dd>
+                        </div>
+                        <div>
+                          <dt>Claim ledger</dt>
+                          <dd [title]="item.reference.evidenceProvenance?.claimLedger?.ledgerId ?? ''">
+                            {{ compactReference(item.reference.evidenceProvenance?.claimLedger?.ledgerId) }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Generated</dt>
+                          <dd>{{ formatDate(item.reference.evidenceProvenance?.generatedAt, true) }}</dd>
+                        </div>
+                      </dl>
+                      <p class="evidence-integrity">
+                        Exact content, profile and snapshot digests are retained with this document version.
+                      </p>
+                    </section>
+                  }
+                </div>
+              </details>
+            }
+          }
+
+          <div class="application-footer">
+            <span class="application-source">{{ sourceText(application) }}</span>
+            <details class="actions-menu"
+                     data-demo-focus="application-status-control"
+                     [attr.data-demo-focus-group]="applicationFocusGroup(application)">
+              <summary>
+                View Application
+                <mat-icon>expand_more</mat-icon>
+              </summary>
+              <div class="actions-list">
+                @if (canUploadDocuments(application)) {
+                  <input #cvInput type="file" class="file-input"
+                         accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                         (change)="onFileSelected(application, 'CV', $event)" />
+                  <input #coverLetterInput type="file" class="file-input"
+                         accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                         (change)="onFileSelected(application, 'COVER_LETTER', $event)" />
+                  <button type="button"
+                          [disabled]="isUploading(application, 'CV')"
+                          (click)="cvInput.click()">
+                    {{ isUploading(application, 'CV') ? 'Uploading CV...' : 'Upload CV' }}
+                  </button>
+                  <button type="button"
+                          [disabled]="isUploading(application, 'COVER_LETTER')"
+                          (click)="coverLetterInput.click()">
+                    {{ isUploading(application, 'COVER_LETTER') ? 'Uploading Letter...' : 'Upload Cover Letter' }}
+                  </button>
+                }
+
+                @for (action of actions(application); track action.label) {
+                  <button type="button"
+                          [class.danger-action]="action.danger"
+                          [disabled]="isUpdating(application)"
+                          (click)="updateStatus(application, action.status)">
+                    {{ isUpdating(application) ? 'Updating...' : action.label }}
+                  </button>
+                }
+              </div>
+            </details>
+          </div>
+        </article>
+      }
+    </div>
+  }
+</section>

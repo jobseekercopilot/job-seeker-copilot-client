@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "generator": {
+    "engineVersion": "7.23.0",
+    "artifactUrl": "https://repo1.maven.org/maven2/org/openapitools/openapi-generator-cli/7.23.0/openapi-generator-cli-7.23.0.jar",
+    "artifactSha256": "cb087e40001e31eb08ef6140dd5de10938dbeb89016a1fe0481eaa25cd569026",
+    "generatorName": "typescript-angular",
+    "additionalProperties": "ngVersion=21.0.0,stringEnums=true,providedInRoot=true"
+  },
+  "contracts": [
+    {
+      "id": "user-management-gateway",
+      "version": "4.1.0",
+      "sourceRepository": "jobseekercopilot/user-management-gateway",
+      "sourceCommit": "5dc8aa1e7afb9492a96d3dedde847c530b6209b0",
+      "path": "contracts/user-management-gateway/4.1.0/openapi.json",
+      "sha256": "dde3349e015f2cd7ef7bf9bc810681bebe98fca1ed1510005aa0b1a8b0e6d08e",
+      "output": "src/app/api",
+      "requiredPaths": [
+        "/api/auth/csrf",
+        "/api/auth/evidence",
+        "/api/auth/evidence/{entryId}",
+        "/api/auth/evidence/{entryId}/archive",
+        "/api/auth/evidence/{entryId}/confirm",
+        "/api/auth/evidence/{entryId}/hide",
+        "/api/auth/evidence/{entryId}/restore",
+        "/api/auth/evidence/{entryId}/show",
+        "/api/auth/evidence/{entryId}/supersede",
+        "/api/auth/login",
+        "/api/auth/logout",
+        "/api/auth/password-reset/complete",
+        "/api/auth/password-reset/request",
+        "/api/auth/profile",
+        "/api/auth/profile/professional-contact",
+        "/api/auth/refresh",
+        "/api/auth/registration-requirements",
+        "/api/auth/register"
+      ]
+    },
+    {
+      "id": "location-gateway",
+      "version": "1.1.0",
+      "sourceRepository": "jobseekercopilot/location-gateway",
+      "sourceCommit": "777ec7e8885fcb07368e05ad2543181e4ef7a891",
+      "path": "contracts/location-gateway/1.1.0/openapi.json",
+      "sha256": "30d71d6b2508c7cbd452b522c30c26bfa7a571e1f1ebcda979008422db469cfc",
+      "output": "src/app/api/location",
+      "requiredPaths": [
+        "/api/locations",
+        "/api/postcodes/{postcode}",
+        "/api/v2/locations/autocomplete",
+        "/api/v2/locations/resolve"
+      ]
+    },
+    {
+      "id": "job-finder-gateway",
+      "version": "1.13.0",
+      "sourceRepository": "jobseekercopilot/job-finder-gateway",
+      "sourceCommit": "ae14ffc27bf98b9cb5e0cbfae0823025619f1c26",
+      "path": "contracts/job-finder-gateway/1.13.0/openapi.json",
+      "sha256": "bfc11e8b8d2d3b9026461f7e65baf9e4fdb7b86d677a1e836c0318aa38c55ad8",
+      "output": "src/app/api/job-finder",
+      "requiredPaths": [
+        "/api/jobs/search",
+        "/api/jobs/provider/{provider}/{externalJobId}",
+        "/api/jobs/saved",
+        "/api/jobs/saved/{savedJobId}",
+        "/api/jobs/applications",
+        "/api/jobs/applications/{applicationId}/status"
+      ]
+    },
+    {
+      "id": "document-generation-gateway",
+      "version": "3.0.0",
+      "sourceRepository": "jobseekercopilot/document-generation-gateway",
+      "sourceCommit": "3eadf7c3eb58ead6ead687fff64c398c0833e3ff",
+      "path": "contracts/document-generation-gateway/3.0.0/openapi.json",
+      "sha256": "930d8612d035c72a18107a7ea0afe3c1af52b2f86240c61b27c096c388dce895",
+      "output": "src/app/api/document-generation-gateway",
+      "requiredPaths": [
+        "/api/v1/document-generation/saved-jobs/{savedJobId}/operations",
+        "/api/v1/document-generation/operations/{operationId}",
+        "/api/v1/document-generation/operations/{operationId}/approve",
+        "/api/v1/document-generation/applications/{applicationId}/document-uploads",
+        "/api/v1/document-generation/application-document-uploads/{operationId}",
+        "/api/v1/document-generation/applications/{applicationId}/document-selections",
+        "/api/v1/document-generation/document-families",
+        "/api/v1/document-generation/document-families/{documentFamilyId}",
+        "/api/v1/document-generation/document-versions/{documentId}/application-associations",
+        "/api/v1/document-generation/document-versions/{documentId}/archive",
+        "/api/v1/document-generation/document-versions/{documentId}/restore",
+        "/api/v1/document-generation/document-versions/{documentId}",
+        "/api/v1/document-generation/files/{fileId}/download"
+      ]
+    },
+    {
+      "id": "reporting-gateway",
+      "version": "2.0.0",
+      "sourceRepository": "jobseekercopilot/reporting-gateway",
+      "sourceCommit": "86bead7461413b7b3d75c6ff6cabd1798ca6fdba",
+      "path": "contracts/reporting-gateway/2.0.0/openapi.json",
+      "sha256": "b8f13569095060821aa5a3e5398c050fcda808fb77d6541cbb3d54e84c81ff14",
+      "output": "src/app/api/reporting-gateway",
+      "requiredPaths": [
+        "/api/v1/reports/summary",
+        "/api/v1/reports/uc-journal",
+        "/api/v1/reports/evidence.txt"
+      ]
+    }
+  ]
+}

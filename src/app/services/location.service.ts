@@ -1,34 +1,194 @@
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { inject, Injectable } from '@angular/core';
+import {HttpClient} from '@angular/common/http';
+import {catchError, map, Observable, of, startWith} from 'rxjs';
+import {
+  Location as UKLocation,
+  LocationResponse as LocationGatewayResponse,
+  LocationService as GeneratedLocationService
+} from '../api/location';
 
-export interface UKLocation {
-  id: string;
-  name: string;
-  postcode: string;
-  region: string;
+export type { UKLocation, LocationGatewayResponse };
+
+export interface LocationOption extends UKLocation {
+  sessionId?: string;
+  suggestionId?: string;
+  primaryText?: string;
+  secondaryText?: string;
+  precisionHint?: string;
 }
 
-export interface LocationGatewayResponse {
-  statusCode: number;
-  success: boolean;
+export interface CanonicalLocation {
+  locationId: string;
+  displayName?: string;
+  countryCode?: string;
+  postcode?: string;
+  locality?: string;
+  region?: string;
+  latitude?: number;
+  longitude?: number;
+  locationType?: string;
+  precision?: string;
+  confidence?: string;
+  providerReferences?: {provider: string; externalId: string}[];
+  fieldProvenance?: {field: string; source: string}[];
+}
+
+interface AutocompleteResponse {
+  sessionId: string;
+  suggestions?: {
+    suggestionId: string;
+    primaryText: string;
+    secondaryText?: string;
+    precisionHint?: string;
+  }[];
+  attribution?: {required: boolean; provider?: string};
+}
+
+export interface ResolveResponse {
+  location?: CanonicalLocation;
+  resolutionStatus: 'RESOLVED' | 'CONFIRMATION_REQUIRED';
+  attribution?: {required: boolean; provider?: string};
+  reasonCode?: string;
+}
+
+export type LocationLookupStatus =
+  | 'idle'
+  | 'loading'
+  | 'results'
+  | 'empty'
+  | 'invalid'
+  | 'unsupported'
+  | 'rate-limited'
+  | 'unavailable';
+
+export interface LocationLookupState {
+  status: LocationLookupStatus;
+  locations: LocationOption[];
   message: string;
-  locations: UKLocation[];
+  attributionProvider?: string;
+}
+
+export const idleLocationLookup: LocationLookupState = {
+  status: 'idle',
+  locations: [],
+  message: '',
+};
+
+function failureState(statusCode: number | undefined): LocationLookupState {
+  if (statusCode === 400) {
+    return {
+      status: 'invalid',
+      locations: [],
+      message: 'Enter a valid UK location or postcode.',
+    };
+  }
+
+  if (statusCode === 404) {
+    return {
+      status: 'empty',
+      locations: [],
+      message: 'No matching locations found.',
+    };
+  }
+
+  if (statusCode === 422) {
+    return {
+      status: 'unsupported',
+      locations: [],
+      message: 'This postcode area is not currently supported.',
+    };
+  }
+
+  if (statusCode === 429) {
+    return {
+      status: 'rate-limited',
+      locations: [],
+      message: 'Too many location searches. Try again shortly.',
+    };
+  }
+
+  return {
+    status: 'unavailable',
+    locations: [],
+    message: 'Location search is temporarily unavailable. Try again.',
+  };
+}
+
+function errorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object' || !('status' in error)) return undefined;
+  const status = Number(error.status);
+  return Number.isInteger(status) ? status : undefined;
+}
+
+export function locationFailureState(error: unknown): LocationLookupState {
+  return failureState(errorStatus(error));
 }
 
 @Injectable({
   providedIn: 'root'
 })
 export class LocationService {
-  private apiUrl = '/api';
-
-  constructor(private http: HttpClient) {}
+  private locationApi = inject(GeneratedLocationService);
+  private http = inject(HttpClient);
 
   search(query: string): Observable<LocationGatewayResponse> {
-    return this.http.get<LocationGatewayResponse>(`${this.apiUrl}/locations?q=${encodeURIComponent(query)}`);
+    return this.locationApi.searchLocations(query);
   }
 
   getByPostcode(postcode: string): Observable<LocationGatewayResponse> {
-    return this.http.get<LocationGatewayResponse>(`${this.apiUrl}/postcodes/${encodeURIComponent(postcode)}`);
+    return this.locationApi.getLocationByPostcode(postcode);
+  }
+
+  autocomplete(input: string, sessionId?: string): Observable<AutocompleteResponse> {
+    return this.http.post<AutocompleteResponse>('/api/v2/locations/autocomplete', {
+      input,
+      ...(sessionId ? {sessionId} : {}),
+      countryCodes: ['GB'],
+    });
+  }
+
+  resolve(sessionId: string, suggestionId: string): Observable<ResolveResponse> {
+    return this.http.post<ResolveResponse>('/api/v2/locations/resolve', {sessionId, suggestionId});
+  }
+
+  lookup(query: string): Observable<LocationLookupState> {
+    const cleanQuery = (query || '').trim();
+    if (cleanQuery.length < 3) return of(idleLocationLookup);
+
+    return this.autocomplete(cleanQuery).pipe(
+      map(response => {
+        const locations: LocationOption[] = (response.suggestions ?? []).map(suggestion => ({
+          id: suggestion.suggestionId,
+          name: [suggestion.primaryText, suggestion.secondaryText].filter(Boolean).join(', '),
+          postcode: '',
+          region: suggestion.secondaryText ?? '',
+          sessionId: response.sessionId,
+          suggestionId: suggestion.suggestionId,
+          primaryText: suggestion.primaryText,
+          secondaryText: suggestion.secondaryText,
+          precisionHint: suggestion.precisionHint,
+        }));
+        return locations.length > 0
+          ? {
+              status: 'results' as const,
+              locations,
+              message: `${locations.length} matching ${locations.length === 1 ? 'location' : 'locations'} found.`,
+              ...(response.attribution?.required
+                ? {attributionProvider: response.attribution.provider ?? 'GOOGLE_MAPS'}
+                : {}),
+            }
+          : {
+              status: 'empty' as const,
+              locations: [],
+              message: 'No matching locations found.',
+            };
+      }),
+      catchError(error => of(locationFailureState(error))),
+      startWith({
+        status: 'loading' as const,
+        locations: [],
+        message: 'Searching locations…',
+      }),
+    );
   }
 }

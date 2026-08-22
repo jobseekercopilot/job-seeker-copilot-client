@@ -1,169 +1,475 @@
-<!-- CARD 1: CLAIMANT PROFESSIONAL PROFILE (DWP COMMITMENTS BASIS) -->
-<div id="card-claimant-profile" class="bg-white rounded-3xl border border-slate-200/80 shadow-2xs p-6 transition-all hover:shadow-xs hover:border-slate-300">
-  <div class="flex items-center justify-between pb-3 mb-1 border-b border-slate-100">
-    <h2 class="font-bold tracking-tight text-slate-900 flex items-center gap-2 font-display">
-      <mat-icon class="text-slate-500">person</mat-icon>
-      Claimant Profile
-    </h2>
-    
-    <div class="flex items-center gap-1.5">
-      @if (!isEditing()) {
-        <button id="btn-edit-profile"
-                (click)="startEditing()"
-                class="text-2xs font-bold uppercase tracking-wide text-slate-700 bg-slate-50 hover:bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200 transition-colors cursor-pointer flex items-center gap-1">
-          <mat-icon class="text-xs">edit</mat-icon>
-          Edit
-        </button>
-      } @else {
-        <button id="btn-save-profile"
-                (click)="save()"
-                class="text-2xs font-bold uppercase tracking-wide text-white bg-slate-900 hover:bg-slate-800 px-2.5 py-1.5 rounded-xl flex items-center gap-1 transition-colors cursor-pointer">
-          <mat-icon class="text-xs">check</mat-icon>
-          Save
-        </button>
-      }
-    </div>
-  </div>
+<section class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+  <header class="p-5 border-b border-slate-200 bg-slate-50">
+    <p class="text-[11px] font-extrabold uppercase tracking-wider text-indigo-700">Your profile</p>
+    <h2 class="text-lg font-extrabold text-slate-900">{{ claimantName() || 'Your job search' }}</h2>
+    <p class="text-xs text-slate-600">{{ claimantEmail() }}</p>
+    <p class="mt-3 text-[11px] font-semibold text-slate-600">
+      {{ jobSearchPreferencesProgress() }} of 4 job-search preference areas added. You can return to any area later.
+    </p>
+  </header>
 
-  <!-- Claimant identity badge -->
-  <div id="claimant-identity-badge" class="flex items-center gap-3 bg-gradient-to-r from-slate-50 to-slate-100/50 rounded-2xl p-3 border border-slate-200/40 mb-4 select-none">
-    <div class="w-8 h-8 rounded-xl bg-indigo-600/10 text-indigo-700 flex items-center justify-center font-bold text-xs font-display">
-      {{ claimantName() ? claimantName().substring(0, 1).toUpperCase() : 'C' }}
-    </div>
-    <div class="flex-1 min-w-0">
-      <h3 class="text-xs font-bold text-slate-900 truncate leading-tight">{{ claimantName() || 'Sarah Jenkins' }}</h3>
-      <p class="text-[10px] font-mono text-slate-400 truncate leading-none mt-0.5">{{ claimantEmail() || 'sarah.jenkins@gmail.com' }}</p>
-    </div>
-    <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[9px] font-extrabold uppercase bg-emerald-50 text-emerald-800 border border-emerald-100/80 scale-90 origin-right">
-      Active
-    </span>
-  </div>
+  @if (saveError()) {
+    <p id="profile-save-error" role="alert" tabindex="-1"
+       class="m-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800">
+      {{ saveError() }}
+    </p>
+  }
 
-  <!-- Profile content container -->
-  <div class="space-y-4">
-    @if (!isEditing()) {
-      <!-- READ MODE (Optimized layout) -->
-      <div id="profile-read-mode" class="space-y-3.5">
-        <div class="p-3 bg-slate-50/75 rounded-2xl border border-slate-100">
-          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Skills & Qualifications</h3>
-          <p class="text-xs font-semibold text-slate-700 leading-relaxed mt-1">{{ skills() }}</p>
-        </div>
-        <div class="p-3 bg-slate-50/75 rounded-2xl border border-slate-100">
-          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Employment & Volunteer History</h3>
-          <p class="text-xs font-semibold text-slate-700 leading-relaxed mt-1">{{ experience() }}</p>
-        </div>
-        <div class="p-3 bg-indigo-50/40 rounded-2xl border border-indigo-50">
-          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-indigo-500">Target Roles & Commitments</h3>
-          <p class="text-xs font-bold text-indigo-900 leading-relaxed mt-1">{{ aspirations() }}</p>
-        </div>
-        <div class="p-3 bg-slate-50/75 rounded-2xl border border-slate-100">
-          <h3 class="text-2xs uppercase font-extrabold tracking-widest text-slate-400">Hours & Commute Area</h3>
-          <p class="text-xs font-semibold text-slate-700 leading-relaxed mt-1 flex flex-col gap-1">
-            <span class="flex items-center gap-1.5"><mat-icon class="text-xs text-slate-400">schedule</mat-icon><strong>Commitment:</strong> {{ parsedWorkPrefs().hours }}</span>
-            <span class="flex items-center gap-1.5"><mat-icon class="text-xs text-slate-400">location_on</mat-icon>
-              <strong>Home Location:</strong> 
-              @if (parsedWorkPrefs().adminDistrict || parsedWorkPrefs().region) {
-                {{ parsedWorkPrefs().adminDistrict }}@if (parsedWorkPrefs().adminDistrict && parsedWorkPrefs().region) {, }{{ parsedWorkPrefs().region }} ({{ parsedWorkPrefs().postcode }})
-              } @else {
-                {{ parsedWorkPrefs().postcode }}
-              }
-            </span>
-            <span class="flex items-center gap-1.5"><mat-icon class="text-xs text-slate-400">commute</mat-icon><strong>Commute Range:</strong> within {{ parsedWorkPrefs().distance }}</span>
+  <div class="p-4 space-y-4">
+    <section class="profile-group" aria-labelledby="job-search-preferences-heading"
+             data-testid="job-search-preferences">
+      <header>
+        <p class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">
+          Job search preferences
+        </p>
+        <h3 id="job-search-preferences-heading" class="font-extrabold text-sm text-slate-900">
+          What I am looking for
+        </h3>
+      </header>
+
+      <div class="profile-group-list mt-3">
+    <article class="profile-group-row">
+      <div class="flex justify-between gap-3">
+        <div>
+          <h4 class="font-extrabold text-sm text-slate-900">Target roles</h4>
+          <p class="text-xs text-slate-600 mt-1">
+            {{ localTargetRoles().length ? localTargetRoles().join(', ') : 'Not provided yet' }}
           </p>
         </div>
-
-        <button id="btn-finder-search"
-                (click)="triggerFinderSearch()"
-                class="w-full text-xs font-bold uppercase tracking-wider text-white bg-indigo-600 hover:bg-indigo-700 py-3 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-indigo-100 hover:scale-[1.01] active:scale-[0.99]">
-          <mat-icon class="text-sm">search</mat-icon>
-          Find Aligned Jobs via Gateway
-        </button>
+        <button type="button" class="text-xs font-bold text-indigo-700"
+                aria-label="Edit Target roles"
+                aria-controls="profile-target-roles-editor"
+                [attr.aria-expanded]="editingSection() === 'jobs'"
+                (click)="startEditing('jobs')">Edit</button>
       </div>
-    } @else {
-      <!-- WRITE MODE (Form inputs) -->
-      <div id="profile-write-mode" class="space-y-3">
-        <div class="flex flex-col gap-1">
-          <label for="profile-skills-input" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Skills & Qualifications</label>
-          <textarea id="profile-skills-input"
-                    class="text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 h-16 focus:outline-none focus:ring-1 focus:ring-slate-900 leading-relaxed"
-                    (input)="handleUpdateSkills($event)">{{ localSkills() }}</textarea>
+      @if (editingSection() === 'jobs') {
+        <div id="profile-target-roles-editor" class="mt-4 space-y-3">
+          <app-tag-input label="Target roles" placeholder="Type a role and press Enter"
+                         [(tags)]="localTargetRoles"></app-tag-input>
         </div>
-        
-        <div class="flex flex-col gap-1">
-          <label for="profile-experience-input" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Employment & Volunteer History</label>
-          <textarea id="profile-experience-input"
-                    class="text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 h-20 focus:outline-none focus:ring-1 focus:ring-slate-900 leading-relaxed"
-                    (input)="handleUpdateExperience($event)">{{ localExperience() }}</textarea>
-        </div>
+      }
+    </article>
 
-        <div class="flex flex-col gap-1">
-          <label for="profile-aspirations-input" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Target Roles / Aspirations</label>
-          <input id="profile-aspirations-input"
-                 type="text" 
-                 class="text-xs font-semibold text-slate-800 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-slate-900"
-                 [value]="localAspirations()"
-                 (input)="handleUpdateAspirations($event)" />
-        </div>
-
-        <div class="flex flex-col gap-1">
-          <label for="profile-hours-select" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Target Hours</label>
-          <select id="profile-hours-select"
-                  class="text-xs font-semibold py-2.5 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-800 cursor-pointer"
-                  (change)="localTargetHours.set($any($event.target).value)">
-            @for (opt of targetHoursOptions; track opt) {
-              <option [value]="opt" [selected]="opt === localTargetHours()">{{ opt }}</option>
+    <article class="profile-group-row">
+      <div class="flex justify-between gap-3">
+        <div>
+          <h4 class="font-extrabold text-sm text-slate-900">Location and commute</h4>
+          <p class="text-xs text-slate-600 mt-1">
+            @if (localDisplayName()) {
+              {{ localDisplayName() }}@if (localPostcode()) { ({{ localPostcode() }}) }
+            } @else {
+              {{ localPostcode() || 'Not provided yet' }}
             }
-          </select>
+            @if (localCommuteRange() !== undefined) { · within {{ localCommuteRange() }} miles }
+          </p>
         </div>
-
-        <div class="flex flex-col gap-1 relative">
-          <label for="profile-postcode-input" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Postcode / Location</label>
-          <input id="profile-postcode-input"
-                 type="text"
-                 class="text-xs font-medium text-slate-800 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-slate-900"
-                 [value]="localPostcode()"
-                 (input)="onLocationInputChange($any($event.target).value)"
-                 (blur)="hideLocationDropdownWithDelay()" />
-          
-          <!-- Suggestions Dropdown -->
-          @if (showLocationDropdown() && locationSuggestions().length > 0) {
-            <div class="absolute top-[100%] left-0 right-0 z-50 mt-1 max-h-40 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg flex flex-col p-1.5 gap-1">
-              @for (loc of locationSuggestions(); track loc.id) {
-                <button type="button"
-                        (click)="selectLocation(loc)"
-                        class="text-left px-3 py-2 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer flex flex-col gap-0.5 border-none bg-transparent w-full">
-                  <span class="text-xs font-bold text-slate-800">{{ loc.name }}</span>
-                  <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">{{ loc.region }} ({{ loc.postcode }})</span>
-                </button>
+        <button type="button" class="text-xs font-bold text-indigo-700"
+                aria-label="Edit Location and commute"
+                aria-controls="profile-location-editor"
+                [attr.aria-expanded]="editingSection() === 'location'"
+                (click)="startEditing('location')">Edit</button>
+      </div>
+      @if (editingSection() === 'location') {
+        <div id="profile-location-editor" class="mt-4 grid grid-cols-1 gap-3">
+          <div class="relative">
+            <label for="profile-postcode" class="block text-xs font-bold text-slate-700 mb-1">Town or postcode</label>
+            <input id="profile-postcode" type="text" role="combobox" autocomplete="postal-code"
+                   aria-controls="profile-location-options"
+                   [attr.aria-expanded]="showLocationDropdown()"
+                   [attr.aria-busy]="locationLookup().status === 'loading'"
+                   [attr.aria-activedescendant]="activeLocationIndex() >= 0 ? 'profile-location-option-' + activeLocationIndex() : null"
+                   [value]="localPostcode()"
+                   (input)="onLocationInputChange($any($event.target).value)"
+                   (keydown)="onLocationKeydown($event)"
+                   (focus)="showLocationDropdown.set(locationSuggestions().length > 0)"
+                   class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+            @if (locationLookup().message) {
+              <p data-testid="profile-location-status"
+                 [attr.role]="locationLookup().status === 'unavailable'
+                   || locationLookup().status === 'rate-limited'
+                   || locationLookup().status === 'invalid'
+                   || locationLookup().status === 'unsupported' ? 'alert' : 'status'"
+                 class="text-[11px] text-slate-600 mt-1">{{ locationLookup().message }}</p>
+            }
+            @if (locationLookup().attributionProvider === 'GOOGLE_MAPS') {
+              <p class="text-[11px] text-slate-500 mt-1">Suggestions provided by Google Maps</p>
+            }
+            @if (showLocationDropdown() && locationSuggestions().length) {
+              <div id="profile-location-options"
+                   role="listbox"
+                   aria-label="Matching UK locations"
+                   class="absolute z-20 left-0 right-0 bg-white border rounded-xl shadow-lg">
+                @for (location of locationSuggestions(); track location.id; let index = $index) {
+                  <button type="button" (click)="selectLocation(location)"
+                          [id]="'profile-location-option-' + index"
+                          role="option"
+                          [attr.aria-selected]="activeLocationIndex() === index"
+                          (mouseenter)="activeLocationIndex.set(index)"
+                          class="block w-full text-left px-3 py-2 text-xs hover:bg-slate-50">
+                    <strong>{{ location.name }}</strong>
+                    <span class="block text-slate-600">{{ location.postcode }}</span>
+                  </button>
+                }
+              </div>
+            }
+          </div>
+          <div>
+            <label for="profile-commute" class="block text-xs font-bold text-slate-700 mb-1">Commute distance</label>
+            <select id="profile-commute" [ngModel]="localCommuteRange()"
+                    (ngModelChange)="localCommuteRange.set($event === '' ? undefined : +$event)"
+                    class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm">
+              <option value="">Not provided</option>
+              @for (distance of commuteDistanceOptions; track distance) {
+                <option [value]="distance">Within {{ distance }} miles</option>
               }
+            </select>
+          </div>
+          <fieldset>
+            <legend class="block text-xs font-bold text-slate-700 mb-2">Travel modes</legend>
+            @if (!commuteRoutingAvailable()) {
+              <p class="text-xs text-slate-600 mb-2" role="status">
+                Live driving and public-transport times are unavailable in this beta. Distance preferences still work.
+              </p>
+            }
+            <div class="flex flex-wrap gap-2">
+              @for (option of commuteModeOptions; track option[0]) {
+                <label class="choice-chip">
+                  <input type="checkbox"
+                         [disabled]="!commuteRoutingAvailable()"
+                         [checked]="isSelected(localCommuteTravelModes(), option[0])"
+                         (change)="toggleSelection(localCommuteTravelModes, option[0])" />
+                  {{ option[1] }}
+                </label>
+              }
+            </div>
+          </fieldset>
+          @if (localCommuteTravelModes().includes('DRIVE')) {
+            <div>
+              <label for="profile-drive-minutes" class="block text-xs font-bold text-slate-700 mb-1">
+                Maximum driving time
+              </label>
+              <input id="profile-drive-minutes" type="number" min="5" max="180"
+                     [value]="localMaximumDrivingMinutes() ?? ''"
+                     (input)="localMaximumDrivingMinutes.set($any($event.target).value === '' ? undefined : +$any($event.target).value)"
+                     class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+          }
+          @if (localCommuteTravelModes().includes('TRANSIT')) {
+            <div>
+              <label for="profile-transit-minutes" class="block text-xs font-bold text-slate-700 mb-1">
+                Maximum public-transport time
+              </label>
+              <input id="profile-transit-minutes" type="number" min="5" max="180"
+                     [value]="localMaximumTransitMinutes() ?? ''"
+                     (input)="localMaximumTransitMinutes.set($any($event.target).value === '' ? undefined : +$any($event.target).value)"
+                     class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
             </div>
           }
         </div>
+      }
+    </article>
 
-        <div class="flex flex-col gap-1">
-          <label for="profile-commute-select" class="text-2xs uppercase font-extrabold tracking-widest text-slate-500">Commute Range</label>
-          <select id="profile-commute-select"
-                  class="text-xs font-semibold py-2.5 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-800 cursor-pointer"
-                  (change)="localCommuteDistance.set($any($event.target).value)">
-            @for (dist of commuteDistanceOptions; track dist) {
-              <option [value]="dist" [selected]="dist === localCommuteDistance()">within {{ dist }}</option>
-            }
-          </select>
+    <article class="profile-group-row">
+      <div class="flex justify-between gap-3">
+        <div>
+          <h4 class="font-extrabold text-sm text-slate-900">Working preferences</h4>
+          <p class="text-xs text-slate-600 mt-1">
+            {{ localWorkingPatterns().length + localEmploymentTypes().length + localWorkplaceArrangements().length
+              ? 'Preferences added' : 'Not provided yet' }}
+          </p>
         </div>
+        <button type="button" class="text-xs font-bold text-indigo-700"
+                aria-label="Edit Working preferences"
+                aria-controls="profile-working-preferences-editor"
+                [attr.aria-expanded]="editingSection() === 'patterns'"
+                (click)="startEditing('patterns')">Edit</button>
+      </div>
+      @if (editingSection() === 'patterns') {
+        <div id="profile-working-preferences-editor" class="mt-4 space-y-4">
+          <fieldset>
+            <legend class="text-xs font-extrabold text-slate-700 mb-2">Employment types</legend>
+            <div class="flex flex-wrap gap-2">
+              @for (option of employmentTypeOptions; track option[0]) {
+                <label class="choice-chip">
+                  <input type="checkbox" [checked]="isSelected(localEmploymentTypes(), option[0])"
+                         (change)="toggleSelection(localEmploymentTypes, option[0])" />
+                  {{ option[1] }}
+                </label>
+              }
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend class="text-xs font-extrabold text-slate-700 mb-2">Working patterns</legend>
+            <div class="flex flex-wrap gap-2">
+              @for (option of workingPatternOptions; track option[0]) {
+                <label class="choice-chip">
+                  <input type="checkbox" [checked]="isSelected(localWorkingPatterns(), option[0])"
+                         (change)="toggleSelection(localWorkingPatterns, option[0])" />
+                  {{ option[1] }}
+                </label>
+              }
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend class="text-xs font-extrabold text-slate-700 mb-2">Workplace</legend>
+            <div class="flex flex-wrap gap-2">
+              @for (option of workplaceOptions; track option[0]) {
+                <label class="choice-chip">
+                  <input type="checkbox" [checked]="isSelected(localWorkplaceArrangements(), option[0])"
+                         (change)="toggleSelection(localWorkplaceArrangements, option[0])" />
+                  {{ option[1] }}
+                </label>
+              }
+            </div>
+          </fieldset>
+        </div>
+      }
+    </article>
 
-        <div class="flex items-center gap-2 pt-2">
-          <button id="btn-cancel-edit"
-                  (click)="cancelEditing()"
-                  class="w-1/2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 py-2 rounded-lg border border-slate-300 hover:border-slate-400 transition-colors cursor-pointer">
-            Cancel
-          </button>
-          <button id="btn-save-inline"
-                  (click)="save()"
-                  class="w-1/2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 py-2 rounded-lg shadow-md transition-colors cursor-pointer">
-            Save Profile
-          </button>
+    <article class="profile-group-row">
+      <div class="flex justify-between gap-3">
+        <div>
+          <h4 class="font-extrabold text-sm text-slate-900">Availability</h4>
+          <p class="text-xs text-slate-600 mt-1">
+            @if (localAvailableFrom()) { From {{ localAvailableFrom() }} }
+            @else if (localNoticePeriodDays() !== undefined) { {{ localNoticePeriodDays() }} days' notice }
+            @else { Not provided yet }
+          </p>
         </div>
+        <button type="button" class="text-xs font-bold text-indigo-700"
+                aria-label="Edit Availability"
+                aria-controls="profile-availability-editor"
+                [attr.aria-expanded]="editingSection() === 'availability'"
+                (click)="startEditing('availability')">Edit</button>
+      </div>
+      @if (editingSection() === 'availability') {
+        <div id="profile-availability-editor" class="mt-4 grid grid-cols-1 gap-3">
+          <div>
+            <label for="available-from" class="block text-xs font-bold text-slate-700 mb-1">Available from</label>
+            <input id="available-from" type="date" [value]="localAvailableFrom()"
+                   (input)="localAvailableFrom.set($any($event.target).value); localNoticePeriodDays.set(undefined)"
+                   class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label for="notice-days" class="block text-xs font-bold text-slate-700 mb-1">Or notice period in days</label>
+            <input id="notice-days" type="number" min="0" max="3650"
+                   [value]="localNoticePeriodDays() ?? ''"
+                   (input)="localNoticePeriodDays.set($any($event.target).value === '' ? undefined : +$any($event.target).value); localAvailableFrom.set('')"
+                   class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+        </div>
+      }
+    </article>
+      </div>
+    </section>
+
+    <section class="profile-group"
+             aria-labelledby="profile-professional-contact-heading"
+             data-testid="profile-professional-contact">
+      <header>
+        <p class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">
+          Professional contact
+        </p>
+        <h3 id="profile-professional-contact-heading"
+            class="font-extrabold text-sm text-slate-900">
+          Contact shown on CVs and cover letters
+        </h3>
+        <p class="mt-1 text-[11px] text-slate-600">
+          Only details you enter here are added to generated application documents.
+        </p>
+      </header>
+
+      <div class="profile-group-list mt-3">
+        <article class="profile-group-row">
+          <div class="flex justify-between gap-3">
+            <div class="min-w-0">
+              <h4 class="font-extrabold text-sm text-slate-900">Phone and professional links</h4>
+              <p class="text-xs text-slate-600 mt-1">
+                {{ localProfessionalPhone() || 'No phone number added' }}
+              </p>
+              @if (localProfessionalLinks().length) {
+                <ul class="contact-link-summary mt-2" aria-label="Saved professional links">
+                  @for (link of localProfessionalLinks(); track $index) {
+                    <li>
+                      @if (link.label && link.url) {
+                        <span>{{ link.label }}:</span>
+                        <a [href]="link.url" target="_blank" rel="noreferrer">{{ link.url }}</a>
+                      } @else {
+                        <span>New link not completed</span>
+                      }
+                    </li>
+                  }
+                </ul>
+              } @else {
+                <p class="text-[11px] text-slate-500 mt-1">No professional links added</p>
+              }
+            </div>
+            <button type="button" class="text-xs font-bold text-indigo-700"
+                    aria-label="Edit professional contact"
+                    aria-controls="profile-professional-contact-editor"
+                    [attr.aria-expanded]="editingSection() === 'contact'"
+                    (click)="startEditing('contact')">Edit</button>
+          </div>
+
+          @if (editingSection() === 'contact') {
+            <div id="profile-professional-contact-editor" class="mt-4 space-y-4">
+              <div>
+                <label for="profile-professional-phone"
+                       class="block text-xs font-bold text-slate-700 mb-1">
+                  Professional phone number
+                </label>
+                <input id="profile-professional-phone"
+                       type="tel"
+                       autocomplete="tel"
+                       maxlength="40"
+                       pattern="\s*|(?=(?:\D*\d){7,15}\D*$)[+0-9() .-]+"
+                       aria-describedby="profile-professional-phone-hint"
+                       [value]="localProfessionalPhone()"
+                       (input)="localProfessionalPhone.set($any($event.target).value)"
+                       class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                <p id="profile-professional-phone-hint" class="text-[11px] text-slate-500 mt-1">
+                  Optional. Enter 7 to 15 digits; spaces and standard phone punctuation are allowed.
+                </p>
+              </div>
+
+              <fieldset class="space-y-3">
+                <legend class="text-xs font-extrabold text-slate-700">Professional links</legend>
+                <p id="profile-professional-links-hint" class="text-[11px] text-slate-500">
+                  Add up to 8 labelled HTTPS links, such as GitHub, LinkedIn or a portfolio.
+                </p>
+                @for (link of localProfessionalLinks(); track $index; let index = $index) {
+                  <div class="contact-link-row">
+                    <div>
+                      <label [for]="'profile-professional-link-label-' + index"
+                             class="block text-xs font-bold text-slate-700 mb-1">
+                        Link {{ index + 1 }} label
+                      </label>
+                      <input [id]="'profile-professional-link-label-' + index"
+                             type="text"
+                             maxlength="40"
+                             required
+                             [value]="link.label"
+                             (input)="updateProfessionalLink(index, 'label', $any($event.target).value)"
+                             class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label [for]="'profile-professional-link-url-' + index"
+                             class="block text-xs font-bold text-slate-700 mb-1">
+                        Link {{ index + 1 }} HTTPS address
+                      </label>
+                      <input [id]="'profile-professional-link-url-' + index"
+                             type="url"
+                             inputmode="url"
+                             autocomplete="url"
+                             maxlength="512"
+                             pattern="https://.*"
+                             required
+                             aria-describedby="profile-professional-links-hint"
+                             [value]="link.url"
+                             (input)="updateProfessionalLink(index, 'url', $any($event.target).value)"
+                             class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                    </div>
+                    <button type="button"
+                            class="contact-link-remove"
+                            [attr.aria-label]="'Remove ' + (link.label || 'link ' + (index + 1))"
+                            (click)="removeProfessionalLink(index)">
+                      Remove
+                    </button>
+                  </div>
+                }
+                <button type="button"
+                        class="contact-link-add"
+                        [disabled]="localProfessionalLinks().length >= 8"
+                        (click)="addProfessionalLink()">
+                  Add professional link
+                </button>
+                <p class="text-[11px] text-slate-500" aria-live="polite">
+                  {{ localProfessionalLinks().length }} of 8 links added
+                </p>
+              </fieldset>
+            </div>
+          }
+        </article>
+      </div>
+    </section>
+
+    <section class="profile-group evidence-summary"
+             aria-labelledby="profile-evidence-heading"
+             data-testid="profile-evidence-summary">
+      <header>
+        <p class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">
+          Reusable career details
+        </p>
+        <h3 id="profile-evidence-heading" class="font-extrabold text-sm text-slate-900">
+          What I can offer
+        </h3>
+      </header>
+
+      <div class="profile-group-list mt-3">
+        <article class="profile-group-row">
+          <div class="flex justify-between gap-3">
+            <div>
+              <h4 class="font-extrabold text-sm text-slate-900">Skills &amp; expertise</h4>
+              <p class="text-xs text-slate-600 mt-1">
+                {{ localSkills().length ? localSkills().join(', ') : 'Not provided yet' }}
+              </p>
+            </div>
+            <button type="button" class="text-xs font-bold text-indigo-700"
+                    aria-label="Edit Skills & expertise"
+                    aria-controls="profile-skills-expertise-editor"
+                    [attr.aria-expanded]="editingSection() === 'skills'"
+                    (click)="startEditing('skills')">Edit</button>
+          </div>
+          @if (editingSection() === 'skills') {
+            <div id="profile-skills-expertise-editor" class="mt-4">
+              <app-tag-input label="Skills & expertise" placeholder="Type a skill and press Enter"
+                             [(tags)]="localSkills"></app-tag-input>
+            </div>
+          }
+        </article>
+
+        @if (evidenceLoading()) {
+          <p class="profile-group-status text-xs text-slate-600" role="status">Loading summary…</p>
+        } @else if (evidenceError()) {
+          <div class="profile-group-status flex items-center justify-between gap-2">
+            <p class="text-xs text-rose-700" role="status">{{ evidenceError() }}</p>
+            <button type="button" class="summary-retry" (click)="refreshEvidenceSummary()">
+              Retry
+            </button>
+          </div>
+        } @else {
+          <dl class="evidence-summary-list">
+          @for (row of evidenceSummaryRows; track row.label) {
+            <div class="evidence-summary-row">
+              <dt>{{ row.label }}</dt>
+              <dd>{{ evidenceSummary(row) }}</dd>
+            </div>
+          }
+          </dl>
+        }
+      </div>
+      <button id="manage-experience-evidence" type="button" class="manage-evidence-button mt-3"
+              (click)="openEvidenceManager()">
+        Manage experience &amp; achievements
+      </button>
+    </section>
+
+    @if (editingSection()) {
+      <div class="flex gap-2">
+        <button type="button" (click)="cancelEditing()" [disabled]="isSaving()"
+                class="flex-1 rounded-xl border border-slate-300 py-2 text-xs font-bold">Cancel</button>
+        <button type="button" (click)="saveSection()" [disabled]="isSaving()"
+                class="flex-1 rounded-xl bg-slate-900 text-white py-2 text-xs font-bold">
+          {{ isSaving() ? 'Saving…' : 'Save this section' }}
+        </button>
       </div>
     }
+
+    <div class="pt-2">
+      <button type="button" (click)="triggerFinderSearch()" [disabled]="!searchReady()"
+              class="w-full rounded-xl bg-indigo-700 text-white py-2 text-xs font-bold disabled:opacity-50">
+        Find jobs
+      </button>
+    </div>
   </div>
-</div>
+</section>

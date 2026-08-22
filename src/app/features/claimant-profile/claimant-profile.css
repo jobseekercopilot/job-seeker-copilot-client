@@ -1,1 +1,324 @@
-/* Styles specific to ClaimantProfile component */
+.claimant-card {
+  background: var(--color-surface) !important;
+  border-color: var(--border-subtle);
+  border-radius: var(--radius-card) !important;
+  box-shadow: var(--shadow-card);
+  color: var(--text-primary);
+  padding: 1rem !important;
+}
+
+.claimant-card:hover {
+  border-color: #d1d5db;
+}
+
+.claimant-card h2,
+.claimant-card h3,
+.claimant-card p,
+.claimant-card strong,
+.claimant-card label,
+.claimant-card select,
+.claimant-card input {
+  color: var(--text-primary);
+}
+
+.claimant-card h2 {
+  font-size: 1rem;
+}
+
+.claimant-card h3 {
+  font-size: 0.82rem;
+}
+
+.claimant-card p,
+.claimant-card label,
+.claimant-card input,
+.claimant-card select {
+  font-size: 0.82rem;
+}
+
+.claimant-card p,
+.claimant-card span,
+.claimant-card mat-icon {
+  border-color: var(--border-subtle);
+}
+
+.claimant-card .text-slate-400,
+.claimant-card .text-slate-500,
+.claimant-card .text-slate-600,
+.claimant-card .text-indigo-400,
+.claimant-card .text-indigo-500,
+.claimant-card .text-indigo-600 {
+  color: var(--text-secondary) !important;
+}
+
+.claimant-card .text-slate-700,
+.claimant-card .text-slate-800,
+.claimant-card .text-slate-900,
+.claimant-card .text-indigo-700,
+.claimant-card .text-indigo-800 {
+  color: var(--text-primary) !important;
+}
+
+.claimant-card .bg-white,
+.claimant-card .bg-slate-50,
+.claimant-card .bg-slate-50\/75,
+.claimant-card .bg-slate-100,
+.claimant-card .bg-indigo-50\/40,
+.claimant-card .from-slate-50,
+.claimant-card .to-slate-100\/50 {
+  background: var(--color-surface-soft) !important;
+}
+
+.claimant-card .p-3 {
+  padding: 0.65rem !important;
+}
+
+.claimant-card .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.85rem !important;
+}
+
+.claimant-card .space-y-3\.5 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.7rem !important;
+}
+
+.claimant-card .rounded-lg,
+.claimant-card .rounded-xl,
+.claimant-card .rounded-2xl {
+  border-radius: var(--radius-control) !important;
+}
+
+.claimant-card .scale-90 {
+  transform: none !important;
+}
+
+.claimant-card span[class*="rounded-lg"] {
+  padding: 0.16rem 0.42rem !important;
+}
+
+.commute-summary {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.commute-summary-row {
+  align-items: start;
+  column-gap: 0.4rem;
+  display: grid;
+  grid-template-columns: 1rem max-content minmax(0, 1fr);
+  line-height: 1.35;
+}
+
+.commute-summary-row mat-icon {
+  font-size: 1rem;
+  height: 1rem;
+  line-height: 1;
+  margin-top: 0.05rem;
+  overflow: visible;
+  width: 1rem;
+}
+
+.commute-summary-row strong,
+.commute-summary-row span {
+  font-size: 0.76rem;
+}
+
+.commute-summary-row strong {
+  white-space: nowrap;
+}
+
+.commute-summary-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.claimant-card .bg-indigo-50,
+.claimant-card .bg-indigo-100\/60,
+.claimant-card .bg-emerald-50 {
+  background: var(--color-soft-blue) !important;
+}
+
+.claimant-card .border-slate-100,
+.claimant-card .border-slate-200,
+.claimant-card .border-slate-200\/40,
+.claimant-card .border-slate-300,
+.claimant-card .border-indigo-50,
+.claimant-card .border-indigo-100,
+.claimant-card .border-indigo-200,
+.claimant-card .border-emerald-100\/80 {
+  border-color: var(--border-subtle) !important;
+}
+
+.claimant-card input,
+.claimant-card select {
+  background: var(--color-surface) !important;
+  border-color: var(--border-subtle) !important;
+}
+
+.claimant-card input,
+.claimant-card select,
+.claimant-card textarea {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+
+.claimant-card input:focus,
+.claimant-card select:focus {
+  border-color: var(--border-strong) !important;
+  box-shadow: 0 0 0 3px #bfdbfe;
+}
+
+.claimant-card #btn-finder-search,
+.claimant-card #btn-save-profile,
+.claimant-card #btn-save-inline {
+  background: var(--color-primary) !important;
+  border-radius: var(--radius-control) !important;
+  box-shadow: none;
+  color: white !important;
+  padding-bottom: 0.65rem !important;
+  padding-top: 0.65rem !important;
+}
+
+.claimant-card #btn-edit-profile,
+.claimant-card #btn-cancel-edit {
+  background: var(--color-surface) !important;
+  border-color: var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+}
+.choice-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 9999px;
+  padding: 0.4rem 0.65rem;
+  color: #334155;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.choice-chip:has(input:checked) {
+  border-color: #4f46e5;
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.profile-group {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  padding: 0.875rem;
+}
+
+.profile-group-list {
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.profile-group-row,
+.profile-group-status {
+  padding: 0.8rem;
+}
+
+.profile-group-row + .profile-group-row,
+.profile-group-status,
+.evidence-summary-list {
+  border-top: 1px solid #e2e8f0;
+}
+
+.evidence-summary-list {
+  display: grid;
+}
+
+.evidence-summary-row {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.65rem 0.8rem;
+}
+
+.evidence-summary-row + .evidence-summary-row {
+  border-top: 1px solid #e2e8f0;
+}
+
+.evidence-summary-row dt {
+  color: #0f172a;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.evidence-summary-row dd {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.6875rem;
+}
+
+.manage-evidence-button {
+  width: 100%;
+  border: 1px solid #c7d2fe;
+  border-radius: 0.75rem;
+  background: #eef2ff;
+  padding: 0.6rem 0.7rem;
+  color: #3730a3;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.summary-retry {
+  border: 1px solid #fecdd3;
+  border-radius: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  color: #be123c;
+  font-size: 0.6875rem;
+  font-weight: 800;
+}
+
+.contact-link-summary {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.contact-link-summary li {
+  color: #475569;
+  font-size: 0.6875rem;
+  overflow-wrap: anywhere;
+}
+
+.contact-link-summary span {
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.contact-link-summary a {
+  color: #4338ca;
+  margin-left: 0.25rem;
+  text-decoration: underline;
+}
+
+.contact-link-row {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem;
+}
+
+.contact-link-remove,
+.contact-link-add {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.6rem;
+  color: #334155;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  padding: 0.45rem 0.6rem;
+}
+
+.contact-link-remove {
+  justify-self: start;
+}
+
+.contact-link-add:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}

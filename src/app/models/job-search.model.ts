@@ -1,46 +1,55 @@
-export interface SalaryExpectation {
-  min: number;
-  max: number;
-  currency: string;
+import type {
+  Job as GeneratedJob,
+  JobDiscoveryAssessment as GeneratedJobDiscoveryAssessment,
+  MatchAssessment as GeneratedMatchAssessment,
+  MatchReason as GeneratedMatchReason,
+  MatchScoreComponent as GeneratedMatchScoreComponent,
+  ProviderDataProvenance as GeneratedProviderDataProvenance,
+  ProviderResultStatus as GeneratedProviderResultStatus,
+  ReedJobSearchResponse as GeneratedJobSearchResponse,
+  SearchFreshness as GeneratedSearchFreshness,
+  SearchQualitySummary as GeneratedSearchQualitySummary,
+  TargetRoleJobResults as GeneratedTargetRoleJobResults,
+} from '../api/job-finder';
+
+export type {
+  Aspirations,
+  JobSearchRequest,
+  SalaryExpectation,
+  TargetRoleJobResults,
+  WorkPreferences
+} from '../api/job-finder';
+
+export interface Job extends GeneratedJob {
+  applicationVersion?: number;
 }
 
-export interface Aspirations {
-  desiredRoles: string[];
-  industries: string[];
-  salaryExpectation: SalaryExpectation;
-  locations: string[];
-}
+export type JobMatchReason = GeneratedMatchReason;
+export type JobMatchComponent = GeneratedMatchScoreComponent;
+export type JobMatchAssessment = GeneratedMatchAssessment;
+export type JobDiscoveryAssessment = GeneratedJobDiscoveryAssessment;
+export type JobSearchFreshness = GeneratedSearchFreshness;
+export type JobSearchQualitySummary = GeneratedSearchQualitySummary;
+export type ProviderDataProvenance = GeneratedProviderDataProvenance;
 
-export interface WorkPreferences {
-  employmentType: string[];
-  remotePreference: 'REMOTE' | 'HYBRID' | 'ONSITE';
-  companySize: string[];
-  culture: string[];
-}
+export type ProviderSearchResult = GeneratedProviderResultStatus;
 
-export interface JobSearchRequest {
-  aspirations: Aspirations;
-  workPreferences: WorkPreferences;
-}
-
-export interface Job {
-  id: string;
-  title: string;
-  company: string;
-  location: string;
-  salary: {
-    min: number;
-    max: number;
-    currency: string;
-  };
-  employmentType: string;
-  postedDate: string;
-  matchScore: number;
-}
-
-export interface JobSearchResponse {
+export interface TargetRoleSearchResults extends Omit<
+  GeneratedTargetRoleJobResults,
+  'jobs' | 'providerResults'
+> {
   jobs: Job[];
-  totalResults: number;
-  page: number;
-  pageSize: number;
+  providerResults: ProviderSearchResult[];
+  qualitySummary?: JobSearchQualitySummary;
+}
+
+export interface JobSearchResponse extends Omit<
+  GeneratedJobSearchResponse,
+  'jobs' | 'resultsByTargetRole' | 'providerResults'
+> {
+  jobs?: Job[];
+  resultsByTargetRole?: TargetRoleSearchResults[];
+  providerResults?: ProviderSearchResult[];
+  freshness?: JobSearchFreshness;
+  qualitySummary?: JobSearchQualitySummary;
 }

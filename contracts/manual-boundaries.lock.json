@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "contracts": [
+    {
+      "id": "payment-gateway",
+      "boundaryType": "manual_boundary",
+      "generatedClient": false,
+      "version": "2.2.0",
+      "sourceRepository": "jobseekercopilot/payment-gateway",
+      "sourceCommit": "6db53bd9b98cbaac081fdd7c06cf95687f29e222",
+      "path": "contracts/payment-gateway/2.2.0/openapi.json",
+      "sha256": "6df5c1877d429b870ecad5a42a8506b178836fb36af6feda8cd178bc5df0518e",
+      "requiredPaths": [
+        "/api/v2/payments/catalog",
+        "/api/v2/payments/wallet",
+        "/api/v2/payments/transactions",
+        "/api/v2/payments/checkout-readiness",
+        "/api/v2/payments/checkout",
+        "/api/v2/payments/orders/{orderId}/status"
+      ]
+    }
+  ]
+}

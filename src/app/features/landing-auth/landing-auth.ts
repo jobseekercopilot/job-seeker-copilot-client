@@ -1,317 +1,534 @@
-import { CommonModule } from '@angular/common';
-import { MatIconModule } from '@angular/material/icon';
-import { UserManagementGateway } from '../../gateways/user-management-gateway';
-import { LocationService, UKLocation } from '../../services/location.service';
+import {CommonModule} from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
+  DestroyRef,
+  ElementRef,
+  inject,
+  input,
+  OnInit,
   output,
   signal,
-  inject,
-  Injector,
-  runInInjectionContext
 } from '@angular/core';
-
-interface AuthResponse {
-  success: boolean;
-  statusCode: number;
-  message: string;
-  user?: {
-    id: string;
-    name: string;
-    email: string;
-    token: string;
-    profile: {
-      name: string;
-      email: string;
-      skills: string;
-      experience: string;
-      aspirations: string;
-      workPrefs: string;
-    };
-  };
-}
+import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
+import {FormsModule} from '@angular/forms';
+import {MatIconModule} from '@angular/material/icon';
+import {debounceTime, distinctUntilChanged, firstValueFrom, Subject, switchMap} from 'rxjs';
+import type {
+  GatewayResponse,
+  ProfilePreferencesUpdate,
+  RegistrationLegalRequirements,
+  UserProfile,
+} from '../../api';
+import {
+  AuthenticationService,
+  ProfileService,
+  WorkPreferencesWorkplaceArrangementsEnum,
+} from '../../api';
+import {normaliseProfile} from '../../models/user-profile.model';
+import {BrowserSessionService} from '../../services/browser-session.service';
+import {
+  DRAFT_LEGAL_CONFIGURATION,
+  isReviewedLegalConfiguration,
+  type PublicLegalConfiguration,
+} from '../../services/runtime-configuration.service';
+import {
+  idleLocationLookup,
+  locationFailureState,
+  LocationService,
+  type CanonicalLocation,
+  type LocationLookupState,
+  type LocationOption,
+} from '../../services/location.service';
+import {
+  accountEmailError,
+  loginPasswordError,
+  registrationNameError,
+  registrationPasswordError,
+} from './credential-policy';
 
 @Component({
   selector: 'app-landing-auth',
-  imports: [CommonModule, MatIconModule],
+  imports: [CommonModule, MatIconModule, FormsModule],
+  host: {
+    'data-demo-focus': 'app-landing-auth',
+    'data-demo-focus-id': 'registration-form',
+  },
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './landing-auth.html',
-  styleUrl: './landing-auth.css'
+  styleUrl: './landing-auth.css',
 })
-export class LandingAuthComponent {
-  private userManagementGateway = inject(UserManagementGateway);
-  private locationService = inject(LocationService);
+export class LandingAuthComponent implements OnInit {
+  private readonly authenticationApi = inject(AuthenticationService);
+  private readonly profileApi = inject(ProfileService);
+  private readonly browserSession = inject(BrowserSessionService);
+  private readonly locationService = inject(LocationService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly destroyRef = inject(DestroyRef);
 
-  locationSuggestions = signal<UKLocation[]>([]);
-  showLocationDropdown = signal<boolean>(false);
-
-  onboarded = output<{
+  readonly initialMode = input<'create' | 'signin'>('create');
+  readonly legalConfiguration = input<PublicLegalConfiguration>(DRAFT_LEGAL_CONFIGURATION);
+  readonly onboarded = output<{
+    profile: UserProfile;
+    id?: string;
     name: string;
     email: string;
-    skills: string;
-    experience: string;
-    aspirations: string;
-    workPrefs: string;
-    token?: string;
   }>();
 
-  mode = signal<'create' | 'signin'>('create');
-  currentStep = signal<number>(1);
-  errorMessage = signal<string | null>(null);
-  isLoading = signal<boolean>(false);
+  readonly mode = signal<'create' | 'signin'>('create');
+  readonly errorMessage = signal<string | null>(null);
+  readonly isLoading = signal(false);
+  readonly validationAttempted = signal(false);
+  readonly registrationLegalAcknowledged = signal(false);
+  readonly registrationRequirements = signal<RegistrationLegalRequirements | null>(null);
+  readonly registrationRequirementsState = signal<'idle' | 'checking' | 'ready' | 'unavailable'>('idle');
 
-  // Form Field Signals
-  formName = signal('');
-  formEmail = signal('');
-  formPassword = signal('');
-  
-  formSkills = signal('Customer support receptionist, ward administrative assistant, clerical data assistant');
-  formExperience = signal('Retail Team Member at Co-op (1 year) - managing cash checkouts and stocking shelves; Volunteer Office Assistant at York General Community Hub (6 months)');
-  formAspirations = signal('Customer support receptionist, ward administrative assistant, clerical data assistant');
-  
-  // Structured Work Preferences
-  formPostcode = signal('LS1 1UR');
-  formTargetHours = signal('Full-Time (35-40 hours)');
-  formCommuteDistance = signal('10 miles');
-  formRegion = signal('Yorkshire and the Humber');
-  formAdminDistrict = signal('Leeds');
+  readonly formName = signal('');
+  readonly formEmail = signal('');
+  readonly formPassword = signal('');
+  readonly loginEmail = signal('');
+  readonly loginPassword = signal('');
+  readonly setupStep = signal<1 | 2 | 3 | null>(null);
+  readonly setupTargetRoles = signal('');
+  readonly setupPostcode = signal('');
+  readonly setupCanonicalLocation = signal<CanonicalLocation | null>(null);
+  readonly setupLocationSuggestions = signal<LocationOption[]>([]);
+  readonly setupLocationLookup = signal<LocationLookupState>(idleLocationLookup);
+  readonly showSetupLocationDropdown = signal(false);
+  readonly setupWorkplaceArrangements = signal<string[]>([]);
+  readonly setupAccount = signal<{
+    profile: UserProfile;
+    id?: string;
+    name: string;
+    email: string;
+  } | null>(null);
+  readonly setupProgress = computed(() => `${this.setupStep() ?? 1} of 3`);
+  readonly registrationLegalReady = computed(() => {
+    const requirements = this.registrationRequirements();
+    const configuration = this.legalConfiguration();
+    return requirements !== null
+      && this.registrationRequirementsAreSafe(requirements)
+      && isReviewedLegalConfiguration(configuration)
+      && configuration.version === requirements.legalVersion;
+  });
+  private readonly setupLocationQueries = new Subject<string>();
 
-  targetHoursOptions = [
-    'Full-Time (35-40 hours)',
-    'Part-Time (16-30 hours)',
-    'Part-Time (Under 16 hours)',
-    'Flexible / Any Hours'
-  ];
+  readonly workplaceOptions = [
+    ['ONSITE', 'On-site'],
+    ['HYBRID', 'Hybrid'],
+    ['REMOTE', 'Remote'],
+  ] as const;
 
-  commuteDistanceOptions = [
-    '5 miles',
-    '10 miles',
-    '15 miles',
-    '25 miles',
-    '50 miles'
-  ];
+  constructor() {
+    this.setupLocationQueries.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      switchMap(query => this.locationService.lookup(query)),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe(state => {
+      this.setupLocationLookup.set(state);
+      this.setupLocationSuggestions.set(state.locations);
+      this.showSetupLocationDropdown.set(state.status === 'results');
+    });
+  }
 
-  // Sign In Field Signals
-  loginEmail = signal('');
-  loginPassword = signal('');
+  ngOnInit(): void {
+    if (this.initialMode() === 'signin') {
+      this.mode.set('signin');
+      return;
+    }
+    this.loadRegistrationRequirements();
+  }
 
-  onLocationInputChange(query: string) {
-    this.formPostcode.set(query);
-    if (!query || query.trim().length < 2) {
-      this.locationSuggestions.set([]);
-      this.showLocationDropdown.set(false);
+  setMode(mode: 'create' | 'signin'): void {
+    this.mode.set(mode);
+    this.errorMessage.set(null);
+    this.validationAttempted.set(false);
+    if (mode === 'create' && this.registrationRequirementsState() === 'idle') {
+      this.loadRegistrationRequirements();
+    }
+  }
+
+  onModeTabKeydown(event: KeyboardEvent): void {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const mode = event.key === 'ArrowRight' || event.key === 'End' ? 'signin' : 'create';
+    this.setMode(mode);
+    setTimeout(() => this.host.nativeElement.querySelector<HTMLElement>(
+      mode === 'create' ? '#tab-btn-create' : '#tab-btn-signin',
+    )?.focus());
+  }
+
+  async completeRegistration(): Promise<void> {
+    if (this.isLoading()) return;
+    if (!this.registrationLegalReady()) {
+      this.showError(
+        'Account creation is temporarily unavailable because the current legal requirements could not be verified. You can still sign in.',
+      );
+      return;
+    }
+    if (!this.registrationLegalAcknowledged()) {
+      this.validationAttempted.set(true);
+      this.showError(
+        'Confirm the current Terms of Use, Privacy Notice and UK 18+ eligibility before creating your account.',
+      );
+      return;
+    }
+    if (this.registrationFieldError('name')
+      || this.registrationFieldError('email')
+      || this.registrationFieldError('password')) {
+      this.validationAttempted.set(true);
+      this.showError('Check your name, email address and password before creating your account.');
       return;
     }
 
-    const cleanQuery = query.trim();
-    const isPostcodeOrOutcode = /^[A-Z]{1,2}[0-9]/i.test(cleanQuery);
-
-    if (isPostcodeOrOutcode) {
-      this.locationService.getByPostcode(cleanQuery).subscribe({
-        next: (res) => {
-          if (res.success && res.locations && res.locations.length > 0) {
-            this.locationSuggestions.set(res.locations);
-            this.showLocationDropdown.set(true);
-          } else {
-            this.locationSuggestions.set([]);
-            this.showLocationDropdown.set(false);
-          }
-        },
-        error: () => {
-          this.locationSuggestions.set([]);
-          this.showLocationDropdown.set(false);
-        }
-      });
-    } else {
-      this.locationService.search(cleanQuery).subscribe({
-        next: (res) => {
-          if (res.success && res.locations) {
-            this.locationSuggestions.set(res.locations);
-            this.showLocationDropdown.set(true);
-          } else {
-            this.locationSuggestions.set([]);
-            this.showLocationDropdown.set(false);
-          }
-        },
-        error: () => {
-          this.locationSuggestions.set([]);
-          this.showLocationDropdown.set(false);
-        }
-      });
-    }
-  }
-
-  selectLocation(loc: UKLocation) {
-    this.formPostcode.set(loc.postcode);
-    this.formRegion.set(loc.region);
-    this.formAdminDistrict.set(loc.name.split(',')[0].trim());
-
-    this.locationService.getByPostcode(loc.postcode).subscribe({
-      next: (res) => {
-        if (res.success && res.locations && res.locations.length > 0) {
-          const l = res.locations[0];
-          this.formRegion.set(l.region);
-          this.formAdminDistrict.set(l.name.split(',')[0].trim());
-        }
+    this.isLoading.set(true);
+    this.validationAttempted.set(false);
+    this.errorMessage.set(null);
+    try {
+      await firstValueFrom(this.browserSession.ensureCsrf());
+      const response = await firstValueFrom(this.authenticationApi.register({
+        name: this.formName().trim(),
+        email: this.formEmail().trim().toLowerCase(),
+        password: this.formPassword(),
+        termsAccepted: true,
+        privacyNoticeAcknowledged: true,
+        ageEligibilityConfirmed: true,
+        legalVersion: this.registrationRequirements()!.legalVersion,
+      }));
+      if (response.success && response.user) {
+        this.browserSession.invalidateCsrf();
+        this.beginSetup(response);
+      } else {
+        this.showError(response.message || 'Registration could not be completed.');
       }
+    } catch (error: unknown) {
+      const code = this.httpErrorCode(error);
+      if (code === 'LEGAL_VERSION_OUTDATED') {
+        this.registrationLegalAcknowledged.set(false);
+        this.loadRegistrationRequirements();
+        this.showError(
+          'The legal documents changed before registration completed. Review the current version and confirm again.',
+        );
+      } else if (code === 'LEGAL_ACCEPTANCE_REQUIRED') {
+        this.registrationLegalAcknowledged.set(false);
+        this.showError(
+          'Registration requires a fresh confirmation of the current Terms of Use, Privacy Notice and UK 18+ eligibility.',
+        );
+      } else {
+        this.showError(this.httpErrorMessage(error, 'Unable to contact the registration service.'));
+      }
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  loadRegistrationRequirements(): void {
+    this.registrationRequirementsState.set('checking');
+    this.registrationRequirements.set(null);
+    this.registrationLegalAcknowledged.set(false);
+    this.authenticationApi.getRegistrationLegalRequirements(
+      'body',
+      false,
+      {transferCache: false},
+    ).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: requirements => {
+        if (!this.registrationRequirementsAreSafe(requirements)) {
+          this.registrationRequirementsState.set('unavailable');
+          return;
+        }
+        this.registrationRequirements.set(requirements);
+        this.registrationRequirementsState.set('ready');
+      },
+      error: () => this.registrationRequirementsState.set('unavailable'),
     });
-
-    this.locationSuggestions.set([]);
-    this.showLocationDropdown.set(false);
   }
 
-  hideLocationDropdownWithDelay() {
-    const injector = inject(Injector);
+  async submitLogin(): Promise<void> {
+    if (this.isLoading()) return;
+    const email = this.loginEmail().trim();
+    const password = this.loginPassword();
+    if (accountEmailError(email) || loginPasswordError(password)) {
+      this.validationAttempted.set(true);
+      this.showError('Check your email address and password.');
+      return;
+    }
 
-    setTimeout(() => {
-      runInInjectionContext(injector, () => {
-        this.showLocationDropdown.set(false);
-      });
-    }, 250);
-  }
-
-  setMode(newMode: 'create' | 'signin') {
-    this.mode.set(newMode);
-    if (newMode === 'create') {
-      this.currentStep.set(1);
+    this.isLoading.set(true);
+    this.validationAttempted.set(false);
+    this.errorMessage.set(null);
+    try {
+      await firstValueFrom(this.browserSession.ensureCsrf());
+      const response = await firstValueFrom(this.authenticationApi.login({
+        email: email.toLowerCase(),
+        password,
+      }));
+      if (response.success && response.user) {
+        this.browserSession.invalidateCsrf();
+        this.emitProfileFromResponse(response);
+      } else {
+        this.showError(response.message || 'Verification failed.');
+      }
+    } catch (error: unknown) {
+      this.showError(this.httpErrorMessage(error, 'Unable to contact the authentication service.'));
+    } finally {
+      this.isLoading.set(false);
     }
   }
 
-  isStepValid(): boolean {
-    if (this.mode() !== 'create') return true;
-    
-    const step = this.currentStep();
+  isRegistrationFieldInvalid(field: 'name' | 'email' | 'password'): boolean {
+    return this.validationAttempted() && this.registrationFieldError(field) !== null;
+  }
+
+  registrationFieldError(field: 'name' | 'email' | 'password'): string | null {
+    if (field === 'name') return registrationNameError(this.formName());
+    if (field === 'email') return accountEmailError(this.formEmail());
+    return registrationPasswordError(this.formPassword());
+  }
+
+  isLoginFieldInvalid(field: 'email' | 'password'): boolean {
+    return this.validationAttempted() && this.loginFieldError(field) !== null;
+  }
+
+  loginFieldError(field: 'email' | 'password'): string | null {
+    return field === 'email'
+      ? accountEmailError(this.loginEmail())
+      : loginPasswordError(this.loginPassword());
+  }
+
+  goToSetupStep(step: 1 | 2 | 3): void {
+    if (this.isLoading()) return;
+    this.errorMessage.set(null);
+    this.setupStep.set(step);
+  }
+
+  previousSetupStep(): void {
+    const step = this.setupStep();
+    if (step && step > 1) this.goToSetupStep((step - 1) as 1 | 2 | 3);
+  }
+
+  continueSetup(): void {
+    const step = this.setupStep();
+    this.errorMessage.set(null);
     if (step === 1) {
-      return this.formName().trim().length >= 2 && this.formEmail().includes('@');
-    }
-    if (step === 2) {
-      return this.formSkills().trim().length > 5 && this.formExperience().trim().length > 5;
-    }
-    if (step === 3) {
-      return this.formAspirations().trim().length > 3 && this.formPostcode().trim().length >= 4;
-    }
-    return true;
-  }
-
-  nextStep() {
-    if (this.isStepValid() && this.currentStep() < 3) {
-      this.currentStep.update(s => s + 1);
-    }
-  }
-
-  prevStep() {
-    if (this.currentStep() > 1) {
-      this.currentStep.update(s => s - 1);
+      if (!this.tags(this.setupTargetRoles()).length) {
+        this.showError('Add at least one target role before continuing, or set this up later.');
+        return;
+      }
+      this.setupStep.set(2);
+    } else if (step === 2) {
+      if (!this.setupCanonicalLocation()) {
+        this.showError('Choose a location from the suggestions before continuing, or set this up later.');
+        return;
+      }
+      this.setupStep.set(3);
+    } else if (step === 3) {
+      if (!this.setupWorkplaceArrangements().length) {
+        this.showError('Choose at least one workplace arrangement before continuing.');
+        return;
+      }
+      void this.finishSetup();
     }
   }
 
-  async completeRegistration() {
-     if (!this.isStepValid()) return;
-     this.isLoading.set(true);
-     this.errorMessage.set(null);
-
-     const formattedPrefs = JSON.stringify({
-       hours: this.formTargetHours(),
-       postcode: this.formPostcode().trim().toUpperCase(),
-       distance: this.formCommuteDistance(),
-       region: this.formRegion(),
-       adminDistrict: this.formAdminDistrict()
-     });
-
-     const profile = {
-       name: this.formName().trim(),
-       email: this.formEmail().trim(),
-       skills: this.formSkills().trim(),
-       experience: this.formExperience().trim(),
-       aspirations: this.formAspirations().trim(),
-       workPrefs: formattedPrefs
-     };
-
-
-     const res = await this.userManagementGateway.handleRegistration(
-       this.formName().trim(),
-       this.formEmail().trim(),
-       this.formPassword().trim(),
-       profile
-     );
-
-     this.isLoading.set(false);
-     if (res.success && res.user) {
-       const { name, email, ...restOfProfile } = res.user.profile;
-
-       this.onboarded.emit({
-         name: res.user.name,
-         email: res.user.email,
-         token: res.user.token,
-         ...restOfProfile
-       });
-     } else {
-       this.errorMessage.set(res.message || 'Registration failed at gateway level.');
-     }
+  toggleWorkplace(value: string): void {
+    this.setupWorkplaceArrangements.update(current =>
+      current.includes(value)
+        ? current.filter(candidate => candidate !== value)
+        : [...current, value]);
   }
 
-  async submitLogin() {
-     const email = this.loginEmail().trim();
-     const password = this.loginPassword().trim();
+  isWorkplaceSelected(value: string): boolean {
+    return this.setupWorkplaceArrangements().includes(value);
+  }
 
-     if (!email || !password) {
-       this.errorMessage.set('Please fill out both email and password.');
-       return;
-     }
+  onSetupLocationInput(query: string): void {
+    this.setupPostcode.set(query);
+    this.setupCanonicalLocation.set(null);
+    this.setupLocationQueries.next(query.trim());
+  }
 
-     this.isLoading.set(true);
-     this.errorMessage.set(null);
-
-     const res = await this.userManagementGateway.handleLogin(email, password);
-
-     this.isLoading.set(false);
-     if (res.success && res.user) {
-       // Destructure to remove duplicates from the profile object
-       const { name, email, ...restOfProfile } = res.user.profile;
-
-       this.onboarded.emit({
-         name: res.user.name,
-         email: res.user.email,
-         token: res.user.token,
-         ...restOfProfile
-       });
-     } else {
-       this.errorMessage.set(res.message || 'Verification failed.');
-     }
-   }
-
-  loadPersona(role: 'admin' | 'logistics') {
-    if (role === 'admin') {
-      this.onboarded.emit({
-        name: 'Sarah Jenkins',
-        email: 'sarah.jenkins@gmail.com',
-        skills: 'Customer communication, basic office administration, patient documentation, phone reception, MS Excel, detail-oriented inputting',
-        experience: 'Retail Team Member at Co-op (1 year) - managing cash checkouts and stocking shelves; Volunteer Office Assistant at York General Community Hub (6 months)',
-        aspirations: 'Customer support receptionist, ward administrative assistant, clerical data assistant',
-        workPrefs: JSON.stringify({
-          hours: 'Full-Time (35-40 hours)',
-          postcode: 'LS1 1UR',
-          distance: '10 miles',
-          region: 'Yorkshire and the Humber',
-          adminDistrict: 'Leeds'
-        })
+  selectSetupLocation(location: LocationOption): void {
+    if (!location.sessionId || !location.suggestionId) {
+      this.setupLocationLookup.set({
+        status: 'invalid',
+        locations: [],
+        message: 'Choose a more precise UK location before continuing.',
       });
-    } else {
-      this.onboarded.emit({
-        name: 'Marcus Vance',
-        email: 'marcus.vance@live.co.uk',
-        skills: 'Stock replenishment operations, forklift loading, manual inventory audits, load security safety compliance, goods in-out documentation systems, team logistics tools',
-        experience: 'Depot Stock Porter at DHL Express (9 months) - sorting shipments and handling inbound cargo containers; Seasonal Warehouse Assistant at Amazon Fulfilment (5 months)',
-        aspirations: 'Logistics cargo handler, warehouse logistics colleague, yard coordinator, stock control team helper',
-        workPrefs: JSON.stringify({
-          hours: 'Part-Time (16-30 hours)',
-          postcode: 'LS11 5BY',
-          distance: '15 miles',
-          region: 'Yorkshire and the Humber',
-          adminDistrict: 'Leeds'
-        })
-      });
+      return;
     }
+    this.setupLocationLookup.set({status: 'loading', locations: [], message: 'Confirming location…'});
+    this.showSetupLocationDropdown.set(false);
+    this.locationService.resolve(location.sessionId, location.suggestionId).pipe(
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe({
+      next: response => {
+        if (response.resolutionStatus !== 'RESOLVED' || !response.location) {
+          this.setupLocationLookup.set({
+            status: 'invalid',
+            locations: [],
+            message: 'Choose a more precise UK location before continuing.',
+          });
+          return;
+        }
+        this.setupCanonicalLocation.set(response.location);
+        this.setupPostcode.set(response.location.postcode ?? response.location.displayName ?? '');
+        this.setupLocationSuggestions.set([]);
+        this.setupLocationLookup.set({status: 'idle', locations: [], message: 'Location confirmed.'});
+      },
+      error: error => this.setupLocationLookup.set(locationFailureState(error)),
+    });
+  }
+
+  skipSetup(): void {
+    if (this.isLoading()) return;
+    const account = this.setupAccount();
+    if (!account) return;
+    this.onboarded.emit(account);
+  }
+
+  async finishSetup(): Promise<void> {
+    if (this.isLoading()) return;
+    const account = this.setupAccount();
+    if (!account) return;
+    const workplaceArrangements = this.setupWorkplaceArrangements() as unknown as
+      Set<WorkPreferencesWorkplaceArrangementsEnum>;
+    const location = this.setupCanonicalLocation();
+    const update: ProfilePreferencesUpdate = {
+      aspirations: {targetRoles: this.tags(this.setupTargetRoles())},
+      workPreferences: {
+        ...(location ? {location: this.profileLocation(location)} : {}),
+        workplaceArrangements,
+      },
+    };
+    const ifMatch = account.profile.revision == null
+      ? undefined
+      : `"${account.profile.revision}"`;
+
+    this.isLoading.set(true);
+    this.errorMessage.set(null);
+    try {
+      await firstValueFrom(this.browserSession.ensureCsrf());
+      const response = await firstValueFrom(this.profileApi.updatePreferences(
+        update, ifMatch, 'body', false, {transferCache: false},
+      ));
+      if (!response.success || !response.user?.profile) {
+        throw new Error(response.message || 'Profile setup could not be saved.');
+      }
+      this.browserSession.invalidateCsrf();
+      this.emitProfileFromResponse(response);
+    } catch (error: unknown) {
+      this.browserSession.handleAuthenticatedError(error);
+      this.showError(this.httpErrorMessage(error, 'Your setup could not be saved. Please try again.'));
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  private showError(message: string): void {
+    this.errorMessage.set(message);
+    setTimeout(() => this.host.nativeElement.querySelector<HTMLElement>('#auth-error-alert')?.focus());
+  }
+
+  private httpErrorMessage(error: unknown, fallback: string): string {
+    if (typeof error !== 'object' || error === null || !('error' in error)) return fallback;
+    const body = (error as {error?: unknown}).error;
+    if (typeof body === 'object' && body !== null && 'message' in body) {
+      const message = (body as {message?: unknown}).message;
+      if (typeof message === 'string' && message.trim()) return message;
+    }
+    return fallback;
+  }
+
+  private httpErrorCode(error: unknown): string | undefined {
+    if (typeof error !== 'object' || error === null || !('error' in error)) return undefined;
+    const body = (error as {error?: unknown}).error;
+    if (typeof body === 'string') return body;
+    if (typeof body !== 'object' || body === null) return undefined;
+    const directCode = (body as {code?: unknown}).code;
+    if (typeof directCode === 'string') return directCode;
+    const nestedError = (body as {error?: unknown}).error;
+    if (typeof nestedError === 'string') return nestedError;
+    if (typeof nestedError !== 'object' || nestedError === null) return undefined;
+    const nestedCode = (nestedError as {code?: unknown}).code;
+    return typeof nestedCode === 'string' ? nestedCode : undefined;
+  }
+
+  private registrationRequirementsAreSafe(
+    requirements: RegistrationLegalRequirements,
+  ): boolean {
+    return typeof requirements?.legalVersion === 'string'
+      && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(requirements.legalVersion)
+      && requirements.minimumAge === 18
+      && this.reviewedLegalUrl(requirements.termsUrl, '/terms')
+      && this.reviewedLegalUrl(requirements.privacyNoticeUrl, '/privacy');
+  }
+
+  private reviewedLegalUrl(value: string, expectedPath: '/privacy' | '/terms'): boolean {
+    try {
+      const url = new URL(value);
+      return url.protocol === 'https:'
+        && url.username === ''
+        && url.password === ''
+        && url.pathname === expectedPath
+        && url.search === ''
+        && url.hash === '';
+    } catch {
+      return false;
+    }
+  }
+
+  private emitProfileFromResponse(response: GatewayResponse): void {
+    if (!response.user) return;
+    const profile = normaliseProfile(response.user.profile);
+    this.onboarded.emit({
+      profile,
+      id: response.user.id,
+      name: response.user.name || '',
+      email: response.user.email || '',
+    });
+  }
+
+  private beginSetup(response: GatewayResponse): void {
+    if (!response.user) return;
+    const profile = normaliseProfile(response.user.profile);
+    this.setupAccount.set({
+      profile,
+      id: response.user.id,
+      name: response.user.name || '',
+      email: response.user.email || '',
+    });
+    this.setupStep.set(1);
+  }
+
+  private tags(value: string): string[] {
+    return value.split(/[,;\n]/).map(item => item.trim()).filter(Boolean);
+  }
+
+  private profileLocation(location: CanonicalLocation) {
+    const normaliseField = (field: string) => field.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    const provenance = (field: string) => location.fieldProvenance?.find(value =>
+      normaliseField(value.field) === normaliseField(field))?.source;
+    return {
+      locationId: location.locationId,
+      displayName: location.displayName,
+      countryCode: location.countryCode ?? 'GB',
+      postcode: location.postcode?.toUpperCase(),
+      region: location.region,
+      adminDistrict: location.locality,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      locationType: location.locationType,
+      precision: location.precision,
+      confidence: location.confidence,
+      googlePlaceId: location.providerReferences?.find(value =>
+        value.provider === 'GOOGLE_PLACES')?.externalId,
+      postcodesIoPlaceId: location.providerReferences?.find(value =>
+        value.provider === 'POSTCODES_IO')?.externalId,
+      displayNameSource: provenance('displayName'),
+      postcodeSource: provenance('postcode'),
+      coordinatesSource: provenance('coordinates'),
+    };
   }
 }

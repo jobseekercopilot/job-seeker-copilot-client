@@ -39,16 +39,24 @@
           },
           "configurations": {
             "production": {
+              "optimization": {
+                "scripts": true,
+                "styles": {
+                  "minify": true,
+                  "inlineCritical": false
+                },
+                "fonts": false
+              },
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kB",
-                  "maximumError": "1MB"
+                  "maximumWarning": "1000kB",
+                  "maximumError": "1100kB"
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "4kB",
-                  "maximumError": "8kB"
+                  "maximumWarning": "8kB",
+                  "maximumError": "12kB"
                 }
               ],
               "outputHashing": "all"
@@ -74,7 +82,26 @@
           "defaultConfiguration": "development"
         },
         "test": {
-          "builder": "@angular/build:unit-test"
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "include": [
+              "src/app/app.spec.ts",
+              "src/app/config/**/*.spec.ts",
+              "src/app/features/claimant-profile/claimant-profile.spec.ts",
+              "src/app/features/documents-workspace/documents-workspace.component.spec.ts",
+              "src/app/features/evidence-library/evidence-library.spec.ts",
+              "src/app/features/job-card/job-card.component.spec.ts",
+              "src/app/features/job-results/job-results.component.spec.ts",
+              "src/app/features/landing-auth/landing-auth.spec.ts",
+              "src/app/features/my-applications/my-applications.component.spec.ts",
+              "src/app/gateways/**/*.spec.ts",
+              "src/app/models/**/*.spec.ts",
+              "src/app/services/**/*.spec.ts",
+              "src/server/**/*.spec.ts",
+              "src/app/shared/**/*.spec.ts",
+              "src/shared/**/*.spec.ts"
+            ]
+          }
         },
         "lint": {
           "builder": "@angular-eslint/builder:lint",

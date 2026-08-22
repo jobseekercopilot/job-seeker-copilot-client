@@ -1,17 +1,28 @@
-import {Injectable} from '@angular/core';
-import {HttpClient} from '@angular/common/http';
+import {inject, Injectable} from '@angular/core';
 import {Observable} from 'rxjs';
-import {JobSearchRequest, JobSearchResponse} from '../models/job-search.model';
+import {
+  ApplicationRecordResponse,
+  JobSearchRequest,
+  ReedJobSearchResponse,
+  JobSearchService,
+  UpdateApplicationStatusRequest
+} from '../api/job-finder';
 
 @Injectable({
   providedIn: 'root'
 })
 export class JobFinderGatewayService {
-  private baseUrl = '/api/jobs';
+  private api = inject(JobSearchService);
 
-  constructor(private http: HttpClient) {}
+  searchJobs(request: JobSearchRequest): Observable<ReedJobSearchResponse> {
+    return this.api.searchJobs(request, 'body', false, {transferCache: false});
+  }
 
-  searchJobs(request: JobSearchRequest): Observable<JobSearchResponse> {
-    return this.http.post<JobSearchResponse>(`${this.baseUrl}/search`, request);
+  updateApplicationStatus(
+    applicationId: string,
+    status: UpdateApplicationStatusRequest['status'],
+    _userId?: string
+  ): Observable<ApplicationRecordResponse> {
+    return this.api.updateApplicationStatus(applicationId, {status});
   }
 }
