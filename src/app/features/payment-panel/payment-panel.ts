@@ -46,6 +46,7 @@ const DETERMINISTIC_CHECKOUT_ERRORS = new Set([
   'IDEMPOTENCY_KEY_REQUIRED',
   'LEGAL_ENTITY_NOT_CONFIGURED',
   'LIVE_RELEASE_NOT_AUTHORISED',
+  'STRIPE_CATALOG_NOT_CONFIGURED',
   'PAYMENTS_DISABLED',
   'PAYMENT_ACCESS_REVOKED',
   'PAYMENT_REVIEW_REQUIRED',
@@ -266,6 +267,8 @@ export class PaymentPanelComponent {
         return 'The payment service is temporarily unavailable. Purchasing is paused and no payment has been requested.';
       case 'LIVE_RELEASE_NOT_AUTHORISED':
         return 'Purchasing is prepared but has not been authorised for this release.';
+      case 'STRIPE_CATALOG_NOT_CONFIGURED':
+        return 'Purchasing is blocked until the approved payment catalogue is configured.';
       case 'TAX_STATUS_NOT_CONFIGURED':
         return 'Purchasing is blocked until the seller tax status has completed release review.';
       case 'LEGAL_ENTITY_NOT_CONFIGURED':
@@ -469,6 +472,7 @@ export class PaymentPanelComponent {
       'READY',
       'PAYMENTS_DISABLED',
       'LIVE_RELEASE_NOT_AUTHORISED',
+      'STRIPE_CATALOG_NOT_CONFIGURED',
       'TAX_STATUS_NOT_CONFIGURED',
       'LEGAL_ENTITY_NOT_CONFIGURED',
       'PROVIDER_UNAVAILABLE',
@@ -488,6 +492,7 @@ export class PaymentPanelComponent {
       'READY',
       'PAYMENTS_DISABLED',
       'LIVE_RELEASE_NOT_AUTHORISED',
+      'STRIPE_CATALOG_NOT_CONFIGURED',
       'NOT_CHECKED',
       'UNAVAILABLE',
     ].includes(readiness.providerCode);
@@ -659,6 +664,8 @@ export class PaymentPanelComponent {
         return 'Purchasing is currently disabled. No payment has been requested.';
       case 'LIVE_RELEASE_NOT_AUTHORISED':
         return 'Purchasing has not been authorised for this release. No payment has been requested.';
+      case 'STRIPE_CATALOG_NOT_CONFIGURED':
+        return 'Checkout is blocked until the approved payment catalogue is configured. No payment has been requested.';
       case 'TAX_STATUS_NOT_CONFIGURED':
         return 'Checkout is blocked until the seller tax status has completed release review. No payment has been requested.';
       case 'LEGAL_ENTITY_NOT_CONFIGURED':
