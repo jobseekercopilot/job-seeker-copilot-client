@@ -307,36 +307,6 @@ export function registerPaymentRoutes(
   config: PaymentRouteConfig,
   fetchImplementation: typeof fetch = fetch,
 ): void {
-  app.get('/api/v1/payment/wallet', (request, response) => {
-    if (Object.keys(request.query).length > 0) {
-      failure(response, 400, 'INVALID_REQUEST', 'Payment request is invalid');
-      return;
-    }
-    void proxyPayment(
-      request, response, config, 'GET', '/api/v1/payment/wallet',
-      undefined, fetchImplementation,
-    );
-  });
-  app.get('/api/v1/payment/pricing', (request, response) => {
-    if (Object.keys(request.query).length > 0) {
-      failure(response, 400, 'INVALID_REQUEST', 'Payment request is invalid');
-      return;
-    }
-    void proxyPayment(
-      request, response, config, 'GET', '/api/v1/payment/pricing',
-      undefined, fetchImplementation,
-    );
-  });
-  app.get('/api/v1/payment/transactions', (request, response) => {
-    const path = transactionsPath(request, '/api/v1/payment');
-    if (!path) {
-      failure(response, 400, 'INVALID_REQUEST', 'Payment request is invalid');
-      return;
-    }
-    void proxyPayment(
-      request, response, config, 'GET', path, undefined, fetchImplementation,
-    );
-  });
   for (const suffix of ['catalog', 'wallet', 'checkout-readiness']) {
     const path = `/api/v2/payments/${suffix}`;
     app.get(path, (request, response) => {

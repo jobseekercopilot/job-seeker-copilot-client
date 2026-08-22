@@ -217,11 +217,13 @@ h1, h2, h3, h4 {
 
 @media (max-width: 900px) {
   .dashboard-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .dashboard-left,
+  .dashboard-center,
   .dashboard-right {
+    min-width: 0;
     position: static;
   }
 

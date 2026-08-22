@@ -16,7 +16,7 @@ export const routes: Routes = [
   {path: 'payment/cancel', component: JobSeekerDashboardComponent},
   {path: 'payment', component: JobSeekerDashboardComponent},
   {path: 'payment/history', component: JobSeekerDashboardComponent},
-  {path: 'tokens', component: JobSeekerDashboardComponent},
-  {path: 'tokens/history', component: JobSeekerDashboardComponent},
+  {path: 'tokens', redirectTo: '/payment', pathMatch: 'full'},
+  {path: 'tokens/history', redirectTo: '/payment/history', pathMatch: 'full'},
   {path: '', redirectTo: '/dashboard', pathMatch: 'full'},
 ];

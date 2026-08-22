@@ -442,14 +442,14 @@ describe('DocumentGenerationService', () => {
       }))
       .mockImplementationOnce(() => of({
         operationId,
-        state: 'CREDIT_COMMITTED',
+        state: 'ALLOWANCE_COMMITTED',
         replaySafe: true,
         failureCode: 'DOWNSTREAM_RETRYABLE',
       }));
     getOperation
       .mockImplementationOnce(() => of({
         operationId,
-        state: 'CREDIT_COMMITTED',
+        state: 'ALLOWANCE_COMMITTED',
         replaySafe: true,
         failureCode: 'DOWNSTREAM_RETRYABLE',
       }))
@@ -481,13 +481,13 @@ describe('DocumentGenerationService', () => {
       }))
       .mockImplementationOnce(() => of({
         operationId,
-        state: 'CREDIT_COMMITTED',
+        state: 'ALLOWANCE_COMMITTED',
         replaySafe: true,
         failureCode: 'DOWNSTREAM_RETRYABLE',
       }));
     getOperation.mockReturnValue(of({
       operationId,
-      state: 'CREDIT_COMMITTED',
+      state: 'ALLOWANCE_COMMITTED',
       replaySafe: true,
       failureCode: 'DOWNSTREAM_RETRYABLE',
     }));
@@ -584,7 +584,7 @@ describe('DocumentGenerationService', () => {
     getOperation
       .mockImplementationOnce(() => of({
         operationId,
-        state: 'CREDIT_COMMITTED',
+        state: 'ALLOWANCE_COMMITTED',
         replaySafe: true,
         failureCode: 'DOWNSTREAM_RETRYABLE',
         deadlineAt: new Date(now - 60_000).toISOString(),
@@ -598,7 +598,7 @@ describe('DocumentGenerationService', () => {
       }));
     startOperation.mockReturnValue(of({
       operationId,
-      state: 'CREDIT_COMMITTED',
+      state: 'ALLOWANCE_COMMITTED',
       replaySafe: true,
       failureCode: 'DOWNSTREAM_RETRYABLE',
       deadlineAt: new Date(now + (10 * 60 * 1000)).toISOString(),
@@ -883,7 +883,7 @@ describe('DocumentGenerationService', () => {
       TestBed.inject(DocumentGenerationService).resume(canonicalJobId),
     )).rejects.toMatchObject({
       code: 'DESCRIPTION_REQUIRED',
-      message: expect.stringContaining('No document credit was used'),
+      message: expect.stringContaining('No document generation was used'),
     });
   });
 

@@ -46,11 +46,11 @@ export interface DocumentCreditPlan {
   id: string;
   name: string;
   description: string;
-  documentCredits: number;
+  documentGenerations: number;
   priceMinor: number;
   currency: 'GBP';
   fullApplicationEquivalent: number;
-  promotionBonusDocumentCredits: number;
+  promotionBonusDocumentGenerations: number;
   active: boolean;
   sortOrder: number;
 }
@@ -68,8 +68,8 @@ export interface PaymentCatalogResponse {
   currency: 'GBP';
   billingCountry: 'GB';
   automaticRenewal: false;
-  creditUnit: 'DOCUMENT';
-  freeAllowanceCredits: number;
+  generationUnit: 'DOCUMENT';
+  freeAllowanceGenerations: number;
   plans: DocumentCreditPlan[];
   promotion: PaymentPromotion;
   taxStatus: TaxStatus;
@@ -78,11 +78,11 @@ export interface PaymentCatalogResponse {
 }
 
 export interface DocumentCreditWalletResponse {
-  balanceDocumentCredits: number;
-  lifetimePurchasedDocumentCredits: number;
-  lifetimeSpentDocumentCredits: number;
-  lifetimeReversedDocumentCredits: number;
-  reviewDebtDocumentCredits: number;
+  remainingDocumentGenerations: number;
+  lifetimePurchasedDocumentGenerations: number;
+  lifetimeUsedDocumentGenerations: number;
+  lifetimeReversedDocumentGenerations: number;
+  reviewDebtDocumentGenerations: number;
   freeAllowanceGranted: boolean;
   status: 'ACTIVE' | 'BLOCKED_REVIEW' | 'REVOKED';
 }
@@ -101,9 +101,9 @@ export type DocumentCreditTransactionType =
 export interface DocumentCreditTransaction {
   id: string;
   type: DocumentCreditTransactionType;
-  documentCredits: number;
-  balanceBeforeDocumentCredits: number;
-  balanceAfterDocumentCredits: number;
+  documentGenerations: number;
+  balanceBeforeDocumentGenerations: number;
+  balanceAfterDocumentGenerations: number;
   operationId: string;
   description: string;
   referenceType?: string | null;
@@ -127,7 +127,7 @@ export interface CheckoutPricingSnapshot {
   catalogVersion: string;
   pricingPlanId: string;
   pricingPlanName: string;
-  documentCredits: number;
+  documentGenerations: number;
   priceMinor: number;
   currency: 'GBP';
   billingCountry: 'GB';
@@ -145,7 +145,7 @@ export interface CheckoutResponse {
   status: 'CHECKOUT_OPEN';
   expiresAt: string;
   pricingSnapshot: CheckoutPricingSnapshot;
-  promotionBonusDocumentCredits: number;
+  promotionBonusDocumentGenerations: number;
   promotionGuaranteed: boolean;
   consumerTermsVersion: string;
   consumerAcknowledgementsRecorded: boolean;
@@ -164,7 +164,7 @@ export type PaymentOrderStatus =
 
 export type PaymentOrderMessageCode =
   | 'PAYMENT_PENDING'
-  | 'CREDITS_ADDED'
+  | 'GENERATIONS_ADDED'
   | 'CHECKOUT_EXPIRED'
   | 'CHECKOUT_CANCELLED'
   | 'PAYMENT_REFUNDED'
@@ -176,15 +176,15 @@ export interface PaymentOrderStatusResponse {
   orderId: string;
   status: PaymentOrderStatus;
   pricingPlanId: string;
-  documentCredits: number;
-  promotionBonusDocumentCredits: number;
-  totalGrantedDocumentCredits: number;
+  documentGenerations: number;
+  promotionBonusDocumentGenerations: number;
+  totalGrantedDocumentGenerations: number;
   priceMinor: number;
   currency: 'GBP';
   createdAt: string;
   expiresAt: string;
   fulfilledAt?: string | null;
-  creditsAdded: boolean;
+  generationsAdded: boolean;
   messageCode: PaymentOrderMessageCode;
   taxStatus: TaxStatus;
   taxTreatment: TaxTreatment;

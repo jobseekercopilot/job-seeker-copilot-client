@@ -1179,7 +1179,7 @@ function stableOperationFailure(status: number, body: string): {
   if (status === 402 || upstreamCode?.includes('CREDIT') || upstreamCode?.includes('QUOTA')) {
     return {
       error: 'GENERATION_QUOTA_EXHAUSTED',
-      message: 'Document generation credit is not available',
+      message: 'Document generation allowance is not available',
     };
   }
   if (status === 429 || upstreamCode?.includes('RATE_LIMIT')) {

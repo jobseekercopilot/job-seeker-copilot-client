@@ -120,8 +120,8 @@ export class PaymentPanelComponent {
   });
   spentPercent = computed(() => {
     const wallet = this.wallet();
-    const remaining = wallet?.balanceDocumentCredits ?? 0;
-    const spent = wallet?.lifetimeSpentDocumentCredits ?? 0;
+    const remaining = wallet?.remainingDocumentGenerations ?? 0;
+    const spent = wallet?.lifetimeUsedDocumentGenerations ?? 0;
     const total = remaining + spent;
     return total > 0 ? Math.round((spent / total) * 100) : 0;
   });
@@ -199,7 +199,7 @@ export class PaymentPanelComponent {
   formatCredits(value: number | null | undefined, includeSign = false): string {
     const credits = value ?? 0;
     const sign = includeSign && credits > 0 ? '+' : '';
-    const unit = Math.abs(credits) === 1 ? 'credit' : 'credits';
+    const unit = Math.abs(credits) === 1 ? 'generation' : 'generations';
     return `${sign}${credits.toLocaleString('en-GB')} ${unit}`;
   }
 
@@ -220,7 +220,7 @@ export class PaymentPanelComponent {
   }
 
   planUsageSummary(plan: DocumentCreditPlan): string {
-    const remainder = plan.documentCredits - (plan.fullApplicationEquivalent * 2);
+    const remainder = plan.documentGenerations - (plan.fullApplicationEquivalent * 2);
     const suffix = remainder === 1 ? ', plus one individual document' : '';
     return `Up to ${plan.fullApplicationEquivalent} complete applications${suffix}`;
   }
@@ -232,14 +232,9 @@ export class PaymentPanelComponent {
   }
 
   transactionActivity(transaction: DocumentCreditTransaction): string {
-    if (transaction.type === 'DOCUMENT_RESERVED'
-      || transaction.type === 'DOCUMENT_SPENT'
-      || transaction.type === 'REFUND_REVERSAL'
-      || transaction.type === 'DISPUTE_REVERSAL'
-      || transaction.type === 'DOCUMENT_RESERVATION_RELEASED') {
-      return this.defaultTransactionDescription(transaction.type);
-    }
-    return transaction.description.trim() || this.defaultTransactionDescription(transaction.type);
+    // The upstream ledger description is retained for internal reconciliation,
+    // but the customer boundary renders only this allowlisted product language.
+    return this.defaultTransactionDescription(transaction.type);
   }
 
   readinessMessage(code: CheckoutReadinessCode | undefined = this.readiness()?.code): string {
@@ -252,8 +247,8 @@ export class PaymentPanelComponent {
     const wallet = this.wallet();
     if (!wallet) {
       return this.loading()
-        ? 'Checking your document-credit account before enabling checkout.'
-        : 'Purchasing is blocked because your document-credit account could not be verified.';
+        ? 'Checking your document generation allowance before enabling checkout.'
+        : 'Purchasing is blocked because your document generation allowance could not be verified.';
     }
     if (wallet.status === 'BLOCKED_REVIEW') {
       return 'Purchasing is paused while your payment account is reviewed.';
@@ -348,7 +343,7 @@ export class PaymentPanelComponent {
         },
         error: () => {
           this.catalog.set(null);
-          this.dataError.set('Document-credit pricing is temporarily unavailable.');
+          this.dataError.set('Document generation pricing is temporarily unavailable.');
         },
       });
       this.paymentService.checkoutReadiness().subscribe({
@@ -366,18 +361,18 @@ export class PaymentPanelComponent {
         if (!this.walletIsSafe(wallet)) {
           this.wallet.set(null);
           this.dataError.set(
-            'Your document-credit account is unavailable because its current state could not be verified.',
+            'Your document generation allowance is unavailable because its current state could not be verified.',
           );
           this.loading.set(false);
           return;
         }
         this.wallet.set(wallet);
-        this.balanceChanged.emit(wallet.balanceDocumentCredits);
+        this.balanceChanged.emit(wallet.remainingDocumentGenerations);
         this.loading.set(false);
       },
       error: () => {
         this.wallet.set(null);
-        this.dataError.set('Your document-credit balance is temporarily unavailable.');
+        this.dataError.set('Your document generation allowance is temporarily unavailable.');
         this.loading.set(false);
       },
     });
@@ -391,13 +386,13 @@ export class PaymentPanelComponent {
           || !response.transactions.every(transaction => this.transactionIsSafe(transaction))) {
           this.transactions.set([]);
           this.dataError.set(
-            'Your document-credit history is unavailable because its current state could not be verified.',
+            'Your document generation history is unavailable because its current state could not be verified.',
           );
           return;
         }
         this.transactions.set(response.transactions);
       },
-      error: () => this.dataError.set('Your document-credit history is temporarily unavailable.'),
+      error: () => this.dataError.set('Your document generation history is temporarily unavailable.'),
     });
   }
 
@@ -409,8 +404,8 @@ export class PaymentPanelComponent {
       || catalog.currency !== 'GBP'
       || catalog.billingCountry !== 'GB'
       || catalog.automaticRenewal !== false
-      || catalog.creditUnit !== 'DOCUMENT'
-      || catalog.freeAllowanceCredits !== 2
+      || catalog.generationUnit !== 'DOCUMENT'
+      || catalog.freeAllowanceGenerations !== 2
       || catalog.displayedPriceIsCheckoutTotal !== true
       || !['NOT_CONFIGURED', 'NOT_VAT_REGISTERED', 'VAT_REGISTERED'].includes(catalog.taxStatus)
       || !['VAT_INCLUDED', 'VAT_NOT_CHARGED'].includes(catalog.taxTreatment)
@@ -444,9 +439,9 @@ export class PaymentPanelComponent {
         && plan.description.length <= 256
         && plan.name === expected.name
         && plan.currency === 'GBP'
-        && plan.documentCredits === expected.credits
+        && plan.documentGenerations === expected.credits
         && plan.fullApplicationEquivalent === expected.applications
-        && plan.promotionBonusDocumentCredits
+        && plan.promotionBonusDocumentGenerations
           === (promotionAvailable ? expected.bonusCredits : 0)
         && plan.priceMinor === expected.priceMinor
         && plan.sortOrder === expected.sortOrder;
@@ -457,11 +452,11 @@ export class PaymentPanelComponent {
     return wallet !== null
       && typeof wallet === 'object'
       && [
-        wallet.balanceDocumentCredits,
-        wallet.lifetimePurchasedDocumentCredits,
-        wallet.lifetimeSpentDocumentCredits,
-        wallet.lifetimeReversedDocumentCredits,
-        wallet.reviewDebtDocumentCredits,
+        wallet.remainingDocumentGenerations,
+        wallet.lifetimePurchasedDocumentGenerations,
+        wallet.lifetimeUsedDocumentGenerations,
+        wallet.lifetimeReversedDocumentGenerations,
+        wallet.reviewDebtDocumentGenerations,
       ].every(value => Number.isInteger(value) && value >= 0)
       && typeof wallet.freeAllowanceGranted === 'boolean'
       && ['ACTIVE', 'BLOCKED_REVIEW', 'REVOKED'].includes(wallet.status);
@@ -515,12 +510,12 @@ export class PaymentPanelComponent {
       && typeof transaction === 'object'
       && ORDER_ID.test(transaction.id)
       && DOCUMENT_CREDIT_TRANSACTION_TYPES.has(transaction.type)
-      && Number.isInteger(transaction.documentCredits)
-      && transaction.documentCredits >= 0
-      && Number.isInteger(transaction.balanceBeforeDocumentCredits)
-      && transaction.balanceBeforeDocumentCredits >= 0
-      && Number.isInteger(transaction.balanceAfterDocumentCredits)
-      && transaction.balanceAfterDocumentCredits >= 0
+      && Number.isInteger(transaction.documentGenerations)
+      && transaction.documentGenerations >= 0
+      && Number.isInteger(transaction.balanceBeforeDocumentGenerations)
+      && transaction.balanceBeforeDocumentGenerations >= 0
+      && Number.isInteger(transaction.balanceAfterDocumentGenerations)
+      && transaction.balanceAfterDocumentGenerations >= 0
       && typeof transaction.operationId === 'string'
       && transaction.operationId.trim().length > 0
       && typeof transaction.description === 'string'
@@ -529,9 +524,9 @@ export class PaymentPanelComponent {
   }
 
   private transactionBalanceChangeIsSafe(transaction: DocumentCreditTransaction): boolean {
-    const before = transaction.balanceBeforeDocumentCredits;
-    const after = transaction.balanceAfterDocumentCredits;
-    const magnitude = transaction.documentCredits;
+    const before = transaction.balanceBeforeDocumentGenerations;
+    const after = transaction.balanceAfterDocumentGenerations;
+    const magnitude = transaction.documentGenerations;
     switch (transaction.type) {
       case 'FREE_ALLOWANCE_GRANTED':
       case 'PURCHASE':
@@ -573,11 +568,11 @@ export class PaymentPanelComponent {
     const catalog = this.catalog();
     const snapshot = response.pricingSnapshot;
     const expected = EXPECTED_PLANS[plan.id];
-    const bonusIsSafe = Number.isInteger(response.promotionBonusDocumentCredits)
-      && response.promotionBonusDocumentCredits >= 0
+    const bonusIsSafe = Number.isInteger(response.promotionBonusDocumentGenerations)
+      && response.promotionBonusDocumentGenerations >= 0
       && (response.promotionGuaranteed
-        ? response.promotionBonusDocumentCredits === expected?.bonusCredits
-        : response.promotionBonusDocumentCredits === 0);
+        ? response.promotionBonusDocumentGenerations === expected?.bonusCredits
+        : response.promotionBonusDocumentGenerations === 0);
     return catalog !== null
       && expected !== undefined
       && ORDER_ID.test(response.orderId)
@@ -593,7 +588,7 @@ export class PaymentPanelComponent {
       && snapshot.catalogVersion === catalog.catalogVersion
       && snapshot.pricingPlanId === plan.id
       && snapshot.pricingPlanName === plan.name
-      && snapshot.documentCredits === plan.documentCredits
+      && snapshot.documentGenerations === plan.documentGenerations
       && snapshot.priceMinor === plan.priceMinor
       && snapshot.currency === catalog.currency
       && snapshot.billingCountry === catalog.billingCountry
@@ -614,12 +609,12 @@ export class PaymentPanelComponent {
   }
 
   private signedTransactionAmount(transaction: DocumentCreditTransaction): number {
-    const absolute = Math.abs(transaction.documentCredits);
+    const absolute = Math.abs(transaction.documentGenerations);
     if (transaction.type === 'DOCUMENT_RESERVED'
       || transaction.type === 'REFUND_REVERSAL'
       || transaction.type === 'DISPUTE_REVERSAL') return -absolute;
     if (transaction.type === 'ADJUSTMENT') {
-      return transaction.balanceAfterDocumentCredits < transaction.balanceBeforeDocumentCredits
+      return transaction.balanceAfterDocumentGenerations < transaction.balanceBeforeDocumentGenerations
         ? -absolute
         : absolute;
     }
@@ -628,19 +623,19 @@ export class PaymentPanelComponent {
 
   private defaultTransactionDescription(type: DocumentCreditTransaction['type']): string {
     switch (type) {
-      case 'FREE_ALLOWANCE_GRANTED': return 'Free document credits added';
-      case 'PURCHASE': return 'Document credits purchased';
+      case 'FREE_ALLOWANCE_GRANTED': return 'Free document generations added';
+      case 'PURCHASE': return 'Document generations purchased';
       case 'PROMOTION_BONUS': return 'Founding offer bonus added';
       case 'DOCUMENT_RESERVED':
-        return 'Document credit reserved while generation is running';
+        return 'Document generation reserved while generation is running';
       case 'DOCUMENT_SPENT':
-        return 'Delivered document completed from the reserved credit';
+        return 'Delivered document completed from the reserved generation';
       case 'DOCUMENT_RESERVATION_RELEASED':
-        return 'Document credit restored because generation did not complete';
-      case 'REFUND_REVERSAL': return 'Credits reversed after a payment refund';
-      case 'DISPUTE_REVERSAL': return 'Credits reversed after a payment dispute';
-      case 'ADJUSTMENT': return 'Document-credit adjustment';
-      default: return 'Document-credit activity';
+        return 'Document generation restored because generation did not complete';
+      case 'REFUND_REVERSAL': return 'Generations reversed after a payment refund';
+      case 'DISPUTE_REVERSAL': return 'Generations reversed after a payment dispute';
+      case 'ADJUSTMENT': return 'Document generation adjustment';
+      default: return 'Document generation activity';
     }
   }
 

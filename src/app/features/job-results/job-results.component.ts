@@ -1715,8 +1715,8 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     const outputs = this.activeEvidencePurposes();
     const names = outputs.map(purpose => this.documentPurposeLabel(purpose));
     const charge = outputs.length === 1
-      ? '1 document credit if delivered'
-      : `${outputs.length} document credits if both are delivered`;
+      ? '1 document generation if delivered'
+      : `${outputs.length} document generations if both are delivered`;
     return `Generate ${names.join(' and ')} (${charge})`;
   }
 
@@ -1864,8 +1864,8 @@ export class JobResultsComponent implements OnInit, OnDestroy {
             && typeof (responseError as {message?: unknown}).message === 'string'
           ? (responseError as {message: string}).message
           : '';
-    const message = detail.includes('Insufficient AI Credit') || detail.includes('Insufficient document credit')
-      ? 'There are not enough document credits for this job. No generation request was made.'
+    const message = detail.includes('Insufficient AI Credit') || detail.includes('Insufficient document generation')
+      ? 'There are not enough document generations for this job. No generation request was made.'
       : status === 400 || status === 409
         ? 'One of the selected entries changed or is no longer eligible. Review Experience & achievements and choose again.'
         : 'Generation failed. Please try again.';
@@ -2056,12 +2056,14 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       if (!summary) return [];
       const label = this.documentPurposeLabel(output);
       if (summary.deterministicFallbackUsed) {
-        return [`${label} recovered with an evidence-based fallback — no document credit used.`];
+        return [summary.charged
+          ? `${label} was delivered with an evidence-based fallback and used one document generation.`
+          : `${label} recovery did not deliver a chargeable document, so no document generation was used.`];
       }
       if (summary.reconciliationStatus === 'RECOVERED') {
         return [summary.charged
           ? `${label} recovered safely without a duplicate request.`
-          : `${label} recovered safely without a duplicate request or document-credit charge.`];
+          : `${label} recovered safely without a duplicate request or document-generation charge.`];
       }
       if (summary.retried) {
         return [`${label} completed after an automatic provider retry.`];

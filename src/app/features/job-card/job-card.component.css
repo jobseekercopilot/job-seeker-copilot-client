@@ -45,8 +45,9 @@
 
 .card-caret-button {
   border-radius: 6px;
-  height: 1.6rem;
-  width: 1.6rem;
+  height: 2.75rem;
+  min-width: 2.75rem;
+  width: 2.75rem;
 }
 
 .card-caret-button:hover {
@@ -142,6 +143,32 @@
 
 .description-load-error {
   color: #b91c1c;
+}
+
+@media (max-width: 520px) {
+  .job-card-trigger {
+    padding: 0.75rem !important;
+  }
+
+  .job-card-header-row {
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .job-main-toggle {
+    flex-basis: 100%;
+    min-height: 2.75rem;
+  }
+
+  .job-card-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  .job-meta-toggle {
+    min-height: 2.75rem;
+  }
 }
 
 .source-badge,

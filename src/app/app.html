@@ -56,7 +56,7 @@
   } @else if (paymentReturnStatus()) {
     <main class="payment-return-page mx-auto px-4 sm:px-6 lg:px-8 mt-8">
       <section class="payment-return-card">
-        <span class="eyebrow">Document-credit checkout</span>
+        <span class="eyebrow">Document generation checkout</span>
         <h1>{{ paymentReturnTitle() }}</h1>
         <p role="status" aria-live="polite">{{ paymentReturnMessage() }}</p>
         <div class="payment-return-actions">
@@ -101,8 +101,8 @@
         <section class="tokens-page">
           <div class="tokens-page-header">
             <div>
-              <span class="eyebrow">Document credits</span>
-              <h1>Document-credit packs</h1>
+              <span class="eyebrow">Document generations</span>
+              <h1>Document generation packs</h1>
               <p>Choose a one-off pack. There is no subscription or automatic renewal.</p>
             </div>
           </div>
@@ -118,9 +118,9 @@
         <section class="tokens-page">
           <div class="tokens-page-header">
             <div>
-              <span class="eyebrow">Document credits</span>
-              <h1>Credit history</h1>
-              <p>Track purchases, successful document generation, restored credits and running balances.</p>
+              <span class="eyebrow">Document generations</span>
+              <h1>Generation history</h1>
+              <p>Track purchases, successful document deliveries, restored generations and your remaining allowance.</p>
             </div>
           </div>
           <app-payment-panel
