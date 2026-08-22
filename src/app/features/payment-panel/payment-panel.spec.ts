@@ -541,6 +541,8 @@ describe('PaymentPanelComponent', () => {
       .toContain('payment service is temporarily unavailable');
     expect(fixture.componentInstance.readinessMessage('PAYMENT_PROVIDER_UNAVAILABLE'))
       .toContain('payment provider is temporarily unavailable');
+    expect(fixture.componentInstance.readinessMessage('STRIPE_CATALOG_NOT_CONFIGURED'))
+      .toContain('approved payment catalogue is configured');
   });
 
   it('keeps checkout disabled for a wallet in payment review', async () => {
