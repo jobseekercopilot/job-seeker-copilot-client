@@ -79,9 +79,9 @@ const PAYMENT_ORDER_PLANS: Readonly<Record<string, {
   documentCredits: number;
   priceMinor: number;
 }>> = {
-  starter: {bonusDocumentCredits: 5, documentCredits: 10, priceMinor: 799},
-  active: {bonusDocumentCredits: 13, documentCredits: 25, priceMinor: 1699},
-  power: {bonusDocumentCredits: 30, documentCredits: 60, priceMinor: 3499},
+  starter: {bonusDocumentCredits: 5, documentCredits: 10, priceMinor: 499},
+  active: {bonusDocumentCredits: 13, documentCredits: 25, priceMinor: 1199},
+  power: {bonusDocumentCredits: 30, documentCredits: 60, priceMinor: 1999},
 };
 
 @Component({

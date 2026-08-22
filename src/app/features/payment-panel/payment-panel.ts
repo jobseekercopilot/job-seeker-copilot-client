@@ -25,13 +25,13 @@ interface ExpectedPlan {
 
 const EXPECTED_PLANS: Readonly<Record<string, ExpectedPlan>> = {
   starter: {
-    credits: 10, applications: 5, bonusCredits: 5, name: 'Starter', priceMinor: 799, sortOrder: 1,
+    credits: 10, applications: 5, bonusCredits: 5, name: 'Starter', priceMinor: 499, sortOrder: 1,
   },
   active: {
-    credits: 25, applications: 12, bonusCredits: 13, name: 'Active', priceMinor: 1699, sortOrder: 2,
+    credits: 25, applications: 12, bonusCredits: 13, name: 'Active', priceMinor: 1199, sortOrder: 2,
   },
   power: {
-    credits: 60, applications: 30, bonusCredits: 30, name: 'Power', priceMinor: 3499, sortOrder: 3,
+    credits: 60, applications: 30, bonusCredits: 30, name: 'Power', priceMinor: 1999, sortOrder: 3,
   },
 };
 
