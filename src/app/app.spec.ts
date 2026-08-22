@@ -49,7 +49,7 @@ describe('App', () => {
     documentCredits: 10,
     promotionBonusDocumentCredits: 5,
     totalGrantedDocumentCredits: 15,
-    priceMinor: 799,
+    priceMinor: 499,
     currency: 'GBP' as const,
     createdAt: '2026-08-15T10:00:00Z',
     expiresAt: '2026-08-15T11:00:00Z',
@@ -402,7 +402,7 @@ describe('App', () => {
   );
 
   it('does not call payment status for a malformed return identifier', () => {
-    window.history.replaceState({}, '', '/payment/success?order_id=not-an-order&price=799');
+    window.history.replaceState({}, '', '/payment/success?order_id=not-an-order&price=499');
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
 

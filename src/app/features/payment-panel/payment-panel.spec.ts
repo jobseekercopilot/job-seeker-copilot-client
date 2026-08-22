@@ -10,7 +10,7 @@ import {PaymentPanelComponent} from './payment-panel';
 
 describe('PaymentPanelComponent', () => {
   const catalog = {
-    catalogVersion: '2026-08-15',
+    catalogVersion: 'public-beta-2026-08-22',
     currency: 'GBP' as const,
     billingCountry: 'GB' as const,
     automaticRenewal: false as const,
@@ -29,19 +29,19 @@ describe('PaymentPanelComponent', () => {
     plans: [
       {
         id: 'starter', name: 'Starter', description: 'For a focused start.',
-        documentCredits: 10, priceMinor: 799, currency: 'GBP' as const,
+        documentCredits: 10, priceMinor: 499, currency: 'GBP' as const,
         fullApplicationEquivalent: 5, promotionBonusDocumentCredits: 5,
         active: true, sortOrder: 1,
       },
       {
         id: 'active', name: 'Active', description: 'For an active search.',
-        documentCredits: 25, priceMinor: 1699, currency: 'GBP' as const,
+        documentCredits: 25, priceMinor: 1199, currency: 'GBP' as const,
         fullApplicationEquivalent: 12, promotionBonusDocumentCredits: 13,
         active: true, sortOrder: 2,
       },
       {
         id: 'power', name: 'Power', description: 'For heavier use.',
-        documentCredits: 60, priceMinor: 3499, currency: 'GBP' as const,
+        documentCredits: 60, priceMinor: 1999, currency: 'GBP' as const,
         fullApplicationEquivalent: 30, promotionBonusDocumentCredits: 30,
         active: true, sortOrder: 3,
       },
@@ -54,11 +54,11 @@ describe('PaymentPanelComponent', () => {
     status: 'CHECKOUT_OPEN' as const,
     expiresAt: '2099-08-15T16:00:00Z',
     pricingSnapshot: {
-      catalogVersion: '2026-08-15',
+      catalogVersion: 'public-beta-2026-08-22',
       pricingPlanId: 'starter',
       pricingPlanName: 'Starter',
       documentCredits: 10,
-      priceMinor: 799,
+      priceMinor: 499,
       currency: 'GBP' as const,
       billingCountry: 'GB' as const,
       taxStatus: 'NOT_VAT_REGISTERED' as const,
@@ -166,15 +166,20 @@ describe('PaymentPanelComponent', () => {
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('2 credits available');
     expect(text).toContain('Starter');
-    expect(text).toContain('£7.99');
+    expect(text).toContain('£4.99');
     expect(text).toContain('10 credits');
     expect(text).toContain('Active');
+    expect(text).toContain('£11.99');
     expect(text).toContain('25 credits');
     expect(text).toContain('Power');
+    expect(text).toContain('£19.99');
     expect(text).toContain('60 credits');
     expect(text).toContain('No subscription or automatic renewal');
     expect(text).not.toContain('token');
     expect(text).not.toContain('25–30');
+    expect(text).not.toContain('£7.99');
+    expect(text).not.toContain('£16.99');
+    expect(text).not.toContain('£34.99');
   });
 
   it('has no automated accessibility violations in purchase and history modes', async () => {
