@@ -19,10 +19,16 @@ describe('LegalNoticeComponent', () => {
     expect(text).toContain('lawful bases');
     expect(text).toContain('Retention, deletion and export');
     expect(text).toContain('Job Seeker Copilot does not make hiring decisions');
+    expect(text).toContain('standard abuse monitoring');
+    expect(text).toContain('retained for up to 30 days by default');
+    expect(text).toContain('Data sharing is disabled');
+    expect(text).toContain('global processing means submitted content may be processed outside the UK');
     expect(text).toContain('UK residents aged 18 or over');
     expect(text).not.toContain('under 16');
     expect(text).toContain('origin and destination coordinates');
     expect(fixture.nativeElement.querySelector('a[href="https://policies.google.com/privacy"]'))
+      .not.toBeNull();
+    expect(fixture.nativeElement.querySelector('a[href="https://developers.openai.com/api/docs/guides/your-data"]'))
       .not.toBeNull();
   });
 
