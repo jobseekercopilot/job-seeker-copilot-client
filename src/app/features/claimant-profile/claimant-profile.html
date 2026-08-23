@@ -94,6 +94,12 @@
             @if (locationLookup().attributionProvider === 'GOOGLE_MAPS') {
               <p class="text-[11px] text-slate-500 mt-1">Suggestions provided by Google Maps</p>
             }
+            @if (locationLookup().attributionProvider === 'POSTCODES_IO') {
+              <p class="text-[11px] text-slate-500 mt-1">
+                Postcode suggestions provided by Postcodes.io.
+                <a href="#postcode-data-attribution">View data acknowledgements</a>.
+              </p>
+            }
             @if (showLocationDropdown() && locationSuggestions().length) {
               <div id="profile-location-options"
                    role="listbox"

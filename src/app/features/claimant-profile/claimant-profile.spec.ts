@@ -204,6 +204,25 @@ describe('ClaimantProfileComponent progressive profile', () => {
     expect(status.textContent).toContain('temporarily unavailable');
   });
 
+  it('shows an accessible acknowledgement link beside Postcodes.io suggestions', () => {
+    const fixture = TestBed.createComponent(ClaimantProfileComponent);
+    fixture.detectChanges();
+    fixture.componentInstance.startEditing('location');
+    fixture.componentInstance.locationLookup.set({
+      status: 'results',
+      locations: [],
+      message: '1 matching location found.',
+      attributionProvider: 'POSTCODES_IO',
+    });
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector(
+      'a[href="#postcode-data-attribution"]',
+    ) as HTMLAnchorElement;
+    expect(link).not.toBeNull();
+    expect(link.textContent).toContain('View data acknowledgements');
+  });
+
   it('preserves underscore-separated canonical field provenance when selecting a location', () => {
     resolve.mockReturnValue(of({
       resolutionStatus: 'RESOLVED',

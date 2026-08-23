@@ -39,6 +39,7 @@
 
       <h2>4. AI, job providers and automated decisions</h2>
       <p>When you request a tailored document, relevant evidence and vacancy text may be sent through our contracted OpenAI integration. AI output can be inaccurate and must be reviewed by you. Job Seeker Copilot does not make hiring decisions, decide your eligibility for employment or automatically submit an application.</p>
+      <p>For the initial public beta, the OpenAI API uses global processing with standard abuse monitoring, not UK or EEA data residency and not Zero Data Retention. Submitted text and generated output may be included in abuse-monitoring logs retained for up to 30 days by default; OpenAI may retain them longer where legally required or reasonably necessary to protect its services or third parties from harm. Data sharing is disabled, and OpenAI states that API inputs and outputs are not used to train its models unless an organisation explicitly opts in. See <a href="https://developers.openai.com/api/docs/guides/your-data" rel="noopener noreferrer">OpenAI's API data-controls information</a>.</p>
       <p>Supported vacancy providers supply job information under their own terms. Availability, coverage and accuracy can change. Live providers remain disabled unless their production permissions and runtime checks are satisfied.</p>
 
       <h2>5. Location and Google routes</h2>
@@ -47,7 +48,7 @@
 
       <h2>6. Processors, sharing and international transfers</h2>
       <p>Service providers may include AWS for hosting, storage, email and logging; OpenAI for requested document generation; Stripe for checkout and payment processing; and approved job or location providers for the feature you use. We do not sell personal information.</p>
-      <p>Where processing occurs outside the UK, we use an applicable adequacy regulation, the UK International Data Transfer Agreement or UK Addendum, and supplementary safeguards where required. We may disclose information where law requires it or to protect legal rights.</p>
+      <p>The initial OpenAI integration's global processing means submitted content may be processed outside the UK. Before that integration is enabled, release approval requires a documented applicable adequacy regulation, UK International Data Transfer Agreement or UK Addendum, and supplementary safeguards where required. The same transfer review applies to other processors operating outside the UK. We may disclose information where law requires it or to protect legal rights.</p>
 
       <h2>7. Retention, deletion and export</h2>
       @if (legalReady()) {

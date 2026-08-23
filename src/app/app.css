@@ -428,15 +428,40 @@ h1, h2, h3, h4 {
 .public-legal-footer {
   align-items: center;
   color: #5e687a;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   font-size: 0.78rem;
   gap: 1rem;
   justify-content: center;
   padding: 1.5rem;
+  text-align: center;
+}
+
+.public-footer-links {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
 }
 
 .public-legal-footer a {
   color: #334155;
   text-underline-offset: 0.14em;
+}
+
+.postcode-data-attribution {
+  border-top: 1px solid var(--border-subtle);
+  line-height: 1.5;
+  max-width: 70rem;
+  padding-top: 1rem;
+}
+
+.postcode-data-attribution h2 {
+  color: #334155;
+  font-size: 0.82rem;
+  margin: 0 0 0.35rem;
+}
+
+.postcode-data-attribution p {
+  margin: 0.18rem 0;
 }
