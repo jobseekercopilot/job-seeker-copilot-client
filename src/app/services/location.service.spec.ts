@@ -80,6 +80,27 @@ describe('LocationService lookup states', () => {
     });
   });
 
+  it('preserves required Postcodes.io attribution for the candidate UI', async () => {
+    const result = firstValueFrom(service.lookup('Leeds').pipe(toArray()));
+    const request = http.expectOne('/api/v2/locations/autocomplete');
+    request.flush({
+      sessionId: 'session-postcodes-io',
+      suggestions: [{
+        suggestionId: 'place-1',
+        primaryText: 'Leeds',
+        secondaryText: 'Yorkshire and the Humber',
+        precisionHint: 'LOCALITY_CENTROID',
+      }],
+      attribution: {required: true, provider: 'POSTCODES_IO'},
+      source: 'POSTCODES_IO',
+    });
+
+    expect((await result).at(-1)).toEqual(expect.objectContaining({
+      status: 'results',
+      attributionProvider: 'POSTCODES_IO',
+    }));
+  });
+
   it.each([
     [400, 'invalid', 'Enter a valid UK location or postcode.'],
     [404, 'empty', 'No matching locations found.'],

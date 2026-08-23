@@ -377,6 +377,25 @@ describe('LandingAuthComponent account access', () => {
     expect((await axe.run(fixture.nativeElement)).violations).toEqual([]);
   });
 
+  it('shows an accessible acknowledgement link beside Postcodes.io setup suggestions', async () => {
+    const fixture = createFixture();
+    fixture.componentInstance.setupStep.set(2);
+    fixture.componentInstance.setupLocationLookup.set({
+      status: 'results',
+      locations: [],
+      message: '1 matching location found.',
+      attributionProvider: 'POSTCODES_IO',
+    });
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector(
+      'a[href="#postcode-data-attribution"]',
+    ) as HTMLAnchorElement;
+    expect(link).not.toBeNull();
+    expect(link.textContent).toContain('View data acknowledgements');
+    expect((await axe.run(fixture.nativeElement)).violations).toEqual([]);
+  });
+
   it('requires one unchecked, versioned UK-adult legal acknowledgement', async () => {
     const fixture = createFixture();
     const component = fixture.componentInstance;
