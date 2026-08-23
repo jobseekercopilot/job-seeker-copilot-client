@@ -264,6 +264,28 @@ describe('App', () => {
     window.history.pushState({}, '', '/dashboard');
   });
 
+  it('publishes the reviewed Postcodes.io data notices in the global footer', () => {
+    status.set('anonymous');
+    user.set(null);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    const acknowledgement = fixture.nativeElement.querySelector(
+      '#postcode-data-attribution',
+    ) as HTMLElement;
+    const text = acknowledgement.textContent;
+    expect(acknowledgement.getAttribute('aria-labelledby'))
+      .toBe('postcode-data-attribution-heading');
+    expect(text).toContain('Great Britain only');
+    expect(text).toContain('Northern Ireland postcode lookup is not enabled');
+    expect(text).toContain('Contains Ordnance Survey data © Crown copyright and database right 2025.');
+    expect(text).toContain('Contains Royal Mail data © Royal Mail copyright and database right 2025.');
+    expect(text).toContain('Contains National Statistics data © Crown copyright and database right 2025.');
+    expect(fixture.nativeElement.querySelector(
+      'a[href="https://postcodes.io/docs/licences/"]',
+    )).not.toBeNull();
+  });
+
   it('trusts only the owner-scoped order record on a checkout return and strips the query', async () => {
     window.history.replaceState({}, '', `/payment/success?order_id=${orderId}`);
     const fixture = TestBed.createComponent(App);
