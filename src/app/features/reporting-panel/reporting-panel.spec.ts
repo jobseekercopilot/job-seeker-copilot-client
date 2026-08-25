@@ -16,8 +16,8 @@ describe("ReportingPanelComponent", () => {
           occurredAt: new Date("2026-10-05T09:00:00"),
           eventType: "STATUS_CHANGED",
           evidenceCategory: "APPLICATION",
-          provider: "reed",
-          text: "Applied for Software Developer at Matchtech.",
+          provider: "NHS_JOBS",
+          text: "Applied for Software Developer at Matchtech. Source evidence: provider=NHS_JOBS; externalVacancyReference=C123; canonicalJobId=canonical-nhs-c123; listingUrl=https://www.jobs.nhs.uk/candidate/jobadvert/C123; applicationUrl=https://www.jobs.nhs.uk/candidate/jobadvert/C123; attribution=Vacancy source: NHS Jobs; attributionSourceUrl=https://www.jobs.nhs.uk/; licenceUrl=https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/; noEndorsement=NHS Jobs does not endorse Job Seeker Copilot.",
         }],
         commitmentProgress: {
           requiredHours: 35,
@@ -26,7 +26,7 @@ describe("ReportingPanelComponent", () => {
           percentageComplete: 13,
           remainingText: "30.5 hours remaining this week.",
         },
-        ucJournalPreview: "05/10/2026 - Applied for Software Developer at Matchtech.",
+        ucJournalPreview: "05/10/2026 - Applied for Software Developer at Matchtech. Source evidence: provider=NHS_JOBS; externalVacancyReference=C123; canonicalJobId=canonical-nhs-c123; listingUrl=https://www.jobs.nhs.uk/candidate/jobadvert/C123; applicationUrl=https://www.jobs.nhs.uk/candidate/jobadvert/C123; attribution=Vacancy source: NHS Jobs; attributionSourceUrl=https://www.jobs.nhs.uk/; licenceUrl=https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/; noEndorsement=NHS Jobs does not endorse Job Seeker Copilot.",
       });
     },
   };
@@ -48,7 +48,13 @@ describe("ReportingPanelComponent", () => {
     expect(text).toContain("Your job search progress");
     expect(text).toContain("Applications");
     expect(text).toContain("Applied for Software Developer at Matchtech.");
-    expect(text).toContain("Source: reed");
+    expect(text).toContain("Source: NHS Jobs");
+    expect(text).not.toContain("Source evidence:");
+    expect(text).not.toContain("canonicalJobId");
+    expect(text).not.toContain("listingUrl");
+    expect(fixture.componentInstance.displayJournal()).toBe(
+      "05/10/2026 - Applied for Software Developer at Matchtech.",
+    );
     expect(text).toContain("13%");
     expect(text).toContain("not an official Universal Credit submission");
     const download = fixture.nativeElement.querySelector("a[download]") as HTMLAnchorElement;

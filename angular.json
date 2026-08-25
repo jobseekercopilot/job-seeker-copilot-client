@@ -94,6 +94,7 @@
               "src/app/features/job-results/job-results.component.spec.ts",
               "src/app/features/landing-auth/landing-auth.spec.ts",
               "src/app/features/my-applications/my-applications.component.spec.ts",
+              "src/app/features/reporting-panel/reporting-panel.spec.ts",
               "src/app/gateways/**/*.spec.ts",
               "src/app/models/**/*.spec.ts",
               "src/app/services/**/*.spec.ts",
