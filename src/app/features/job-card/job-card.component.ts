@@ -5,7 +5,10 @@ import { Job } from '../../models/job-search.model';
 import {JobSpecialistTypeEnum, UpdateApplicationStatusRequest} from '../../api/job-finder';
 import { DownloadFileResponse } from '../../api/document-generation-gateway';
 import { GenerationDownloadsResponse } from '../../services/document-generation.service';
-import {approvedExternalUrl} from '../../../shared/provider-content-policy';
+import {
+  approvedExternalUrl,
+  approvedNhsJobsAdvertUrl,
+} from '../../../shared/provider-content-policy';
 
 type UploadDocumentKind = 'CV' | 'COVER_LETTER';
 type ApplicationStatus = NonNullable<Job['applicationStatus']>;
@@ -201,9 +204,29 @@ export class JobCardComponent {
 
   canLoadFullDescription(): boolean {
     const job = this.job();
-    return job.descriptionCompleteness !== 'FULL'
+    return !this.isNhsJobsPreview()
+      && job.descriptionCompleteness !== 'FULL'
       && Boolean(job.externalJobId?.trim())
       && Boolean(job.primarySource?.trim() || job.provider?.trim());
+  }
+
+  isNhsJobsPreview(): boolean {
+    const job = this.job();
+    const provider = job.primarySource?.trim() || job.provider?.trim();
+    return provider?.toUpperCase() === 'NHS_JOBS'
+      && job.descriptionCompleteness !== 'FULL';
+  }
+
+  nhsOfficialAdvertUrl(): string | null {
+    const job = this.job();
+    for (const source of job.sources ?? []) {
+      for (const candidate of [source.listingUrl, source.applyUrl]) {
+        const approved = approvedNhsJobsAdvertUrl(candidate);
+        if (approved) return approved;
+      }
+    }
+    return approvedNhsJobsAdvertUrl(job.sourceUrl)
+      ?? approvedNhsJobsAdvertUrl(job.url);
   }
 
   requestDescriptionAction(): void {

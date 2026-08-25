@@ -1,6 +1,11 @@
 const MAX_EXTERNAL_URL_LENGTH = 2_048;
 const MAX_JSON_DEPTH = 32;
 const MAX_PROVIDER_TEXT_DECODE_PASSES = 3;
+const NHS_JOBS_ADVERT_HOSTS = new Set([
+  'jobs.nhs.uk',
+  'www.jobs.nhs.uk',
+  'beta.jobs.nhs.uk',
+]);
 const PROVIDER_LINK_FIELDS = new Set([
   'applyUrl',
   'listingUrl',
@@ -32,6 +37,18 @@ export function approvedExternalUrl(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+export function approvedNhsJobsAdvertUrl(value: unknown): string | null {
+  const approved = approvedExternalUrl(value);
+  if (!approved) return null;
+
+  const parsed = new URL(approved);
+  return parsed.protocol === 'https:'
+    && NHS_JOBS_ADVERT_HOSTS.has(parsed.hostname.toLowerCase())
+    && /^\/candidate\/jobadvert\/[^/]+\/?$/.test(parsed.pathname)
+    ? approved
+    : null;
 }
 
 /**

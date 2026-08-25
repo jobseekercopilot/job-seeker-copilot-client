@@ -1534,6 +1534,105 @@ describe('JobResultsComponent', () => {
     );
   });
 
+  it('keeps a refreshed NHS preview incomplete until the user confirms it', () => {
+    evidenceEntries = [evidenceEntry(
+      '50000000-0000-4000-8000-000000000001',
+      'PROJECT',
+      'Production software project',
+      1,
+    )];
+    const fixture = createFixture();
+    const selectedJob: Job = {
+      ...fixture.componentInstance.paginatedJobs()[0],
+      primarySource: 'NHS_JOBS',
+      externalJobId: '5554443',
+      sourceUrl: 'https://beta.jobs.nhs.uk/candidate/jobadvert/M0048-26-0423',
+      descriptionCompleteness: JobDescriptionCompletenessEnum.Preview,
+    };
+    const refreshedPreview =
+      'Official NHS Jobs search preview responsibility and requirement. '.repeat(12);
+    jobService.getJobDetails.mockReturnValueOnce(of({
+      ...selectedJob,
+      description: refreshedPreview,
+      // A preview fallback must remain incomplete even if an upstream field
+      // is accidentally promoted to FULL.
+      descriptionCompleteness: JobDescriptionCompletenessEnum.Full,
+    }));
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.generationJobDescription())
+      .toBe(refreshedPreview.trim());
+    expect(fixture.componentInstance.evidenceSelectionJob()?.descriptionCompleteness)
+      .toBe(JobDescriptionCompletenessEnum.Preview);
+    expect(fixture.componentInstance.generationJobDescriptionNeedsConfirmation())
+      .toBe(true);
+    expect(fixture.componentInstance.generationJobDescriptionConfirmed())
+      .toBe(false);
+    const guidance = fixture.debugElement
+      .query(By.css('[data-testid="nhs-advert-guidance"]'));
+    expect(guidance.nativeElement.textContent)
+      .toContain('copy and paste its responsibilities');
+    const officialLink: HTMLAnchorElement = guidance.query(By.css('a')).nativeElement;
+    expect(officialLink.getAttribute('href'))
+      .toBe('https://beta.jobs.nhs.uk/candidate/jobadvert/M0048-26-0423');
+    expect(officialLink.getAttribute('target')).toBe('_blank');
+    expect(officialLink.getAttribute('rel')).toBe('noopener noreferrer');
+
+    const evidence = fixture.componentInstance.eligibleEvidence()[0];
+    fixture.componentInstance.toggleEvidence('CV', evidence);
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', evidence);
+    expect(fixture.componentInstance.canGenerateFromSelection()).toBe(false);
+
+    const confirmation: HTMLInputElement = fixture.debugElement
+      .query(By.css('.job-advert-confirmation input')).nativeElement;
+    confirmation.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.canGenerateFromSelection()).toBe(true);
+
+    fixture.componentInstance.confirmEvidenceGeneration();
+
+    expect(documentGenerationService.generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: refreshedPreview.trim(),
+        descriptionCompleteness: 'USER_CONFIRMED',
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it('keeps an NHS preview usable without a red retry failure when refresh is unavailable', () => {
+    const fixture = createFixture();
+    const selectedJob: Job = {
+      ...fixture.componentInstance.paginatedJobs()[0],
+      primarySource: 'NHS_JOBS',
+      externalJobId: '5554443',
+      sourceUrl: 'https://www.jobs.nhs.uk/candidate/jobadvert/C123',
+      description: 'Official NHS Jobs search preview.',
+      descriptionCompleteness: JobDescriptionCompletenessEnum.Preview,
+    };
+    jobService.getJobDetails.mockReturnValueOnce(
+      throwError(() => ({status: 404})),
+    );
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.generationJobDetailsError()).toBeNull();
+    expect(fixture.componentInstance.generationJobDescription())
+      .toBe('Official NHS Jobs search preview.');
+    expect(fixture.componentInstance.generationJobDescriptionNeedsConfirmation())
+      .toBe(true);
+    expect(fixture.componentInstance.generationJobDescriptionConfirmed())
+      .toBe(false);
+    expect(fixture.debugElement.query(By.css('.job-advert-review .selector-load-error')))
+      .toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Retry provider advert');
+    expect(fixture.debugElement.query(By.css('[data-testid="nhs-advert-guidance"]')))
+      .not.toBeNull();
+  });
+
   it('hydrates a preview card from Read full advert without opening generation', () => {
     const fixture = createFixture();
     const selectedJob: Job = {
