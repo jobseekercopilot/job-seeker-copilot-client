@@ -1148,7 +1148,7 @@ describe('JobResultsComponent', () => {
     );
   });
 
-  it('creates the application before offering an explicit non-empty generation choice', () => {
+  it('creates the application before offering independent document choices', () => {
     const applicationId = '10000000-0000-4000-8000-000000000001';
     currentResponse = singleRoleResponse([job('Application-first role', {
       id: 'application-first-role',
@@ -1175,6 +1175,9 @@ describe('JobResultsComponent', () => {
     expect(fixture.nativeElement.textContent).toContain(
       '1 document generation after successful delivery; no charge if delivery fails.',
     );
+    expect(fixture.nativeElement.textContent).toContain(
+      'Upload and Not now are free and use no allowance.',
+    );
 
     fixture.componentInstance.chooseDocumentAction('CV', 'GENERATE');
     fixture.componentInstance.chooseDocumentAction('COVER_LETTER', 'OMIT');
@@ -1186,6 +1189,36 @@ describe('JobResultsComponent', () => {
     expect(fixture.componentInstance.activeEvidencePurposes()).toEqual(['CV']);
     expect(fixture.nativeElement.textContent).toContain('Generate CV (1 document generation if delivered)');
     expect(fixture.nativeElement.textContent).not.toContain('Cover letter evidence');
+  });
+
+  it('continues with both documents omitted without generation, upload, or allowance use', () => {
+    const applicationId = '10000000-0000-4000-8000-000000000013';
+    currentResponse = singleRoleResponse([job('Documents later role', {
+      id: 'documents-later-role',
+      canonicalJobId: 'canonical-documents-later-role',
+      applicationId,
+    })]);
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+    const notifications: Array<{message: string; type: string}> = [];
+    fixture.componentInstance.notify.subscribe(notification => notifications.push(notification));
+
+    fixture.componentInstance.prepareApplicationDocuments(selectedJob, 'GENERATE');
+    fixture.componentInstance.chooseDocumentAction('CV', 'OMIT');
+    fixture.componentInstance.chooseDocumentAction('COVER_LETTER', 'OMIT');
+
+    expect(fixture.componentInstance.canContinueDocumentChoice()).toBe(true);
+    fixture.componentInstance.continueDocumentChoice();
+
+    expect(documentGenerationService.generate).not.toHaveBeenCalled();
+    expect(documentGenerationService.uploadApplicationDocument).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.evidenceSelectionJob()).toBeNull();
+    expect(fixture.componentInstance.documentChoiceJob()).toBeNull();
+    expect(fixture.componentInstance.activeEvidencePurposes()).toEqual([]);
+    expect(notifications).toContainEqual({
+      message: 'Application saved. Add documents later.',
+      type: 'success',
+    });
   });
 
   it('keeps an invalid upload explanation visible while the other document choice changes', () => {

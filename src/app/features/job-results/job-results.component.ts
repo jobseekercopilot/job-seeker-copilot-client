@@ -371,9 +371,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       : (choice: DocumentChoice | null) => choice !== null;
     return this.evidencePurposes.every(purpose =>
       allowed(choices[purpose])
-      && (choices[purpose] !== 'UPLOAD' || this.validApplicationUploadFile(files[purpose])))
-      && (this.documentChoiceEntryPoint() !== 'GENERATE'
-        || this.evidencePurposes.some(purpose => choices[purpose] === 'GENERATE'));
+      && (choices[purpose] !== 'UPLOAD' || this.validApplicationUploadFile(files[purpose])));
   });
   readonly sortOptions: { value: SortOption; label: string }[] = [
     { value: 'MOST_RELEVANT', label: 'Best assessed match' },
@@ -1593,7 +1591,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     if (!job || !job.applicationId || !this.canContinueDocumentChoice()) {
       this.documentChoiceError.set(
         this.documentChoiceEntryPoint() === 'GENERATE'
-          ? 'Choose an action for both documents and select at least one document to generate.'
+          ? 'Choose an action for both documents and select a valid file for each upload.'
           : 'Choose Upload or Not now for both documents and select each upload file.',
       );
       return;
