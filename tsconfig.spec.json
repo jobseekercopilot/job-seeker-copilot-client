@@ -21,6 +21,7 @@
     "src/app/features/my-applications/my-applications.component.spec.ts",
     "src/app/features/navigation-bar/navigation-bar.spec.ts",
     "src/app/features/payment-panel/payment-panel.spec.ts",
+    "src/app/features/reporting-panel/reporting-panel.spec.ts",
     "src/app/services/payment.service.spec.ts",
     "src/app/gateways/**/*.spec.ts",
     "src/app/models/**/*.spec.ts",
