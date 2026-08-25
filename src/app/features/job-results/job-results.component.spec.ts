@@ -394,12 +394,13 @@ describe('JobResultsComponent', () => {
     );
     const fixture = createFixture('REAL_PROVIDERS');
 
-    expect(fixture.nativeElement.textContent).toContain('Real providers — partial availability');
+    expect(fixture.nativeElement.querySelector('[data-testid="job-search-provider-mode"]')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Real providers');
     expect(fixture.nativeElement.textContent).toContain('real developer role');
     expect(fixture.nativeElement.textContent).toContain('JSEARCH has reached its current request limit');
   });
 
-  it('uses response provenance instead of the independently configured provider mode', () => {
+  it('does not expose provider implementation-mode labels with returned jobs', () => {
     currentResponse = singleRoleResponse(
       [job('fixture-labelled result', {})],
       'developer',
@@ -416,10 +417,11 @@ describe('JobResultsComponent', () => {
     );
 
     const fixtureReportedByRealConfiguration = createFixture('REAL_PROVIDERS');
-    expect(fixtureReportedByRealConfiguration.nativeElement.textContent)
-      .toContain('Fixture-backed provider data');
-    expect(fixtureReportedByRealConfiguration.nativeElement.textContent)
-      .not.toContain('Real providers');
+    expect(fixtureReportedByRealConfiguration.nativeElement.textContent).toContain('fixture-labelled result');
+    expect(fixtureReportedByRealConfiguration.nativeElement.textContent).not.toContain('Fixture-backed provider data');
+    expect(fixtureReportedByRealConfiguration.nativeElement.querySelector(
+      '[data-testid="job-search-provider-mode"]',
+    )).toBeNull();
     fixtureReportedByRealConfiguration.destroy();
 
     currentResponse = singleRoleResponse(
@@ -434,10 +436,11 @@ describe('JobResultsComponent', () => {
     );
 
     const fixtureReportedByFixtureConfiguration = createFixture('FIXTURE');
-    expect(fixtureReportedByFixtureConfiguration.nativeElement.textContent)
-      .toContain('Real providers');
-    expect(fixtureReportedByFixtureConfiguration.nativeElement.textContent)
-      .not.toContain('Fixture-backed provider data');
+    expect(fixtureReportedByFixtureConfiguration.nativeElement.textContent).toContain('live-labelled result');
+    expect(fixtureReportedByFixtureConfiguration.nativeElement.textContent).not.toContain('Real providers');
+    expect(fixtureReportedByFixtureConfiguration.nativeElement.querySelector(
+      '[data-testid="job-search-provider-mode"]',
+    )).toBeNull();
   });
 
   it('keeps provider partial failures scoped to the role that returned them', () => {
@@ -520,7 +523,9 @@ describe('JobResultsComponent', () => {
     );
     const fixture = createFixture('REAL_PROVIDERS');
 
-    expect(fixture.nativeElement.textContent).toContain('Real-provider configuration error');
+    expect(fixture.nativeElement.textContent)
+      .toContain('REED needs provider-account validation. Results from other job sites are still shown.');
+    expect(fixture.nativeElement.querySelector('[data-testid="job-search-provider-mode"]')).toBeNull();
     expect(fixture.nativeElement.textContent)
       .toContain('Provider setup is incomplete. No fixtures used.');
   });
@@ -537,7 +542,7 @@ describe('JobResultsComponent', () => {
     );
     const unavailable = createFixture('REAL_PROVIDERS');
     expect(unavailable.nativeElement.textContent)
-      .toContain('Provider data unavailable — origin not verified');
+      .toContain('ADZUNA was temporarily unavailable. Results from other job sites are still shown.');
     expect(unavailable.nativeElement.textContent)
       .toContain('Providers unavailable. Try later.');
 
@@ -554,7 +559,8 @@ describe('JobResultsComponent', () => {
       ],
     );
     const zeroResults = createFixture('REAL_PROVIDERS');
-    expect(zeroResults.nativeElement.textContent).toContain('Real providers');
+    expect(zeroResults.nativeElement.querySelector('[data-testid="job-search-provider-mode"]')).toBeNull();
+    expect(zeroResults.nativeElement.textContent).not.toContain('Real providers');
     expect(zeroResults.nativeElement.textContent)
       .toContain('No jobs match your current profile.');
   });
