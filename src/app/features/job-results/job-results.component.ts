@@ -2079,6 +2079,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       cvDocumentId: mergedCvDocumentId,
       coverLetterDocumentId: mergedCoverLetterDocumentId,
     });
+    this.refreshApplicationRecord(jobId, response.applicationId);
     this.generationOutputsByJob.delete(jobId);
     if (!partial) this.clearEvidenceDraft(jobId);
     this.finishGeneration(jobId, message);
@@ -2287,6 +2288,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         this.openDocumentChoice({
           ...job,
           applicationId: record.id,
+          applicationVersion: record.version,
           applicationStatus: record.status,
           cvDocumentId: record.cvDocumentId,
           coverLetterDocumentId: record.coverLetterDocumentId,
@@ -2384,9 +2386,14 @@ export class JobResultsComponent implements OnInit, OnDestroy {
           return;
         }
         const current = this.currentJob(jobId) ?? job;
-        const patch = purpose === 'CV'
-          ? {cvDocumentId: result.documentId}
-          : {coverLetterDocumentId: result.documentId};
+        const patch: Partial<Job> = {
+          ...(purpose === 'CV'
+            ? {cvDocumentId: result.documentId}
+            : {coverLetterDocumentId: result.documentId}),
+          ...(Number.isSafeInteger(result.applicationVersion)
+            ? {applicationVersion: result.applicationVersion}
+            : {}),
+        };
         this.updateJobLocally(jobId, patch);
         this.generatedDocumentIds.update(documentIds => ({
           ...documentIds,
@@ -2506,7 +2513,15 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         });
         this.applicationChanged.emit();
       },
-      error: () => {
+      error: error => {
+        if ((error as {status?: number})?.status === 409) {
+          this.refreshApplicationRecord(jobId, job.applicationId as string);
+          this.notify.emit({
+            message: 'Application changed. Refreshing it now; review before retrying.',
+            type: 'info',
+          });
+          return;
+        }
         this.notify.emit({
           message: 'Status update failed. Please try again.',
           type: 'error',
@@ -2691,6 +2706,19 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         coverLetterDocumentId: record.coverLetterDocumentId,
       },
     }));
+  }
+
+  private refreshApplicationRecord(
+    jobId: string,
+    applicationId: string,
+  ): void {
+    this.applicationTracker.listApplications().subscribe({
+      next: records => {
+        const current = records.find(record => record.id === applicationId);
+        if (current) this.applyApplicationRecord(jobId, current);
+      },
+      error: () => undefined,
+    });
   }
 
   private reconcilePersistedApplication(job: Job): Job {
