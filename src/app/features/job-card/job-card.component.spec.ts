@@ -413,6 +413,43 @@ describe('JobCardComponent', () => {
     expect(fixture.debugElement.query(By.css('.description-toggle'))).toBeNull();
   });
 
+  it('keeps long provider content inside a narrow job card while retaining the full text', () => {
+    const longTitle = 'SeniorSoftwarePlatformAccessibilityEngineer'.repeat(4);
+    const longCompany = 'ExampleInternationalRecruitmentOrganisation'.repeat(3);
+    const longLocation = 'VeryLongLocationWithoutOptionalBreaks'.repeat(4);
+    const longDescription = 'ContinuousProviderDescriptionWithoutWhitespace'.repeat(20);
+    const fixture = createFixture({
+      job: {
+        ...job,
+        title: longTitle,
+        company: longCompany,
+        location: longLocation,
+        description: longDescription,
+      },
+    });
+
+    const host = fixture.nativeElement as HTMLElement;
+    const title = fixture.debugElement.query(By.css('.job-title')).nativeElement as HTMLElement;
+    const company = fixture.debugElement.query(By.css('.job-company')).nativeElement as HTMLElement;
+    const location = fixture.debugElement.query(By.css('.job-meta > span')).nativeElement as HTMLElement;
+
+    expect(title.textContent).toContain(longTitle);
+    expect(title.classList.contains('truncate')).toBe(false);
+    expect(company.textContent).toContain(longCompany);
+    expect(location.textContent).toContain(longLocation);
+    expect(getComputedStyle(host).display).toBe('block');
+    expect(getComputedStyle(host).minWidth).toMatch(/^0(?:px)?$/);
+    expect(getComputedStyle(title).overflowWrap).toBe('anywhere');
+    expect(getComputedStyle(title).whiteSpace).toBe('normal');
+    expect(getComputedStyle(company).overflowWrap).toBe('anywhere');
+    expect(getComputedStyle(location).overflowWrap).toBe('anywhere');
+
+    expandCard(fixture);
+    const description = fixture.debugElement.query(By.css('.job-description')).nativeElement as HTMLElement;
+    expect(description.textContent).toContain(longDescription.slice(0, 80));
+    expect(getComputedStyle(description).overflowWrap).toBe('anywhere');
+  });
+
   it('loads the complete provider advert when a preview Read full advert action is used', () => {
     const previewJob: Job = {
       ...job,

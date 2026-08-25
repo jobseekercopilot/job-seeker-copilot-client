@@ -9,7 +9,7 @@
               [attr.aria-controls]="detailsId()"
               [attr.aria-expanded]="detailsExpanded()"
               class="job-main-toggle min-w-0 flex-1 text-left focus:outline-none">
-        <h3 class="job-title text-base font-semibold m-0 truncate">{{ job().title ?? 'Untitled Role' }}</h3>
+        <h3 class="job-title text-base font-semibold m-0">{{ job().title ?? 'Untitled Role' }}</h3>
         <p class="job-company text-sm m-0 mt-0.5">{{ job().company ?? 'Unknown Company' }}</p>
       </button>
       <div class="job-card-actions flex-shrink-0 flex items-center gap-2">
