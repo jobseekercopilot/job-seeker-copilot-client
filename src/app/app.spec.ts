@@ -175,7 +175,7 @@ describe('App', () => {
     expect(fixture.nativeElement.textContent).toContain('Documents: 7 generations');
   });
 
-  it('renders the canonical product workspace with honest capability states', async () => {
+  it('renders the canonical product workspace without customer-facing implementation labels', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -188,7 +188,18 @@ describe('App', () => {
     expect(text).toContain('Documents');
     expect(text).toContain('Reporting & job-search evidence');
     expect(text).toContain('Document generations');
-    expect(text).toContain('Fixture-backed');
+    expect(text).not.toContain('Real providers');
+    expect(fixture.nativeElement.querySelector(
+      '#left-sidebar > .workspace-status-line .capability-state',
+    )).toBeNull();
+    expect(fixture.nativeElement.querySelector(
+      '[data-testid="workspace-panel-search"] > .workspace-status-line .capability-state',
+    )).toBeNull();
+    expect(fixture.nativeElement.querySelector(
+      '[data-testid="workspace-reporting"] > .workspace-status-line .capability-state',
+    )).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="job-search-provider-mode"]')).toBeNull();
+    expect(fixture.componentInstance.jobSearchProviderMode()).toBe('FIXTURE');
     expect(fixture.componentInstance.commuteRoutingMode()).toBe('DISTANCE_ONLY');
     expect(searchJobs).toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-evidence"]')).toBeNull();

@@ -137,7 +137,6 @@
         <!-- ================= LEFT COLUMN: CLAIMANT PROFILE (4 Cols) ================= -->
         <section id="left-sidebar" class="dashboard-left flex flex-col gap-5">
           <div class="workspace-status-line">
-            <span class="capability-state state-available">Available</span>
             <strong>Profile</strong>
           </div>
           
@@ -193,12 +192,6 @@
           <div data-testid="workspace-panel-search"
                [hidden]="activeWorkspaceTab() !== 'search'">
             <div class="workspace-status-line">
-              <span class="capability-state"
-                    [class.state-fixture]="jobSearchProviderMode() === 'FIXTURE'"
-                    [class.state-available]="jobSearchProviderMode() === 'REAL_PROVIDERS'"
-                    [class.state-unavailable]="jobSearchProviderMode() === 'REQUIRED_VALIDATION'">
-                {{ jobSearchProviderModeLabel() }}
-              </span>
               <strong>Job search, matching and details</strong>
             </div>
             @if (jobSearchReadiness().ready) {
@@ -284,7 +277,6 @@
 
           <section data-testid="workspace-reporting">
             <div class="workspace-status-line">
-              <span class="capability-state state-available">Available</span>
               <strong>Reporting &amp; job-search evidence</strong>
             </div>
             <app-reporting-panel #reportingPanel></app-reporting-panel>

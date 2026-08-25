@@ -145,13 +145,6 @@ export class App implements OnInit, OnDestroy {
   documentGenerationMode = signal<DocumentGenerationMode>('REQUIRED_VALIDATION');
   commuteRoutingMode = signal<CommuteRoutingMode>('DISTANCE_ONLY');
   legalConfiguration = signal<PublicLegalConfiguration>(DRAFT_LEGAL_CONFIGURATION);
-  jobSearchProviderModeLabel = computed(() => {
-    switch (this.jobSearchProviderMode()) {
-      case 'FIXTURE': return 'Fixture-backed';
-      case 'REAL_PROVIDERS': return 'Real providers';
-      default: return 'Required validation';
-    }
-  });
   documentGenerationModeLabel = computed(() => {
     switch (this.documentGenerationMode()) {
       case 'FIXTURE_LLM': return 'Fixture-generated';
