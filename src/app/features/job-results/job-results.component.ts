@@ -50,6 +50,7 @@ import {
   EvidenceRevisionConfirmationStateEnum,
 } from '../../api';
 import {
+  approvedNhsJobsAdvertUrl,
   logMalformedProviderResult,
   providerPlainText,
 } from '../../../shared/provider-content-policy';
@@ -457,6 +458,10 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         return 'Completeness unknown';
     }
   });
+  readonly generationNhsPreview = computed(() =>
+    this.isNhsJobsPreview(this.evidenceSelectionJob()));
+  readonly generationNhsOfficialAdvertUrl = computed(() =>
+    this.nhsOfficialAdvertUrl(this.evidenceSelectionJob()));
   readonly canGenerateFromSelection = computed(() =>
     !this.evidenceLoading()
     && !this.evidenceLoadError()
@@ -1193,20 +1198,28 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.jobService.getJobDetails(provider, externalJobId).subscribe({
       next: details => {
         if (!this.isCurrentJobDetailsRequest(jobKey, requestSequence)) return;
+        const safeDetails: Job = this.isNhsJobsPreview(job)
+          ? {
+              ...details,
+              descriptionCompleteness: details.description?.trim()
+                ? JobDescriptionCompletenessEnum.Preview
+                : JobDescriptionCompletenessEnum.Unknown,
+            }
+          : details;
         // Provider detail records use the provider's raw identifier. Keep the
         // search result identity stable so the inline panel remains attached
         // to the card that opened it while applying the richer advert fields.
         const hydratedJob: Job = {
           ...job,
-          ...details,
+          ...safeDetails,
           id: job.id,
           canonicalJobId: job.canonicalJobId,
         };
         this.evidenceSelectionJob.set(hydratedJob);
         if (!this.generationJobDescriptionEdited()) {
-          this.generationJobDescription.set(details.description?.trim() ?? '');
+          this.generationJobDescription.set(safeDetails.description?.trim() ?? '');
           this.generationJobDescriptionConfirmed.set(
-            details.descriptionCompleteness
+            safeDetails.descriptionCompleteness
               === JobDescriptionCompletenessEnum.Full,
           );
         }
@@ -1215,11 +1228,35 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       error: () => {
         if (!this.isCurrentJobDetailsRequest(jobKey, requestSequence)) return;
         this.generationJobDetailsLoading.set(false);
+        if (this.isNhsJobsPreview(job)) {
+          this.generationJobDetailsError.set(null);
+          this.generationJobDescriptionConfirmed.set(false);
+          return;
+        }
         this.generationJobDetailsError.set(
           'The provider advert could not be refreshed automatically. You can retry or review and complete the editable text below.',
         );
       },
     });
+  }
+
+  private isNhsJobsPreview(job: Job | null): boolean {
+    if (!job) return false;
+    const provider = job.primarySource?.trim() || job.provider?.trim();
+    return provider?.toUpperCase() === 'NHS_JOBS'
+      && job.descriptionCompleteness !== JobDescriptionCompletenessEnum.Full;
+  }
+
+  private nhsOfficialAdvertUrl(job: Job | null): string | null {
+    if (!this.isNhsJobsPreview(job) || !job) return null;
+    for (const source of job.sources ?? []) {
+      for (const candidate of [source.listingUrl, source.applyUrl]) {
+        const approved = approvedNhsJobsAdvertUrl(candidate);
+        if (approved) return approved;
+      }
+    }
+    return approvedNhsJobsAdvertUrl(job.sourceUrl)
+      ?? approvedNhsJobsAdvertUrl(job.url);
   }
 
   retryEvidenceSelection(): void {

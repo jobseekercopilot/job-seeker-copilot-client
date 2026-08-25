@@ -1,5 +1,6 @@
 import {
   approvedExternalUrl,
+  approvedNhsJobsAdvertUrl,
   logMalformedProviderResult,
   providerPlainText,
   sanitiseProviderLinksJson,
@@ -35,6 +36,22 @@ describe('provider content URL policy', () => {
     'not a URL',
   ])('rejects a non-approved external URL: %s', (url) => {
     expect(approvedExternalUrl(url)).toBeNull();
+  });
+
+  it.each([
+    'https://www.jobs.nhs.uk/candidate/jobadvert/C123',
+    'https://beta.jobs.nhs.uk/candidate/jobadvert/M0048-26-0423',
+  ])('accepts an official NHS Jobs advert URL: %s', (url) => {
+    expect(approvedNhsJobsAdvertUrl(url)).toBe(url);
+  });
+
+  it.each([
+    'http://www.jobs.nhs.uk/candidate/jobadvert/C123',
+    'https://www.jobs.nhs.uk/other/C123',
+    'https://jobs.nhs.uk.attacker.test/candidate/jobadvert/C123',
+    'https://attacker.test/candidate/jobadvert/C123',
+  ])('rejects a non-official NHS Jobs advert URL: %s', (url) => {
+    expect(approvedNhsJobsAdvertUrl(url)).toBeNull();
   });
 
   it('sanitises only provider link fields throughout a JSON response', () => {

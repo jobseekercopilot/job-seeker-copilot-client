@@ -315,6 +315,23 @@
   color: #78350f !important;
 }
 
+.nhs-advert-guidance {
+  align-items: flex-start;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1e3a8a !important;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.45rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.nhs-advert-guidance a {
+  color: #1d4ed8;
+  font-weight: 750;
+}
+
 .selector-loading {
   color: var(--text-secondary);
 }

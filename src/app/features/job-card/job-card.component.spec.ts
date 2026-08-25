@@ -472,6 +472,32 @@ describe('JobCardComponent', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
   });
 
+  it('presents an NHS search preview as a supported limitation with an official link', () => {
+    const previewJob: Job = {
+      ...job,
+      externalJobId: '5554443',
+      primarySource: 'NHS_JOBS',
+      descriptionCompleteness: JobDescriptionCompletenessEnum.Preview,
+      sourceUrl: 'https://beta.jobs.nhs.uk/candidate/jobadvert/M0048-26-0423',
+    };
+    const fixture = createFixture({job: previewJob});
+    const requested: Job[] = [];
+    fixture.componentInstance.requestFullDescription.subscribe(value => requested.push(value));
+
+    expandCard(fixture);
+
+    const notice = fixture.debugElement.query(By.css('[data-testid="nhs-preview-note"]'))
+      .nativeElement as HTMLElement;
+    const officialLink = notice.querySelector('a') as HTMLAnchorElement;
+    expect(notice.textContent).toContain('official search-feed preview');
+    expect(officialLink.getAttribute('href'))
+      .toBe('https://beta.jobs.nhs.uk/candidate/jobadvert/M0048-26-0423');
+    expect(officialLink.getAttribute('target')).toBe('_blank');
+    expect(officialLink.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(fixture.debugElement.query(By.css('.description-toggle'))).toBeNull();
+    expect(requested).toEqual([]);
+  });
+
   it('keeps an expanded description open while the in-card generation panel becomes active', () => {
     const tail = 'PERSISTENT DESCRIPTION TAIL';
     const description = `${'Relevant job detail '.repeat(30)}${tail}`;

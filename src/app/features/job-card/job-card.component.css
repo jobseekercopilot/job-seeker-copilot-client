@@ -193,6 +193,24 @@
   color: #b91c1c;
 }
 
+.nhs-preview-note {
+  align-items: flex-start;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.65rem;
+  color: #1e3a8a;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.45rem;
+  overflow-wrap: anywhere;
+  padding: 0.65rem 0.75rem;
+}
+
+.nhs-preview-note a {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
 @media (max-width: 520px) {
   .job-card-trigger {
     padding: 0.75rem !important;
