@@ -303,6 +303,52 @@ describe('JobResultsComponent', () => {
     expect(fixture.componentInstance.roleStates()['programming'].currentPage).toBe(2);
   });
 
+  it.each([
+    'CLOSEST',
+    'HIGHEST_SALARY',
+    'NEWEST_POSTED',
+    'OLDEST_POSTED',
+    'COMPANY_AZ',
+    'JOB_TITLE_AZ',
+  ])('keeps %s selected while its sorted results are loading', sort => {
+    const fixture = createFixture();
+    const sortedResponse = new Subject<JobSearchResponse>();
+    queuedSearchResponses.push(sortedResponse);
+    const select = fixture.debugElement.query(By.css('.sort-select'))
+      .nativeElement as HTMLSelectElement;
+
+    select.value = sort;
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    expect(jobService.calls.at(-1)).toEqual(expect.objectContaining({
+      targetRole: 'cleaning',
+      page: 1,
+      sort,
+    }));
+    expect(fixture.componentInstance.selectedSort()).toBe(sort);
+    const loadingSelect = fixture.debugElement.query(By.css('.sort-select'))
+      ?.nativeElement as HTMLSelectElement | undefined;
+    expect(loadingSelect).toBe(select);
+    expect(loadingSelect?.value).toBe(sort);
+    expect(loadingSelect?.disabled).toBe(true);
+
+    sortedResponse.next(responseForRequest(currentResponse, {
+      targetRole: 'cleaning',
+      page: 1,
+      pageSize: 10,
+      sort,
+    }));
+    sortedResponse.complete();
+    fixture.detectChanges();
+
+    const loadedSelect = fixture.debugElement.query(By.css('.sort-select'))
+      .nativeElement as HTMLSelectElement;
+    expect(loadedSelect).toBe(select);
+    expect(loadedSelect.value).toBe(sort);
+    expect(loadedSelect.disabled).toBe(false);
+  });
+
   it('applies source filter before sorting and paginating', () => {
     currentResponse = singleRoleResponse([
       ...jobsFor('adzuna', 12, 'Adzuna').map((job, index) => ({

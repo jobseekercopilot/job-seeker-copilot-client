@@ -9,11 +9,12 @@
       </div>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      @if (!loading() && roleResults().length > 0) {
+      @if (roleResults().length > 0) {
         <label class="sort-control inline-flex items-center gap-2">
           <span class="text-xs font-semibold">Sort</span>
           <select class="sort-select"
                   [value]="selectedSort()"
+                  [disabled]="loading()"
                   (change)="selectSort($any($event.target).value)">
             @for (option of sortOptions; track option.value) {
               <option [value]="option.value">{{ option.label }}</option>
