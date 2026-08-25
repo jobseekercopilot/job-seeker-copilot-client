@@ -11,6 +11,17 @@ describe('NavigationBar', () => {
     }).compileComponents();
   });
 
+  it('shows the public-beta status beside the product brand', () => {
+    const fixture = TestBed.createComponent(NavigationBar);
+    fixture.detectChanges();
+
+    const badge = fixture.nativeElement.querySelector('.public-beta-badge');
+    expect(badge).not.toBeNull();
+    expect(badge.textContent.trim()).toBe('Public beta');
+    expect(fixture.nativeElement.querySelector('.header-title').textContent)
+      .toContain('Job Seeker Copilot');
+  });
+
   it('contains the only account actions and no duplicate workspace navigation', () => {
     const fixture = TestBed.createComponent(NavigationBar);
     fixture.componentRef.setInput('userName', 'Alex Taylor');

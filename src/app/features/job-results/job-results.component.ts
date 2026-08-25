@@ -248,8 +248,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.activeRoleState()?.freshness ?? null);
   readonly qualitySummary = computed(() =>
     this.activeRoleState()?.qualitySummary ?? null);
-  readonly activeProviderResults = computed(() =>
-    this.activeRoleState()?.providerResults ?? []);
   readonly freshnessLabel = computed(() => {
     const freshness = this.freshness();
     if (!freshness) return 'Freshness not reported';
@@ -285,58 +283,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     ].filter((value): value is string => Boolean(value));
     if (reasons.length === 0) return null;
     return `${reasons.join(', ')} filtered before ranking.`;
-  });
-  providerDegraded = computed(() => {
-    const statuses = this.providerStatuses();
-    return statuses.some(status => status !== 'SUCCESS' && status !== 'DISABLED');
-  });
-  readonly reportedProviderOrigin = computed<'LIVE' | 'FIXTURE' | 'MIXED' | 'UNKNOWN' | null>(
-    () => {
-      const enabledResults = this.activeProviderResults()
-        .filter(result => result.status !== 'DISABLED');
-      if (enabledResults.length === 0) return null;
-      const successfulResults = enabledResults.filter(result => result.status === 'SUCCESS');
-      const assessedResults = successfulResults.length ? successfulResults : enabledResults;
-      const modes = new Set(assessedResults.map(result => {
-        const provenance = result.dataProvenance;
-        if (provenance?.dataOrigin === 'LIVE_PROVIDER') return 'LIVE';
-        if (provenance?.dataOrigin === 'FIXTURE') return 'FIXTURE';
-        if (provenance?.providerMode === 'LIVE') return 'LIVE';
-        if (provenance?.providerMode === 'FIXTURE') return 'FIXTURE';
-        return 'UNKNOWN';
-      }));
-      if (modes.has('UNKNOWN')) return 'UNKNOWN';
-      if (modes.has('LIVE') && modes.has('FIXTURE')) return 'MIXED';
-      if (modes.has('FIXTURE')) return 'FIXTURE';
-      if (modes.has('LIVE')) return 'LIVE';
-      return 'UNKNOWN';
-    },
-  );
-  readonly providerProvenanceCaution = computed(() =>
-    this.providerDegraded()
-      || this.reportedProviderOrigin() === 'MIXED'
-      || this.reportedProviderOrigin() === 'UNKNOWN');
-  providerModeLabel = computed(() => {
-    const statuses = this.providerStatuses().filter(status => status !== 'DISABLED');
-    const hasSuccess = statuses.includes('SUCCESS');
-    const reportedOrigin = this.reportedProviderOrigin();
-    if (statuses.includes('CONFIGURATION_ERROR') && !hasSuccess) {
-      return 'Real-provider configuration error';
-    }
-    if (statuses.length > 0 && !hasSuccess) {
-      if (reportedOrigin === 'FIXTURE') return 'Fixture-backed provider data unavailable';
-      if (reportedOrigin === 'MIXED') return 'Mixed provider data unavailable';
-      if (reportedOrigin === 'UNKNOWN') return 'Provider data unavailable — origin not verified';
-      return 'Providers temporarily unavailable';
-    }
-    if (reportedOrigin === 'FIXTURE') return 'Fixture-backed provider data';
-    if (reportedOrigin === 'MIXED') return 'Mixed live and fixture provider data';
-    if (reportedOrigin === 'UNKNOWN') return 'Provider data origin not verified';
-    if (!reportedOrigin && this.activeRoleSearched()) return 'Provider data origin not reported';
-    if (!reportedOrigin && this.providerMode() === 'FIXTURE') return 'Fixture mode configured';
-    if (!reportedOrigin && this.providerMode() === 'REQUIRED_VALIDATION') return 'Required validation';
-    if (this.providerDegraded()) return 'Real providers — partial availability';
-    return reportedOrigin === 'LIVE' ? 'Real providers' : 'Real-provider mode configured';
   });
   emptyStateMessage = computed(() => {
     if (this.providerMode() !== 'REAL_PROVIDERS') {
