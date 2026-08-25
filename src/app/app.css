@@ -26,6 +26,7 @@
 .dashboard-center,
 .dashboard-right {
   gap: 1rem;
+  min-width: 0;
 }
 
 .workspace-tabs {

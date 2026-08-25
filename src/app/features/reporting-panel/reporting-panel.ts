@@ -3,6 +3,8 @@ import { Component, OnInit, computed, inject, signal } from "@angular/core";
 import { ReportingSummaryResponse } from "../../api/reporting-gateway";
 import { ReportingService } from "../../services/reporting.service";
 
+const NHS_SOURCE_EVIDENCE_MARKER = " Source evidence: provider=NHS_JOBS";
+
 @Component({
   selector: "app-reporting-panel",
   standalone: true,
@@ -27,15 +29,17 @@ export class ReportingPanelComponent implements OnInit {
       id: `${item.applicationId ?? "evidence"}-${item.eventType ?? index}-${item.occurredAt}`,
       timestamp: String(item.occurredAt ?? ""),
       category: item.evidenceCategory ?? "APPLICATION",
-      label: item.text || item.status || "Application updated",
-      provider: item.provider,
+      label: this.publicEvidenceText(item.text || item.status || "Application updated"),
+      provider: this.publicProviderLabel(item.provider),
       jobTitle: item.jobTitle,
       companyName: item.companyName,
       status: item.status,
     })),
   );
 
-  displayJournal = computed(() => this.summary()?.ucJournalPreview ?? "");
+  displayJournal = computed(() =>
+    this.publicEvidenceText(this.summary()?.ucJournalPreview ?? ""),
+  );
 
   ngOnInit(): void {
     this.load();
@@ -79,6 +83,17 @@ export class ReportingPanelComponent implements OnInit {
         this.loading.set(false);
       },
     });
+  }
+
+  private publicEvidenceText(value: string): string {
+    return value.split(/\r?\n/).map(line => {
+      const markerIndex = line.indexOf(NHS_SOURCE_EVIDENCE_MARKER);
+      return markerIndex >= 0 ? line.slice(0, markerIndex).trimEnd() : line;
+    }).join("\n");
+  }
+
+  private publicProviderLabel(provider: string | undefined): string | undefined {
+    return provider === "NHS_JOBS" ? "NHS Jobs" : provider;
   }
 
   private errorMessage(error: unknown): string {
