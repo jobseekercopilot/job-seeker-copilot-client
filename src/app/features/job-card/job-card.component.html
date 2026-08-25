@@ -194,6 +194,22 @@
             {{ descriptionLoadError() }}
           </p>
         }
+        @if (isNhsJobsPreview()) {
+          <div class="nhs-preview-note text-sm mt-3" data-testid="nhs-preview-note">
+            <strong>NHS Jobs preview</strong>
+            <span>
+              This result contains the official search-feed preview, not the complete advert.
+            </span>
+            @if (nhsOfficialAdvertUrl(); as officialAdvertUrl) {
+              <a [href]="officialAdvertUrl"
+                 target="_blank"
+                 rel="noopener noreferrer"
+                 aria-label="Open the full official NHS Jobs advert in a new tab">
+                Open full official advert
+              </a>
+            }
+          </div>
+        }
       </div>
       @if (isApprenticeship() && job().apprenticeshipDetails; as details) {
         <section class="mt-4 rounded-lg border p-4"

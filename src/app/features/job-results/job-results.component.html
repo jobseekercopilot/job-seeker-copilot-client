@@ -412,12 +412,32 @@
                 </div>
                 @if (generationJobDetailsLoading()) {
                   <p class="selector-loading" role="status">
-                    Loading the complete advert from the provider…
+                    {{ generationNhsPreview()
+                      ? 'Checking the latest NHS Jobs preview…'
+                      : 'Loading the complete advert from the provider…' }}
                   </p>
                 } @else if (generationJobDetailsError(); as detailsError) {
                   <div class="selector-error selector-load-error" role="alert">
                     <p>{{ detailsError }}</p>
                     <button type="button" (click)="retryJobDetails()">Retry provider advert</button>
+                  </div>
+                }
+                @if (generationNhsPreview()) {
+                  <div class="selector-note nhs-advert-guidance" role="status"
+                       data-testid="nhs-advert-guidance">
+                    <strong>NHS Jobs supplies a shortened search preview here.</strong>
+                    <span>
+                      Open the full official advert, then copy and paste its responsibilities,
+                      requirements and person specification into the editable text below before generation.
+                    </span>
+                    @if (generationNhsOfficialAdvertUrl(); as officialAdvertUrl) {
+                      <a [href]="officialAdvertUrl"
+                         target="_blank"
+                         rel="noopener noreferrer"
+                         aria-label="Open the full official NHS Jobs advert in a new tab">
+                        Open full official NHS advert
+                      </a>
+                    }
                   </div>
                 }
                 @if (!generationJobDetailsLoading() && generationJobDescriptionLooksIncomplete()) {
