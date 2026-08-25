@@ -1205,6 +1205,7 @@ describe('JobResultsComponent', () => {
     applicationTracker.createApplication.mockReturnValue(of({
       id: applicationId,
       status: 'SAVED',
+      version: 4,
     }));
     const fixture = createFixture();
     const selectedJob = fixture.componentInstance.paginatedJobs()[0];
@@ -1214,7 +1215,10 @@ describe('JobResultsComponent', () => {
 
     expect(applicationTracker.createApplication).toHaveBeenCalledWith(selectedJob);
     expect(documentGenerationService.generate).not.toHaveBeenCalled();
-    expect(fixture.componentInstance.documentChoiceJob()).toMatchObject({applicationId});
+    expect(fixture.componentInstance.documentChoiceJob()).toMatchObject({
+      applicationId,
+      applicationVersion: 4,
+    });
     expect(fixture.componentInstance.canContinueDocumentChoice()).toBe(false);
     expect(fixture.nativeElement.textContent).toContain('Application saved');
     expect(fixture.nativeElement.textContent).toContain('Uploading does not use your allowance');
@@ -1303,6 +1307,7 @@ describe('JobResultsComponent', () => {
     applicationTracker.createApplication.mockReturnValue(of({
       id: applicationId,
       status: 'SAVED',
+      version: 1,
     }));
     documentGenerationService.uploadApplicationDocument.mockImplementation(
       (request: any, onProgress: (progress: any) => void) => {
@@ -1315,6 +1320,7 @@ describe('JobResultsComponent', () => {
           fileType: 'PDF',
           state: 'COMPLETED',
           documentId,
+          applicationVersion: 2,
         });
       },
     );
@@ -1338,6 +1344,7 @@ describe('JobResultsComponent', () => {
       file,
     });
     expect(fixture.componentInstance.jobs()[0].cvDocumentId).toBe(documentId);
+    expect(fixture.componentInstance.jobs()[0].applicationVersion).toBe(2);
     expect(fixture.componentInstance.applicationUploadState(selectedJob, 'CV')).toMatchObject({
       phase: 'COMPLETED',
       percent: 100,
@@ -2203,6 +2210,126 @@ describe('JobResultsComponent', () => {
       .toBe('CV and Cover letter ready. CV recovery did not deliver a chargeable document, so no document generation was used.');
     expect(fixture.componentInstance.generationMessages()[selectedJob.id!])
       .not.toContain('generated successfully');
+  });
+
+  it('refreshes the authoritative application version after generation completes', () => {
+    const applicationId = '10000000-0000-4000-8000-000000000021';
+    const canonicalJobId = 'canonical-generation-version-role';
+    currentResponse = singleRoleResponse([job('Generation version role', {
+      id: canonicalJobId,
+      canonicalJobId,
+      applicationId,
+      applicationVersion: 2,
+      applicationStatus: 'SAVED',
+    })]);
+    evidenceEntries = [evidenceEntry(
+      '50000000-0000-4000-8000-000000000021',
+      'PROJECT',
+      'Production delivery',
+      1,
+    )];
+    documentGenerationService.generate.mockReturnValueOnce(of({
+      applicationId,
+      cvDocumentId: '20000000-0000-4000-8000-000000000021',
+      coverLetterDocumentId: '20000000-0000-4000-8000-000000000022',
+      downloads: {},
+    }));
+    applicationTracker.listApplications
+      .mockReturnValueOnce(of([]))
+      .mockReturnValueOnce(of([{
+        id: applicationId,
+        canonicalJobId,
+        status: 'DOCUMENTS_GENERATED',
+        version: 5,
+        cvDocumentId: '20000000-0000-4000-8000-000000000021',
+        coverLetterDocumentId: '20000000-0000-4000-8000-000000000022',
+      }]));
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    const [evidence] = fixture.componentInstance.eligibleEvidence();
+    fixture.componentInstance.toggleEvidence('CV', evidence);
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', evidence);
+    confirmGenerationAdvert(fixture);
+    fixture.componentInstance.confirmEvidenceGeneration();
+
+    expect(applicationTracker.listApplications).toHaveBeenCalledTimes(2);
+    expect(fixture.componentInstance.jobs()[0]).toMatchObject({
+      applicationId,
+      applicationStatus: 'DOCUMENTS_GENERATED',
+      applicationVersion: 5,
+    });
+  });
+
+  it('refreshes a stale application after 409 and waits for a deliberate applied retry', () => {
+    const applicationId = '10000000-0000-4000-8000-000000000031';
+    const canonicalJobId = 'canonical-stale-apply-role';
+    currentResponse = singleRoleResponse([job('Stale apply role', {
+      id: canonicalJobId,
+      canonicalJobId,
+      applicationId,
+      applicationVersion: 2,
+      applicationStatus: 'DOCUMENTS_GENERATED',
+    })]);
+    applicationTracker.listApplications
+      .mockReturnValueOnce(of([]))
+      .mockReturnValueOnce(of([{
+        id: applicationId,
+        canonicalJobId,
+        status: 'DOCUMENTS_GENERATED',
+        version: 3,
+      }]));
+    applicationTracker.updateStatus.mockReturnValueOnce(
+      throwError(() => ({status: 409})),
+    );
+    const fixture = createFixture();
+    const notifications: Array<{message: string; type: string}> = [];
+    fixture.componentInstance.notify.subscribe(notification => notifications.push(notification));
+
+    fixture.componentInstance.updateApplicationStatus(
+      fixture.componentInstance.jobs()[0],
+      'APPLIED',
+    );
+
+    expect(applicationTracker.updateStatus).toHaveBeenCalledTimes(1);
+    expect(applicationTracker.updateStatus).toHaveBeenNthCalledWith(
+      1,
+      applicationId,
+      'APPLIED',
+      2,
+    );
+    expect(fixture.componentInstance.jobs()[0]).toMatchObject({
+      applicationStatus: 'DOCUMENTS_GENERATED',
+      applicationVersion: 3,
+    });
+    expect(notifications.at(-1)).toEqual(expect.objectContaining({
+      type: 'info',
+      message: expect.stringContaining('review before retrying'),
+    }));
+
+    applicationTracker.updateStatus.mockReturnValueOnce(of({
+      id: applicationId,
+      canonicalJobId,
+      status: 'APPLIED',
+      version: 4,
+    }));
+    fixture.componentInstance.updateApplicationStatus(
+      fixture.componentInstance.jobs()[0],
+      'APPLIED',
+    );
+
+    expect(applicationTracker.updateStatus).toHaveBeenCalledTimes(2);
+    expect(applicationTracker.updateStatus).toHaveBeenNthCalledWith(
+      2,
+      applicationId,
+      'APPLIED',
+      3,
+    );
+    expect(fixture.componentInstance.jobs()[0]).toMatchObject({
+      applicationStatus: 'APPLIED',
+      applicationVersion: 4,
+    });
   });
 
   it('reconciles retained drafts against evidence that is still eligible', () => {
