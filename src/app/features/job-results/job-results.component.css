@@ -1,3 +1,9 @@
+:host {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+}
+
 .job-results-panel {
   background: var(--color-surface);
   border: 1px solid var(--border-subtle);
