@@ -180,6 +180,55 @@ describe('PaymentPanelComponent', () => {
     expect(text).not.toContain('£7.99');
     expect(text).not.toContain('£16.99');
     expect(text).not.toContain('£34.99');
+    expect(text).not.toContain('Secure checkout ready');
+    expect(text).not.toContain('Secure one-off checkout is available');
+  });
+
+  it('replaces an exhausted balance with a clear one-off pack action', () => {
+    const fixture = TestBed.createComponent(PaymentPanelComponent);
+    fixture.componentRef.setInput('mode', 'summary');
+    fixture.componentRef.setInput('userId', 'user-1');
+    fixture.detectChanges();
+
+    fixture.componentInstance.wallet.set({
+      remainingDocumentGenerations: 0,
+      lifetimePurchasedDocumentGenerations: 2,
+      lifetimeUsedDocumentGenerations: 2,
+      lifetimeReversedDocumentGenerations: 0,
+      reviewDebtDocumentGenerations: 0,
+      freeAllowanceGranted: true,
+      status: 'ACTIVE',
+    });
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent;
+    const action = fixture.nativeElement.querySelector('.empty-balance-action');
+    expect(text).toContain('No generations remaining');
+    expect(text).toContain('Choose a one-off pack');
+    expect(text).not.toContain('0 generations');
+    expect(text).not.toContain('100%');
+    expect(fixture.nativeElement.querySelector('.usage-ring')).toBeNull();
+    expect(action?.textContent.trim()).toBe('View generation packs');
+    expect(action?.getAttribute('href')).toBe('/payment');
+  });
+
+  it('uses an action-oriented purchase heading when no generations remain', () => {
+    const fixture = TestBed.createComponent(PaymentPanelComponent);
+    fixture.componentRef.setInput('userId', 'user-1');
+    fixture.componentRef.setInput('legalReady', true);
+    fixture.componentRef.setInput('legalVersion', checkoutResponse.consumerTermsVersion);
+    fixture.detectChanges();
+
+    fixture.componentInstance.wallet.update(wallet => wallet && ({
+      ...wallet,
+      remainingDocumentGenerations: 0,
+    }));
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Choose a generation pack');
+    expect(text).toContain('You have no generations remaining');
+    expect(text).not.toContain('0 generations available');
   });
 
   it('has no automated accessibility violations in purchase and history modes', async () => {
@@ -194,6 +243,17 @@ describe('PaymentPanelComponent', () => {
     })).violations).toEqual([]);
 
     fixture.componentRef.setInput('mode', 'history');
+    fixture.detectChanges();
+    expect((await axe.run(fixture.nativeElement, {
+      rules: {'color-contrast': {enabled: false}},
+    })).violations).toEqual([]);
+
+    fixture.componentRef.setInput('mode', 'summary');
+    fixture.detectChanges();
+    fixture.componentInstance.wallet.update(wallet => wallet && ({
+      ...wallet,
+      remainingDocumentGenerations: 0,
+    }));
     fixture.detectChanges();
     expect((await axe.run(fixture.nativeElement, {
       rules: {'color-contrast': {enabled: false}},

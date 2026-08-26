@@ -145,13 +145,6 @@ export class App implements OnInit, OnDestroy {
   documentGenerationMode = signal<DocumentGenerationMode>('REQUIRED_VALIDATION');
   commuteRoutingMode = signal<CommuteRoutingMode>('DISTANCE_ONLY');
   legalConfiguration = signal<PublicLegalConfiguration>(DRAFT_LEGAL_CONFIGURATION);
-  documentGenerationModeLabel = computed(() => {
-    switch (this.documentGenerationMode()) {
-      case 'FIXTURE_LLM': return 'Fixture-generated';
-      case 'REAL_LLM': return 'Real OpenAI generation';
-      default: return 'Not enabled for this beta';
-    }
-  });
   activeWorkspaceTab = signal<WorkspaceTab>('search');
   readonly jobSearchReadiness = computed(() => searchReadiness(this.structuredProfile()));
   selectedApplicationId = signal<string | null>(null);

@@ -14,10 +14,7 @@
       </div>
 
       @if (wallet(); as currentWallet) {
-        <div class="usage-summary-body">
-          <div class="usage-ring" [style.background]="ringStyle()" aria-hidden="true">
-            <span>{{ spentPercent() }}%</span>
-          </div>
+        @if (currentWallet.remainingDocumentGenerations > 0) {
           <div class="usage-stats">
             <div>
               <span>Available</span>
@@ -28,7 +25,15 @@
               <strong>{{ formatCredits(currentWallet.lifetimeUsedDocumentGenerations) }}</strong>
             </div>
           </div>
-        </div>
+        } @else {
+          <div class="empty-balance-state">
+            <div role="status">
+              <strong>No generations remaining</strong>
+              <p>Choose a one-off pack when you want to create another tailored CV or cover letter.</p>
+            </div>
+            <a class="purchase-button empty-balance-action" href="/payment">View generation packs</a>
+          </div>
+        }
       } @else {
         <p role="status">Your document generation allowance is unavailable.</p>
       }
@@ -41,7 +46,9 @@
           @if (mode() === 'history') {
             Generation history
           } @else if (wallet(); as currentWallet) {
-            {{ formatCredits(currentWallet.remainingDocumentGenerations) }} available
+            {{ currentWallet.remainingDocumentGenerations > 0
+              ? formatCredits(currentWallet.remainingDocumentGenerations) + ' available'
+              : 'Choose a generation pack' }}
           } @else {
             Balance unavailable
           }
@@ -49,6 +56,8 @@
         <p>
           @if (mode() === 'history') {
             Review purchases, successful deliveries, restored generations and allowance changes.
+          } @else if (wallet()?.remainingDocumentGenerations === 0) {
+            You have no generations remaining. Choose a one-off pack below whenever you need another tailored document. There is no subscription or automatic renewal.
           } @else {
             Search, matching, tracking, editing, downloads and uploads do not use your allowance. A generation is used only for a successfully delivered tailored document.
           }
@@ -95,13 +104,15 @@
       </aside>
     }
 
-    <div class="checkout-status" [class.checkout-ready]="checkoutAvailable()" role="status">
-      <span class="status-dot" aria-hidden="true"></span>
-      <div>
-        <strong>{{ checkoutAvailable() ? 'Secure checkout ready' : 'Purchasing unavailable' }}</strong>
-        <p>{{ readinessMessage() }}</p>
+    @if (readiness() !== null && !checkoutAvailable()) {
+      <div class="checkout-status" role="status">
+        <span class="status-dot" aria-hidden="true"></span>
+        <div>
+          <strong>Purchasing unavailable</strong>
+          <p>{{ readinessMessage() }}</p>
+        </div>
       </div>
-    </div>
+    }
 
     @if (plans().length > 0) {
       <div class="pricing-grid" aria-label="One-off document generation packs">

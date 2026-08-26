@@ -28,8 +28,11 @@
           <button type="button"
                   class="token-balance-pill flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-extrabold"
                   (click)="toggleTokenDropdown()"
+                  [attr.aria-label]="documentCreditBalance() === 0
+                    ? 'No document generations remain. Open generation options.'
+                    : 'Open document generation balance and options.'"
                   [attr.aria-expanded]="tokenDropdownOpen()">
-            Documents: {{ formatCredits(documentCreditBalance()) }}
+            {{ documentCreditBalance() === 0 ? 'Get generations' : 'Documents: ' + formatCredits(documentCreditBalance()) }}
             <mat-icon class="text-[14px] w-3.5 h-3.5 leading-none">keyboard_arrow_down</mat-icon>
           </button>
 
@@ -43,11 +46,15 @@
             <div class="token-dropdown absolute right-0 mt-2.5 w-64 rounded-2xl shadow-lg z-50 py-3.5 px-4 text-left animate-fade-in origin-top-right">
               <div class="token-dropdown-header">
                 <span>Document generations</span>
-                <strong>{{ formatCredits(documentCreditBalance()) }}</strong>
+                <strong>{{ documentCreditBalance() === 0 ? 'No generations remaining' : formatCredits(documentCreditBalance()) }}</strong>
               </div>
-              <p>One successfully delivered CV or cover letter uses one generation.</p>
+              <p>{{ documentCreditBalance() === 0
+                ? 'Choose a one-off pack when you want to create another tailored CV or cover letter.'
+                : 'One successfully delivered CV or cover letter uses one generation.' }}</p>
               <div class="token-dropdown-actions">
-                <a class="token-primary-action" href="/payment" (click)="closeTokenDropdown()">View generation packs</a>
+                <a class="token-primary-action" href="/payment" (click)="closeTokenDropdown()">
+                  {{ documentCreditBalance() === 0 ? 'Choose a generation pack' : 'View generation packs' }}
+                </a>
                 <a class="token-secondary-action" href="/payment/history" (click)="closeTokenDropdown()">View generation history</a>
                 <button type="button" class="token-secondary-action" (click)="refreshBalance()">Refresh balance</button>
               </div>
