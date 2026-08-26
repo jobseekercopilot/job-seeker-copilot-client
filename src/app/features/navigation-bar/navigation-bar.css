@@ -220,6 +220,44 @@
   cursor: pointer;
 }
 
+.mobile-packs-link {
+  align-items: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-control);
+  color: #1d4ed8;
+  display: none;
+  font-size: 0.7rem;
+  font-weight: 800;
+  gap: 0.25rem;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.35rem 0.5rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.mobile-packs-link mat-icon {
+  font-size: 1rem;
+  height: 1rem;
+  width: 1rem;
+}
+
+.mobile-packs-link:hover {
+  background: #dbeafe;
+}
+
+.mobile-packs-link:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+@media (max-width: 639px) {
+  .mobile-packs-link {
+    display: inline-flex;
+  }
+}
+
 @media (max-width: 480px) {
   .header-inner {
     padding-left: 0.75rem !important;
