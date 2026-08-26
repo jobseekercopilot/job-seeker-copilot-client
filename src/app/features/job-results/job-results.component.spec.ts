@@ -367,6 +367,17 @@ describe('JobResultsComponent', () => {
     fixture.componentInstance.selectSort('HIGHEST_SALARY');
     fixture.detectChanges();
 
+    const filterPanel = fixture.nativeElement.querySelector('.filter-panel') as HTMLElement;
+    expect(filterPanel.textContent).toContain('Counts show jobs on this page.');
+    expect(filterPanel.textContent).toContain('All Job Sites');
+    expect(filterPanel.textContent).toContain('10 jobs');
+    expect(filterPanel.textContent).toContain('Adzuna');
+    expect(filterPanel.textContent).toContain('6 jobs');
+    expect(filterPanel.textContent).toContain('Reed.co.uk');
+    expect(filterPanel.textContent).toContain('4 jobs');
+    expect(filterPanel.textContent).not.toContain('16 jobs');
+    expect(filterPanel.querySelector('[aria-label="Adzuna: 6 jobs on this page"]')).not.toBeNull();
+
     expect(jobCards(fixture)).toHaveLength(6);
     expect(fixture.nativeElement.textContent)
       .toContain('Showing 6 Adzuna matches on page 1 · 16 total across all job sites');
@@ -443,7 +454,9 @@ describe('JobResultsComponent', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="job-search-provider-mode"]')).toBeNull();
     expect(fixture.nativeElement.textContent).not.toContain('Real providers');
     expect(fixture.nativeElement.textContent).toContain('real developer role');
-    expect(fixture.nativeElement.textContent).toContain('JSEARCH has reached its current request limit');
+    expect(fixture.nativeElement.textContent).not.toContain('JSEARCH has reached its current request limit');
+    expect(fixture.componentInstance.providerWarnings())
+      .toContain('JSEARCH has reached its current request limit. Results from other job sites are still shown.');
   });
 
   it('does not expose provider implementation-mode labels with returned jobs', () => {
@@ -520,7 +533,9 @@ describe('JobResultsComponent', () => {
     clickButtonContaining(fixture, 'programming');
 
     expect(fixture.nativeElement.textContent)
-      .toContain('JSEARCH has reached its current request limit');
+      .not.toContain('JSEARCH has reached its current request limit');
+    expect(fixture.componentInstance.providerWarnings())
+      .toContain('JSEARCH has reached its current request limit. Results from other job sites are still shown.');
     expect(fixture.nativeElement.textContent).toContain('programming result');
     expect(fixture.componentInstance.searchStatus())
       .toBe(TargetRoleJobResultsSearchStatusEnum.Partial);
@@ -531,6 +546,7 @@ describe('JobResultsComponent', () => {
 
     expect(fixture.nativeElement.textContent)
       .not.toContain('JSEARCH has reached its current request limit');
+    expect(fixture.componentInstance.providerWarnings()).toEqual([]);
     expect(fixture.nativeElement.textContent).toContain('cleaning result');
     expect(fixture.componentInstance.searchStatus())
       .toBe(TargetRoleJobResultsSearchStatusEnum.Complete);
@@ -570,10 +586,13 @@ describe('JobResultsComponent', () => {
     const fixture = createFixture('REAL_PROVIDERS');
 
     expect(fixture.nativeElement.textContent)
+      .not.toContain('REED needs provider-account validation. Results from other job sites are still shown.');
+    expect(fixture.componentInstance.providerWarnings())
       .toContain('REED needs provider-account validation. Results from other job sites are still shown.');
     expect(fixture.nativeElement.querySelector('[data-testid="job-search-provider-mode"]')).toBeNull();
     expect(fixture.nativeElement.textContent)
-      .toContain('Provider setup is incomplete. No fixtures used.');
+      .toContain('No jobs to show for this search. Refresh or update your preferences and try again.');
+    expect(fixture.nativeElement.textContent).not.toContain('No fixtures used');
   });
 
   it('distinguishes unavailable real providers from a successful zero-result search', () => {
@@ -588,9 +607,11 @@ describe('JobResultsComponent', () => {
     );
     const unavailable = createFixture('REAL_PROVIDERS');
     expect(unavailable.nativeElement.textContent)
+      .not.toContain('ADZUNA was temporarily unavailable. Results from other job sites are still shown.');
+    expect(unavailable.componentInstance.providerWarnings())
       .toContain('ADZUNA was temporarily unavailable. Results from other job sites are still shown.');
     expect(unavailable.nativeElement.textContent)
-      .toContain('Providers unavailable. Try later.');
+      .toContain('No jobs to show for this search. Refresh or update your preferences and try again.');
 
     currentResponse = singleRoleResponse(
       [],
@@ -920,7 +941,9 @@ describe('JobResultsComponent', () => {
     expect(state.searchStatus).toBe(TargetRoleJobResultsSearchStatusEnum.Partial);
     expect(state.matchingStatus).toBe(TargetRoleJobResultsMatchingStatusEnum.TimedOut);
     expect(fixture.nativeElement.textContent)
-      .toContain('JSEARCH has reached its current request limit');
+      .not.toContain('JSEARCH has reached its current request limit');
+    expect(fixture.componentInstance.providerWarnings())
+      .toContain('JSEARCH has reached its current request limit. Results from other job sites are still shown.');
   });
 
   it('falls back to top-level metadata for a legacy matching role group', () => {

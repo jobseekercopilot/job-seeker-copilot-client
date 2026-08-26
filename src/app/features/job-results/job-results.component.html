@@ -58,15 +58,21 @@
         <h3 class="m-0 text-sm font-semibold">Filters</h3>
       </div>
       <section class="filter-section">
-        <h4 class="filter-section-title m-0 mb-2 text-xs font-semibold uppercase tracking-wider">Sources</h4>
+        <div class="mb-2 flex flex-wrap items-baseline gap-2">
+          <h4 class="filter-section-title m-0 text-xs font-semibold uppercase tracking-wider">Sources</h4>
+          <p class="filter-section-title m-0 text-xs">Counts show jobs on this page.</p>
+        </div>
         <div class="flex flex-wrap gap-2" aria-label="Job site filters">
           @for (option of publisherOptions(); track option.label) {
             <button type="button"
                     (click)="selectPublisher(option.label)"
                     class="source-chip inline-flex items-center gap-2 border px-3 py-1.5 text-sm font-medium transition-colors"
-                    [class.source-chip-active]="selectedPublisher() === option.label">
+                    [class.source-chip-active]="selectedPublisher() === option.label"
+                    [attr.aria-label]="option.label + ': ' + option.count + (option.count === 1 ? ' job' : ' jobs') + ' on this page'">
               <span>{{ option.label }}</span>
-              <span class="text-xs">({{ option.count }})</span>
+              <span class="text-xs">
+                {{ option.count }} job{{ option.count === 1 ? '' : 's' }}
+              </span>
             </button>
           }
         </div>
@@ -134,13 +140,6 @@
       <div class="error-state flex items-start gap-3 rounded-xl p-4">
         <mat-icon class="text-rose-500 text-lg flex-shrink-0">error_outline</mat-icon>
         <p class="text-sm m-0">{{ errMsg }}</p>
-      </div>
-    }
-
-    @for (warning of providerWarnings(); track warning) {
-      <div class="warning-state flex items-start gap-3 rounded-xl p-4">
-        <mat-icon class="text-amber-500 text-lg flex-shrink-0">warning</mat-icon>
-        <p class="text-sm m-0">{{ warning }}</p>
       </div>
     }
 

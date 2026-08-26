@@ -175,29 +175,24 @@ describe('App', () => {
     expect(fixture.nativeElement.textContent).toContain('Documents: 7 generations');
   });
 
-  it('renders the canonical product workspace without customer-facing implementation labels', async () => {
+  it('renders the canonical product workspace without redundant capability strips', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
 
     const text = fixture.nativeElement.textContent;
-    expect(text).toContain('Profile');
     expect(text).toContain('Job search');
     expect(text).toContain('Applications');
     expect(text).toContain('Documents');
-    expect(text).toContain('Reporting & job-search evidence');
     expect(text).toContain('Document generations');
     expect(text).not.toContain('Real providers');
-    expect(fixture.nativeElement.querySelector(
-      '#left-sidebar > .workspace-status-line .capability-state',
-    )).toBeNull();
-    expect(fixture.nativeElement.querySelector(
-      '[data-testid="workspace-panel-search"] > .workspace-status-line .capability-state',
-    )).toBeNull();
-    expect(fixture.nativeElement.querySelector(
-      '[data-testid="workspace-reporting"] > .workspace-status-line .capability-state',
-    )).toBeNull();
+    expect(text).not.toContain('Job search, matching and details');
+    expect(text).not.toContain('Reporting & job-search evidence');
+    expect(fixture.nativeElement.querySelectorAll('.workspace-status-line')).toHaveLength(0);
+    expect(fixture.nativeElement.querySelector('#left-sidebar')?.tagName).toBe('ASIDE');
+    expect(fixture.nativeElement.querySelector('#left-sidebar')?.getAttribute('aria-label')).toBe('Profile');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-reporting"] app-reporting-panel')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="job-search-provider-mode"]')).toBeNull();
     expect(fixture.componentInstance.jobSearchProviderMode()).toBe('FIXTURE');
     expect(fixture.componentInstance.commuteRoutingMode()).toBe('DISTANCE_ONLY');
@@ -208,11 +203,14 @@ describe('App', () => {
 
     fixture.nativeElement.querySelector('[data-testid="workspace-tab-applications"]').click();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Application tracking');
+    expect(fixture.nativeElement.textContent).not.toContain('Application tracking and status history');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-applications"] app-my-applications')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="applications-workspace"]')?.getAttribute('aria-label')).toBe('Applications');
 
     fixture.nativeElement.querySelector('[data-testid="workspace-tab-documents"]').click();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Documents, storage and export');
+    expect(fixture.nativeElement.textContent).not.toContain('Documents, storage and export');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-documents"] app-documents-workspace')).not.toBeNull();
 
     fixture.nativeElement.querySelector('#btn-profile-dropdown').click();
     fixture.detectChanges();
@@ -487,7 +485,7 @@ describe('App', () => {
     expect(fixture.nativeElement.textContent).not.toContain('generations were added');
   });
 
-  it('enables the documents workspace for validated real OpenAI generation', async () => {
+  it('enables the documents workspace without exposing the internal generation mode', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -495,11 +493,28 @@ describe('App', () => {
     fixture.nativeElement.querySelector('[data-testid="workspace-tab-documents"]').click();
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.textContent).toContain('Real OpenAI generation');
+    expect(fixture.nativeElement.textContent).not.toContain('Real OpenAI generation');
+    expect(fixture.nativeElement.textContent).not.toContain('Documents, storage and export');
     expect(fixture.nativeElement.querySelector('app-documents-workspace')).not.toBeNull();
     expect(fixture.nativeElement.textContent).not.toContain(
       'Document wording is fixture-generated',
     );
+  });
+
+  it('uses a customer-facing heading when the document workspace is unavailable', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.componentInstance.documentGenerationMode.set('REQUIRED_VALIDATION');
+    fixture.nativeElement.querySelector('[data-testid="workspace-tab-documents"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Documents unavailable');
+    expect(fixture.nativeElement.textContent).toContain(
+      'The secure document runtime has not been validated in this environment.',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain('Documents, storage and export');
+    expect(fixture.nativeElement.querySelector('app-documents-workspace')).toBeNull();
   });
 
   it('preserves search state while mounting only the selected Applications or Documents workspace', async () => {

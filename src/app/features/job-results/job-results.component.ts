@@ -291,18 +291,8 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     }
     const statuses = this.providerStatuses().filter(status => status !== 'DISABLED');
     const hasSuccess = statuses.includes('SUCCESS');
-    const hasFailure = statuses.some(status => status !== 'SUCCESS');
-    if (statuses.includes('CONFIGURATION_ERROR') && !hasSuccess) {
-      return 'Provider setup is incomplete. No fixtures used.';
-    }
-    if (!hasSuccess && statuses.includes('RATE_LIMITED')) {
-      return 'Providers rate limited. Try later.';
-    }
     if (statuses.length > 0 && !hasSuccess) {
-      return 'Providers unavailable. Try later.';
-    }
-    if (hasSuccess && hasFailure) {
-      return 'No matches; some providers unavailable.';
+      return 'No jobs to show for this search. Refresh or update your preferences and try again.';
     }
     return 'No jobs match your current profile.';
   });
