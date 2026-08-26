@@ -119,16 +119,6 @@ export class PaymentPanelComponent {
     const promotion = this.catalog()?.promotion;
     return promotion?.enabled === true && promotion.status === 'AVAILABLE';
   });
-  spentPercent = computed(() => {
-    const wallet = this.wallet();
-    const remaining = wallet?.remainingDocumentGenerations ?? 0;
-    const spent = wallet?.lifetimeUsedDocumentGenerations ?? 0;
-    const total = remaining + spent;
-    return total > 0 ? Math.round((spent / total) * 100) : 0;
-  });
-  ringStyle = computed(() =>
-    `conic-gradient(#2563eb 0 ${this.spentPercent()}%, #dbeafe ${this.spentPercent()}% 100%)`,
-  );
   visibleTransactions = computed(() => this.transactions());
 
   constructor() {
@@ -258,8 +248,6 @@ export class PaymentPanelComponent {
       return 'Purchasing is unavailable for this account. Contact support if you need help.';
     }
     switch (code) {
-      case 'READY':
-        return 'Secure one-off checkout is available.';
       case 'PROVIDER_UNAVAILABLE':
       case 'PAYMENT_PROVIDER_UNAVAILABLE':
         return 'The payment provider is temporarily unavailable. Purchasing is paused and no payment has been requested.';
