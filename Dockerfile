@@ -1,4 +1,10 @@
-FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS build
+FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS patched-base
+
+# The pinned base currently ships OpenSSL 3.5.7-r0. Refresh only the two
+# libraries to Alpine's fixed CVE-2026-14456 build.
+RUN apk add --no-cache --upgrade libcrypto3=3.5.8-r0 libssl3=3.5.8-r0
+
+FROM patched-base AS build
 
 WORKDIR /app
 
@@ -14,7 +20,7 @@ COPY . .
 
 RUN npm run build
 
-FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS runtime
+FROM patched-base AS runtime
 
 # Package managers and build tools are not needed by the bundled SSR output.
 # Removing them also keeps their dependency graph outside the attack surface of
