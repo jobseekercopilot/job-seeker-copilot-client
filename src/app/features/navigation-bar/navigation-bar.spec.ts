@@ -57,6 +57,22 @@ describe('NavigationBar', () => {
     expect(text).toContain('View generation history');
   });
 
+  it('keeps a direct generation-pack route in the mobile header at every balance state', () => {
+    const fixture = TestBed.createComponent(NavigationBar);
+    fixture.componentRef.setInput('documentCreditBalance', null);
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector('.mobile-packs-link');
+    expect(link).not.toBeNull();
+    expect(link.getAttribute('href')).toBe('/payment');
+    expect(link.getAttribute('aria-label')).toBe('Buy document generation packs');
+    expect(link.textContent).toContain('Packs');
+
+    fixture.componentRef.setInput('documentCreditBalance', 0);
+    fixture.detectChanges();
+    expect(link.textContent).toContain('Get packs');
+  });
+
   it('keeps the exact remaining balance for a non-empty allowance', () => {
     const fixture = TestBed.createComponent(NavigationBar);
     fixture.componentRef.setInput('documentCreditBalance', 7);

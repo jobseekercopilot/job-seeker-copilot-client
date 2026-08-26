@@ -23,6 +23,13 @@
 
     <!-- Quick Actions / User stats -->
     <div id="header-stats" class="flex items-center gap-3 relative">
+      <a class="mobile-packs-link"
+         routerLink="/payment"
+         aria-label="Buy document generation packs">
+        <mat-icon aria-hidden="true">add_card</mat-icon>
+        <span>{{ documentCreditBalance() === 0 ? 'Get packs' : 'Packs' }}</span>
+      </a>
+
       @if (documentCreditBalance() !== null) {
         <div class="token-menu-widget relative hidden sm:block">
           <button type="button"
