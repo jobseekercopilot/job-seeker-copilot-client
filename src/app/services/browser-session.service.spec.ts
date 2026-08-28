@@ -67,6 +67,24 @@ describe('browser session security', () => {
     request.flush({success: true});
   });
 
+  it('does not add session credentials or CSRF to the public feedback origin', () => {
+    const state = TestBed.inject(BrowserSessionState);
+    state.acceptBootstrap({headerName: 'X-CSRF-Token', token: '0123456789-secure-csrf-value'});
+    const httpClient = TestBed.inject(HttpClient);
+    httpClient.post(
+      'https://feedback.example.test/feedback',
+      {},
+      {withCredentials: false},
+    ).subscribe();
+
+    const request = TestBed.inject(HttpTestingController)
+      .expectOne('https://feedback.example.test/feedback');
+    expect(request.request.withCredentials).toBe(false);
+    expect(request.request.headers.has('X-CSRF-Token')).toBe(false);
+    expect(request.request.headers.has('Authorization')).toBe(false);
+    request.flush({success: true});
+  });
+
   it('sends the in-memory CSRF value on a session-bound job search', () => {
     const state = TestBed.inject(BrowserSessionState);
     state.acceptBootstrap({headerName: 'X-CSRF-Token', token: '0123456789-secure-csrf-value'});

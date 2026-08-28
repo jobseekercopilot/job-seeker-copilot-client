@@ -46,6 +46,10 @@ the validated variables in the main README, production supplies:
 - `BFF_SESSION_COOKIE_PROFILE=production`, an explicit `NG_ALLOWED_HOSTS`, and
   the server-only `BFF_TO_PAYMENT_GATEWAY_TOKEN` secret;
 - explicit provider modes for job search and document generation;
+- optional `PUBLIC_FEEDBACK_API_URL` only after the public HTTPS intake and its
+  exact application-origin CORS policy pass review; omission keeps feedback off;
+- a non-secret `PUBLIC_APP_RELEASE_ID` matching the reviewed image release when
+  feedback is enabled, so reports carry server-supplied build provenance;
 - `COMMUTE_ROUTING_MODE=DISTANCE_ONLY` for initial beta unless Google Routes has
   separately passed its release gate;
 - reviewed legal identity, seller form (`SOLE_TRADER` or `LIMITED_COMPANY`),

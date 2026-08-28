@@ -426,6 +426,23 @@ h1, h2, h3, h4 {
   text-underline-offset: 0.14em;
 }
 
+.public-feedback-action {
+  background: transparent;
+  border: 0;
+  color: #334155;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-thickness: auto;
+  text-underline-offset: 0.14em;
+}
+
+.public-feedback-action:focus-visible {
+  border-radius: 0.2rem;
+  outline: 3px solid #bfdbfe;
+  outline-offset: 0.2rem;
+}
+
 .postcode-data-attribution {
   border-top: 1px solid var(--border-subtle);
   line-height: 1.5;

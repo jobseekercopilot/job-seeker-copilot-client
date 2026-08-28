@@ -1,5 +1,10 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { isIP } from 'node:net';
+import {
+  normalisePublicFeedbackApiUrl,
+  normalisePublicAppReleaseId,
+  publicFeedbackConnectOrigin,
+} from '../shared/feedback-configuration';
 
 export interface BffConfig {
   userManagementGatewayOrigin: string;
@@ -7,6 +12,8 @@ export interface BffConfig {
   paymentGatewayOrigin: string;
   paymentGatewayServiceToken: string | undefined;
   reportingGatewayOrigin: string;
+  publicFeedbackApiUrl: string | undefined;
+  publicAppReleaseId: string | undefined;
   sessionAccessCookieName: string;
   sessionCsrfCookieName: string;
   allowedHosts: string[];
@@ -111,6 +118,36 @@ function parseOrigin(
   return url.origin;
 }
 
+function parsePublicFeedbackApiUrl(
+  environment: RuntimeEnvironment,
+): string | undefined {
+  const raw = environment['PUBLIC_FEEDBACK_API_URL'];
+  if (raw === undefined || raw === '') return undefined;
+  const url = normalisePublicFeedbackApiUrl(raw);
+  if (!url) {
+    throw new Error(
+      'PUBLIC_FEEDBACK_API_URL must be an exact HTTPS URL without credentials, query or fragment',
+    );
+  }
+  return url;
+}
+
+function parsePublicAppReleaseId(
+  environment: RuntimeEnvironment,
+  publicFeedbackApiUrl: string | undefined,
+): string | undefined {
+  if (!publicFeedbackApiUrl) return undefined;
+  const releaseId = normalisePublicAppReleaseId(
+    environment['PUBLIC_APP_RELEASE_ID'],
+  );
+  if (!releaseId) {
+    throw new Error(
+      'PUBLIC_APP_RELEASE_ID must identify the enabled feedback build with 1 to 64 safe characters',
+    );
+  }
+  return releaseId;
+}
+
 function sessionCookieNames(environment: RuntimeEnvironment): {
   access: string;
   csrf: string;
@@ -128,6 +165,7 @@ function sessionCookieNames(environment: RuntimeEnvironment): {
 
 export function loadBffConfig(environment: RuntimeEnvironment = process.env): BffConfig {
   const cookies = sessionCookieNames(environment);
+  const publicFeedbackApiUrl = parsePublicFeedbackApiUrl(environment);
   const config: BffConfig = {
     userManagementGatewayOrigin: parseOrigin(
       environment,
@@ -151,6 +189,8 @@ export function loadBffConfig(environment: RuntimeEnvironment = process.env): Bf
       "REPORTING_GATEWAY_URL",
       "http://localhost:8095",
     ),
+    publicFeedbackApiUrl,
+    publicAppReleaseId: parsePublicAppReleaseId(environment, publicFeedbackApiUrl),
     sessionAccessCookieName: cookies.access,
     sessionCsrfCookieName: cookies.csrf,
     allowedHosts: parseAllowedHosts(environment),
@@ -172,28 +212,34 @@ export function loadBffConfig(environment: RuntimeEnvironment = process.env): Bf
   return config;
 }
 
-const CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-  "img-src 'self' data:",
-  "font-src 'self' data: https://fonts.gstatic.com",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "script-src 'self'",
-  "connect-src 'self'",
-].join('; ');
+export function securityHeaders(publicFeedbackApiUrl?: string): RequestHandler {
+  const feedbackOrigin = publicFeedbackConnectOrigin(publicFeedbackApiUrl);
+  if (publicFeedbackApiUrl && !feedbackOrigin) {
+    throw new Error('Feedback CSP origin must come from a validated HTTPS URL');
+  }
+  const contentSecurityPolicy = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "img-src 'self' data:",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "script-src 'self'",
+    `connect-src 'self'${feedbackOrigin ? ` ${feedbackOrigin}` : ''}`,
+  ].join('; ');
 
-export const securityHeaders: RequestHandler = (_request, response, next) => {
-  response.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
-  response.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  response.setHeader('Permissions-Policy', 'camera=(), geolocation=(), microphone=(), payment=()');
-  response.setHeader('Referrer-Policy', 'no-referrer');
-  response.setHeader('X-Content-Type-Options', 'nosniff');
-  response.setHeader('X-Frame-Options', 'DENY');
-  next();
-};
+  return (_request, response, next) => {
+    response.setHeader('Content-Security-Policy', contentSecurityPolicy);
+    response.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    response.setHeader('Permissions-Policy', 'camera=(), geolocation=(), microphone=(), payment=()');
+    response.setHeader('Referrer-Policy', 'no-referrer');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('X-Frame-Options', 'DENY');
+    next();
+  };
+}
 
 export function passwordResetIpRateLimiter(
   windowMs: number,

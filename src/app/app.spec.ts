@@ -16,6 +16,7 @@ import {PaymentService} from './services/payment.service';
 import type {PaymentOrderStatusResponse} from './services/payment.service';
 import {ApplicationTrackerService} from './services/application-tracker.service';
 import {RuntimeConfigurationService} from './services/runtime-configuration.service';
+import type {PublicFeedbackConfiguration} from './services/runtime-configuration.service';
 
 describe('App', () => {
   const status = signal<BrowserSessionStatus>('authenticated');
@@ -62,6 +63,9 @@ describe('App', () => {
     legalEntityConfigurationVersion: 'seller-v1',
   };
   const orderStatus = vi.fn<() => Observable<PaymentOrderStatusResponse>>();
+  const feedbackConfiguration = vi.fn<
+    () => Observable<PublicFeedbackConfiguration>
+  >(() => of({enabled: false}));
 
   beforeEach(async () => {
     window.history.replaceState({}, '', '/dashboard');
@@ -83,6 +87,8 @@ describe('App', () => {
     wallet.mockClear();
     orderStatus.mockReset();
     orderStatus.mockReturnValue(of(fulfilledOrder));
+    feedbackConfiguration.mockReset();
+    feedbackConfiguration.mockReturnValue(of({enabled: false}));
 
     await TestBed.configureTestingModule({
       imports: [App],
@@ -116,6 +122,7 @@ describe('App', () => {
               legalEntityType: 'NOT_CONFIGURED',
               taxStatus: 'NOT_CONFIGURED',
             }),
+            feedbackConfiguration,
           },
         },
         {
@@ -293,6 +300,43 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector(
       'a[href="https://postcodes.io/docs/licences/"]',
     )).not.toBeNull();
+  });
+
+  it('fails closed when feedback is unset and exposes an accessible action when enabled', async () => {
+    let fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.public-feedback-action')).toBeNull();
+    fixture.destroy();
+
+    feedbackConfiguration.mockReturnValue(of({
+      enabled: true,
+      submissionUrl: 'https://feedback.example.test/public/feedback',
+      appBuild: 'client.2026-08-28.1',
+    }));
+    window.history.replaceState({}, '', '/dashboard?token=private#cv-content');
+    fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const action = fixture.nativeElement.querySelector(
+      '.public-feedback-action',
+    ) as HTMLButtonElement;
+    expect(action.type).toBe('button');
+    expect(action.textContent).toContain('Send feedback');
+
+    await fixture.componentInstance.openFeedback();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const dialog = document.querySelector(
+      '#public-tester-feedback-dialog',
+    ) as HTMLElement;
+    expect(dialog.getAttribute('role')).toBe('dialog');
+    expect(dialog.getAttribute('aria-labelledby')).toBe('feedback-dialog-title');
+    expect(dialog.getAttribute('aria-describedby')).toBe('feedback-dialog-description');
+    expect(dialog.textContent).not.toContain('token=private');
+    expect(dialog.textContent).not.toContain('cv-content');
   });
 
   it('trusts only the owner-scoped order record on a checkout return and strips the query', async () => {

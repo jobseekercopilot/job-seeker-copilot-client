@@ -1,0 +1,125 @@
+<section class="feedback-dialog" [attr.aria-busy]="busy()">
+  <header class="feedback-header">
+    <div>
+      <p class="feedback-eyebrow">Public beta</p>
+      <h2 id="feedback-dialog-title">Send feedback</h2>
+    </div>
+    <button type="button" class="feedback-close" aria-label="Close feedback dialog" (click)="close()">
+      <span aria-hidden="true">×</span>
+    </button>
+  </header>
+
+  <p id="feedback-dialog-description" class="feedback-intro">
+    Tell us what happened. Required fields are marked with an asterisk. After submission,
+    you will receive a reference for your report.
+  </p>
+
+  @if (acceptedReference(); as reference) {
+    <div class="feedback-confirmation" role="status" aria-live="polite">
+      <h3 id="feedback-confirmation-title" tabindex="-1">Feedback received</h3>
+      <p>Thank you — your feedback has been saved for review.</p>
+      <p>Your reference is <strong>{{ reference }}</strong>.</p>
+      <button type="button" class="feedback-primary" (click)="close()">Done</button>
+    </div>
+  } @else {
+    <form [formGroup]="form" novalidate (submit)="submit(); $event.preventDefault()">
+      <div class="feedback-field">
+        <label for="feedback-category">Feedback type <span aria-hidden="true">*</span></label>
+        <select id="feedback-category" formControlName="category" required>
+          @for (category of categories; track category[0]) {
+            <option [value]="category[0]">{{ category[1] }}</option>
+          }
+        </select>
+      </div>
+
+      <div class="feedback-field">
+        <label for="feedback-title">Short title <span aria-hidden="true">*</span></label>
+        <input id="feedback-title"
+               formControlName="title"
+               required
+               maxlength="120"
+               autocomplete="off"
+               aria-describedby="feedback-title-hint feedback-title-error"
+               [attr.aria-invalid]="showError(form.controls.title)" />
+        <div class="feedback-field-meta">
+          <span id="feedback-title-hint">5–120 characters</span>
+          <span>{{ characterCount(form.controls.title) }}/120</span>
+        </div>
+        @if (showError(form.controls.title)) {
+          <p id="feedback-title-error" class="feedback-field-error">Enter a title between 5 and 120 characters.</p>
+        }
+      </div>
+
+      <div class="feedback-field">
+        <label for="feedback-description">What happened? <span aria-hidden="true">*</span></label>
+        <textarea id="feedback-description"
+                  formControlName="description"
+                  required
+                  maxlength="2000"
+                  rows="5"
+                  aria-describedby="feedback-description-hint feedback-description-error"
+                  [attr.aria-invalid]="showError(form.controls.description)"></textarea>
+        <div class="feedback-field-meta">
+          <span id="feedback-description-hint">10–2,000 characters</span>
+          <span>{{ characterCount(form.controls.description) }}/2000</span>
+        </div>
+        @if (showError(form.controls.description)) {
+          <p id="feedback-description-error" class="feedback-field-error">Enter a description between 10 and 2,000 characters.</p>
+        }
+      </div>
+
+      <div class="feedback-field">
+        <label for="feedback-steps">Steps to reproduce <span class="feedback-optional">(optional)</span></label>
+        <textarea id="feedback-steps"
+                  formControlName="reproductionSteps"
+                  maxlength="1200"
+                  rows="4"
+                  aria-describedby="feedback-steps-hint feedback-steps-error"
+                  [attr.aria-invalid]="showError(form.controls.reproductionSteps)"></textarea>
+        <div class="feedback-field-meta">
+          <span id="feedback-steps-hint">Up to 1,200 characters</span>
+          <span>{{ characterCount(form.controls.reproductionSteps) }}/1200</span>
+        </div>
+        @if (showError(form.controls.reproductionSteps)) {
+          <p id="feedback-steps-error" class="feedback-field-error">Keep reproduction steps within 1,200 characters.</p>
+        }
+      </div>
+
+      <div hidden>
+        <label for="feedback-website">Website</label>
+        <input id="feedback-website" formControlName="website" tabindex="-1" autocomplete="off" />
+      </div>
+
+      <div class="feedback-diagnostics">
+        <label>
+          <input type="checkbox" formControlName="diagnosticsConsent" />
+          <span>Include coarse browser and device information</span>
+        </label>
+        <p>
+          If selected, we send only browser family and major version and whether this is a mobile,
+          tablet or desktop device. We never send the full browser string.
+        </p>
+      </div>
+
+      <div class="feedback-privacy">
+        <strong>Protect your privacy</strong>
+        <p>
+          Do not include passwords, contact or payment details, authentication codes, CV or cover-letter
+          content, or other sensitive personal information. We send this page path without its query or
+          fragment. Screenshots, cookies, browser storage and console logs are not collected.
+        </p>
+      </div>
+
+      @if (errorMessage()) {
+        <p class="feedback-submit-error" role="alert">{{ errorMessage() }}</p>
+      }
+
+      <div class="feedback-actions">
+        <button type="button" class="feedback-secondary" [disabled]="busy()" (click)="close()">Cancel</button>
+        <button type="submit" class="feedback-primary" [disabled]="busy()">
+          {{ busy() ? 'Sending…' : 'Send feedback' }}
+        </button>
+      </div>
+    </form>
+  }
+</section>

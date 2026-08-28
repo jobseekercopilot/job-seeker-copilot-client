@@ -1,6 +1,10 @@
 import {HttpClient} from '@angular/common/http';
 import {inject, Injectable} from '@angular/core';
-import {Observable} from 'rxjs';
+import {map, Observable} from 'rxjs';
+import {
+  normalisePublicAppReleaseId,
+  normalisePublicFeedbackApiUrl,
+} from '../../shared/feedback-configuration';
 import {
   isIsoCalendarDate,
   isReviewedIdentityValue,
@@ -63,6 +67,38 @@ export const DRAFT_LEGAL_CONFIGURATION: PublicLegalConfiguration = {
   taxStatus: 'NOT_CONFIGURED',
 };
 
+export type PublicFeedbackConfiguration =
+  | {enabled: false}
+  | {enabled: true; submissionUrl: string; appBuild: string};
+
+export const DISABLED_FEEDBACK_CONFIGURATION: PublicFeedbackConfiguration = {
+  enabled: false,
+};
+
+export function normaliseFeedbackConfiguration(
+  value: unknown,
+): PublicFeedbackConfiguration {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return DISABLED_FEEDBACK_CONFIGURATION;
+  }
+  const candidate = value as Record<string, unknown>;
+  if (candidate['enabled'] === false && Object.keys(candidate).length === 1) {
+    return DISABLED_FEEDBACK_CONFIGURATION;
+  }
+  const submissionUrl = normalisePublicFeedbackApiUrl(candidate['submissionUrl']);
+  const appBuild = normalisePublicAppReleaseId(candidate['appBuild']);
+  if (
+    candidate['enabled'] !== true
+    || Object.keys(candidate).sort().join(',') !== 'appBuild,enabled,submissionUrl'
+    || !submissionUrl
+    || submissionUrl !== candidate['submissionUrl']
+    || !appBuild
+  ) {
+    return DISABLED_FEEDBACK_CONFIGURATION;
+  }
+  return {enabled: true, submissionUrl, appBuild};
+}
+
 export function isReviewedLegalConfiguration(
   value: PublicLegalConfiguration,
 ): boolean {
@@ -123,5 +159,12 @@ export class RuntimeConfigurationService {
       '/api/runtime/legal-configuration',
       {withCredentials: true},
     );
+  }
+
+  feedbackConfiguration(): Observable<PublicFeedbackConfiguration> {
+    return this.http.get<unknown>(
+      '/api/runtime/feedback-configuration',
+      {withCredentials: false},
+    ).pipe(map(normaliseFeedbackConfiguration));
   }
 }

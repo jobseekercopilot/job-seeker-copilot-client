@@ -27,13 +27,16 @@ import {removeLegacySessionData} from './services/browser-storage';
 import {BrowserSessionService} from './services/browser-session.service';
 import {
   CommuteRoutingMode,
+  DISABLED_FEEDBACK_CONFIGURATION,
   JobSearchProviderMode,
   DocumentGenerationMode,
   DRAFT_LEGAL_CONFIGURATION,
   isReviewedLegalConfiguration,
+  PublicFeedbackConfiguration,
   RuntimeConfigurationService,
   PublicLegalConfiguration,
 } from './services/runtime-configuration.service';
+import {publicFeedbackPagePath} from '../shared/feedback-configuration';
 
 type WorkspaceTab = 'search' | 'applications' | 'documents';
 type PaymentOrderViewState =
@@ -145,6 +148,9 @@ export class App implements OnInit, OnDestroy {
   documentGenerationMode = signal<DocumentGenerationMode>('REQUIRED_VALIDATION');
   commuteRoutingMode = signal<CommuteRoutingMode>('DISTANCE_ONLY');
   legalConfiguration = signal<PublicLegalConfiguration>(DRAFT_LEGAL_CONFIGURATION);
+  feedbackConfiguration = signal<PublicFeedbackConfiguration>(
+    DISABLED_FEEDBACK_CONFIGURATION,
+  );
   activeWorkspaceTab = signal<WorkspaceTab>('search');
   readonly jobSearchReadiness = computed(() => searchReadiness(this.structuredProfile()));
   selectedApplicationId = signal<string | null>(null);
@@ -160,6 +166,8 @@ export class App implements OnInit, OnDestroy {
   toastType = signal<'success' | 'info' | 'error'>('success');
   private walletSessionKey = '';
   private evidenceDialogRef?: MatDialogRef<EvidenceLibraryComponent>;
+  private feedbackDialogRef?: MatDialogRef<unknown>;
+  private feedbackDialogOpening = false;
   private paymentOrderId: string | null = null;
   private paymentPollStartedAt = 0;
   private paymentPollStep = 0;
@@ -218,6 +226,7 @@ export class App implements OnInit, OnDestroy {
       void this.loadDocumentGenerationMode();
       void this.loadCommuteRoutingMode();
       void this.loadLegalConfiguration();
+      void this.loadFeedbackConfiguration();
     }
   }
 
@@ -269,6 +278,17 @@ export class App implements OnInit, OnDestroy {
         : DRAFT_LEGAL_CONFIGURATION);
     } catch {
       this.legalConfiguration.set(DRAFT_LEGAL_CONFIGURATION);
+    }
+  }
+
+  private async loadFeedbackConfiguration(): Promise<void> {
+    try {
+      const response = await firstValueFrom(
+        this.runtimeConfiguration.feedbackConfiguration(),
+      );
+      this.feedbackConfiguration.set(response);
+    } catch {
+      this.feedbackConfiguration.set(DISABLED_FEEDBACK_CONFIGURATION);
     }
   }
 
@@ -712,6 +732,51 @@ export class App implements OnInit, OnDestroy {
         document.querySelector<HTMLElement>('#btn-profile-dropdown')?.focus();
       }
     });
+  }
+
+  async openFeedback(): Promise<void> {
+    const configuration = this.feedbackConfiguration();
+    if (
+      !isPlatformBrowser(this.platformId)
+      || !configuration.enabled
+      || this.feedbackDialogRef
+      || this.feedbackDialogOpening
+    ) return;
+    this.feedbackDialogOpening = true;
+    try {
+      const {FeedbackDialogComponent} = await import(
+        './features/feedback-dialog/feedback-dialog'
+      );
+      const currentConfiguration = this.feedbackConfiguration();
+      if (!currentConfiguration.enabled || this.destroyed) return;
+      const dialogRef = this.dialog.open(FeedbackDialogComponent, {
+        ariaDescribedBy: 'feedback-dialog-description',
+        ariaLabelledBy: 'feedback-dialog-title',
+        ariaModal: true,
+        autoFocus: '#feedback-title',
+        closeOnNavigation: true,
+        data: {
+          submissionUrl: currentConfiguration.submissionUrl,
+          appBuild: currentConfiguration.appBuild,
+          pagePath: publicFeedbackPagePath(window.location),
+        },
+        id: 'public-tester-feedback-dialog',
+        maxHeight: '100dvh',
+        maxWidth: '100vw',
+        panelClass: 'feedback-dialog-panel',
+        restoreFocus: true,
+      });
+      this.feedbackDialogRef = dialogRef;
+      dialogRef.afterClosed().subscribe(() => {
+        if (this.feedbackDialogRef === dialogRef) {
+          this.feedbackDialogRef = undefined;
+        }
+      });
+    } catch {
+      this.showToast('Feedback is unavailable. Please try again later.', 'error');
+    } finally {
+      this.feedbackDialogOpening = false;
+    }
   }
 
   refreshReporting() {

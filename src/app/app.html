@@ -267,8 +267,13 @@
   }
 </div>
 <footer class="public-legal-footer">
-  <nav class="public-footer-links" aria-label="Legal links">
+  <nav class="public-footer-links" aria-label="Product and legal links">
     <span>Job Seeker Copilot</span>
+    @if (feedbackConfiguration().enabled) {
+      <button type="button" class="public-feedback-action" (click)="openFeedback()">
+        Send feedback
+      </button>
+    }
     <a href="/privacy">Privacy Policy</a>
     <a href="/terms">Terms of Use</a>
   </nav>
