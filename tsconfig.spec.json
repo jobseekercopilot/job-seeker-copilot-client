@@ -13,6 +13,7 @@
     "src/app/features/claimant-profile/claimant-profile.spec.ts",
     "src/app/features/documents-workspace/documents-workspace.component.spec.ts",
     "src/app/features/evidence-library/evidence-library.spec.ts",
+    "src/app/features/feedback-dialog/feedback-dialog.spec.ts",
     "src/app/features/job-card/job-card.component.spec.ts",
     "src/app/features/job-results/job-results.component.spec.ts",
     "src/app/features/landing-auth/landing-auth.spec.ts",

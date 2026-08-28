@@ -48,6 +48,8 @@ Runtime configuration is supplied to the SSR process, not committed:
 | `BFF_HEADERS_TIMEOUT_MS` | `10000` | Node header timeout; cannot exceed request timeout |
 | `BFF_KEEP_ALIVE_TIMEOUT_MS` | `5000` | Node idle keep-alive timeout (max 60 seconds) |
 | `BFF_TO_PAYMENT_GATEWAY_TOKEN` | none | Server-only payment service identity; at least 32 UTF-8 bytes and required for payment calls |
+| `PUBLIC_FEEDBACK_API_URL` | none | Optional exact public HTTPS feedback endpoint; no credentials, query or fragment; unset keeps the UI disabled |
+| `PUBLIC_APP_RELEASE_ID` | none | Non-secret 1–64 character release identifier; required when feedback is enabled and submitted as `appBuild` |
 
 Public-beta legal configuration is also supplied only at runtime. It remains
 draft unless `LEGAL_DOCUMENTS_REVIEWED=true` and every identity, policy and
@@ -63,6 +65,13 @@ No example identity is used as a fallback.
 
 Never place provider or production credentials in Angular environment files;
 browser bundles cannot keep a secret.
+
+When `PUBLIC_FEEDBACK_API_URL` is enabled, the server requires a validated
+`PUBLIC_APP_RELEASE_ID`, returns both non-secret values through a no-store
+runtime configuration response and adds only the endpoint origin to
+`connect-src`. The browser sends the bounded public-tester schema with
+cross-origin credentials disabled. See the
+[public-tester feedback boundary](docs/public-tester-feedback.md).
 
 Google-backed location and commute content is obtained only through the
 same-origin BFF and `location-gateway`. Suggestions and route estimates carry
@@ -198,10 +207,12 @@ do not contain the upstream URL, exception text, request body, cookies or
 tokens.
 
 API, static and SSR responses receive CSP, clickjacking, MIME-sniffing, referrer,
-permissions and cross-origin opener protections. The CSP permits scripts and
-connections only from the same origin; styles/fonts allow only same-origin data,
-inline Angular SSR styles and the existing Google Fonts origins. `X-Powered-By`
-is disabled. Production critical-CSS inlining is disabled because its generated
+permissions and cross-origin opener protections. The CSP permits scripts only
+from the same origin. Connections are same-origin unless the optional validated
+public feedback endpoint is enabled, in which case only that endpoint's exact
+origin is added; styles/fonts allow only same-origin data, inline Angular SSR
+styles and the existing Google Fonts origins. `X-Powered-By` is disabled.
+Production critical-CSS inlining is disabled because its generated
 inline `onload` handler is intentionally incompatible with the script policy;
 the hashed same-origin stylesheet remains render-blocking. Node request,
 header and keep-alive timeouts are explicitly bounded. UMG continues to own its

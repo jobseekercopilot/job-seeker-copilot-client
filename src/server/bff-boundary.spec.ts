@@ -19,6 +19,8 @@ describe('BFF runtime configuration', () => {
       paymentGatewayOrigin: 'http://localhost:8098',
       paymentGatewayServiceToken: undefined,
       reportingGatewayOrigin: 'http://localhost:8095',
+      publicFeedbackApiUrl: undefined,
+      publicAppReleaseId: undefined,
       sessionAccessCookieName: 'jsc-access-local',
       sessionCsrfCookieName: 'jsc-csrf-local',
       allowedHosts: ['localhost', '127.0.0.1', 'job-seeker-copilot-client'],
@@ -42,6 +44,8 @@ describe('BFF runtime configuration', () => {
       PAYMENT_GATEWAY_URL: 'https://payments.example.test:9666',
       BFF_TO_PAYMENT_GATEWAY_TOKEN: 'payment-service-token',
       REPORTING_GATEWAY_URL: 'https://reports.example.test:9555',
+      PUBLIC_FEEDBACK_API_URL: 'https://feedback.example.test/public/feedback',
+      PUBLIC_APP_RELEASE_ID: 'client.2026-08-28.1',
       BFF_SESSION_COOKIE_PROFILE: 'production',
       NG_ALLOWED_HOSTS: 'client.example.test, client.example.test,::1',
       HOST: '::',
@@ -58,6 +62,8 @@ describe('BFF runtime configuration', () => {
     expect(config.paymentGatewayOrigin).toBe('https://payments.example.test:9666');
     expect(config.paymentGatewayServiceToken).toBe('payment-service-token');
     expect(config.reportingGatewayOrigin).toBe('https://reports.example.test:9555');
+    expect(config.publicFeedbackApiUrl).toBe('https://feedback.example.test/public/feedback');
+    expect(config.publicAppReleaseId).toBe('client.2026-08-28.1');
     expect(config.sessionAccessCookieName).toBe('__Host-jsc-access');
     expect(config.sessionCsrfCookieName).toBe('__Host-jsc-csrf');
     expect(config.allowedHosts).toEqual(['client.example.test', '::1']);
@@ -75,6 +81,14 @@ describe('BFF runtime configuration', () => {
     [{JOB_FINDER_GATEWAY_URL: 'https://user:secret@jobs.test'}, 'JOB_FINDER_GATEWAY_URL'],
     [{PAYMENT_GATEWAY_URL: 'https://payments.test/api'}, 'PAYMENT_GATEWAY_URL'],
     [{REPORTING_GATEWAY_URL: 'https://reports.test/api'}, 'REPORTING_GATEWAY_URL'],
+    [{PUBLIC_FEEDBACK_API_URL: 'http://feedback.test/feedback'}, 'PUBLIC_FEEDBACK_API_URL'],
+    [{PUBLIC_FEEDBACK_API_URL: 'https://feedback.test/feedback?token=private'}, 'PUBLIC_FEEDBACK_API_URL'],
+    [{PUBLIC_FEEDBACK_API_URL: 'https://user:secret@feedback.test/feedback'}, 'PUBLIC_FEEDBACK_API_URL'],
+    [{PUBLIC_FEEDBACK_API_URL: 'https://feedback.test/feedback'}, 'PUBLIC_APP_RELEASE_ID'],
+    [{
+      PUBLIC_FEEDBACK_API_URL: 'https://feedback.test/feedback',
+      PUBLIC_APP_RELEASE_ID: 'release id with spaces',
+    }, 'PUBLIC_APP_RELEASE_ID'],
     [{BFF_SESSION_COOKIE_PROFILE: 'preview'}, 'BFF_SESSION_COOKIE_PROFILE'],
     [{NG_ALLOWED_HOSTS: '*'}, 'NG_ALLOWED_HOSTS'],
     [{NG_ALLOWED_HOSTS: 'valid.test,bad host'}, 'NG_ALLOWED_HOSTS'],
@@ -97,10 +111,10 @@ describe('BFF HTTP boundary', () => {
     server = undefined;
   });
 
-  async function startApp(): Promise<string> {
+  async function startApp(publicFeedbackApiUrl?: string): Promise<string> {
     const app = express();
     app.disable('x-powered-by');
-    app.use(securityHeaders);
+    app.use(securityHeaders(publicFeedbackApiUrl));
     app.use(express.json({limit: 32}));
     app.use(jsonBodyErrorHandler);
     app.post('/echo', (request, response) => response.json(request.body));
@@ -124,11 +138,31 @@ describe('BFF HTTP boundary', () => {
     expect(response.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
     expect(response.headers.get('content-security-policy')).toContain("base-uri 'self'");
     expect(response.headers.get('content-security-policy')).toContain('https://fonts.googleapis.com');
+    expect(response.headers.get('content-security-policy')).toContain("connect-src 'self'");
+    expect(response.headers.get('content-security-policy')).not.toContain('feedback.example.test');
     expect(response.headers.get('x-content-type-options')).toBe('nosniff');
     expect(response.headers.get('x-frame-options')).toBe('DENY');
     expect(response.headers.get('referrer-policy')).toBe('no-referrer');
     expect(response.headers.get('permissions-policy')).toContain('payment=()');
     expect(response.headers.get('x-powered-by')).toBeNull();
+  });
+
+  it('adds only the configured feedback origin to connect-src', async () => {
+    const origin = await startApp('https://feedback.example.test/public/feedback');
+    const response = await fetch(`${origin}/echo`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: '{"ok":true}',
+    });
+
+    const policy = response.headers.get('content-security-policy') ?? '';
+    expect(policy).toContain("connect-src 'self' https://feedback.example.test");
+    expect(policy).not.toContain('/public/feedback');
+  });
+
+  it('rejects an unvalidated feedback URL before constructing a response header', () => {
+    expect(() => securityHeaders('https://feedback.test/feedback?secret=value'))
+      .toThrow('Feedback CSP origin');
   });
 
   it('returns a stable non-leaking response for oversized JSON', async () => {

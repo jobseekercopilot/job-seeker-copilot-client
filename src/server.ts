@@ -40,7 +40,7 @@ app.disable('x-powered-by');
 if (bffConfig.trustedProxyHops > 0) {
   app.set('trust proxy', bffConfig.trustedProxyHops);
 }
-app.use(securityHeaders);
+app.use(securityHeaders(bffConfig.publicFeedbackApiUrl));
 app.use(express.json({limit: bffConfig.jsonBodyLimitBytes}));
 app.use(jsonBodyErrorHandler);
 
@@ -79,6 +79,17 @@ app.get('/api/runtime/commute-routing-mode', (_req, res) => {
 app.get('/api/runtime/legal-configuration', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json(publicLegalConfiguration());
+});
+
+app.get('/api/runtime/feedback-configuration', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json(bffConfig.publicFeedbackApiUrl && bffConfig.publicAppReleaseId
+    ? {
+      enabled: true,
+      submissionUrl: bffConfig.publicFeedbackApiUrl,
+      appBuild: bffConfig.publicAppReleaseId,
+    }
+    : {enabled: false});
 });
 
 app.get('/api/auth/csrf', async (req, res) => {
