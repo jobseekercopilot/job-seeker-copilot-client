@@ -16,6 +16,7 @@ import {FormsModule} from '@angular/forms';
 import {MatIconModule} from '@angular/material/icon';
 import {debounceTime, distinctUntilChanged, firstValueFrom, Subject, switchMap} from 'rxjs';
 import type {
+  EvidenceEntry,
   GatewayResponse,
   ProfilePreferencesUpdate,
   RegistrationLegalRequirements,
@@ -23,10 +24,12 @@ import type {
 } from '../../api';
 import {
   AuthenticationService,
+  EvidenceLibraryService,
   ProfileService,
   WorkPreferencesWorkplaceArrangementsEnum,
 } from '../../api';
 import {normaliseProfile} from '../../models/user-profile.model';
+import {EvidenceLibraryComponent} from '../evidence-library/evidence-library';
 import {BrowserSessionService} from '../../services/browser-session.service';
 import {
   DRAFT_LEGAL_CONFIGURATION,
@@ -48,9 +51,17 @@ import {
   registrationPasswordError,
 } from './credential-policy';
 
+interface OnboardingEvidenceEntry {
+  entryId: string;
+  heading: string;
+  version: number;
+  confirmed: boolean;
+  confirming: boolean;
+}
+
 @Component({
   selector: 'app-landing-auth',
-  imports: [CommonModule, MatIconModule, FormsModule],
+  imports: [CommonModule, MatIconModule, FormsModule, EvidenceLibraryComponent],
   host: {
     'data-demo-focus': 'app-landing-auth',
     'data-demo-focus-id': 'registration-form',
@@ -63,6 +74,7 @@ export class LandingAuthComponent implements OnInit {
   private readonly authenticationApi = inject(AuthenticationService);
   private readonly profileApi = inject(ProfileService);
   private readonly browserSession = inject(BrowserSessionService);
+  private readonly evidenceApi = inject(EvidenceLibraryService);
   private readonly locationService = inject(LocationService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly destroyRef = inject(DestroyRef);
@@ -89,7 +101,7 @@ export class LandingAuthComponent implements OnInit {
   readonly formPassword = signal('');
   readonly loginEmail = signal('');
   readonly loginPassword = signal('');
-  readonly setupStep = signal<1 | 2 | 3 | null>(null);
+  readonly setupStep = signal<1 | 2 | 3 | 4 | 5 | 6 | null>(null);
   readonly setupTargetRoles = signal('');
   readonly setupPostcode = signal('');
   readonly setupCanonicalLocation = signal<CanonicalLocation | null>(null);
@@ -103,7 +115,15 @@ export class LandingAuthComponent implements OnInit {
     name: string;
     email: string;
   } | null>(null);
-  readonly setupProgress = computed(() => `${this.setupStep() ?? 1} of 3`);
+  readonly setupProgress = computed(() => `${this.setupStep() ?? 1} of 6`);
+  readonly qualificationEntries = signal<OnboardingEvidenceEntry[]>([]);
+  readonly employmentEntries = signal<OnboardingEvidenceEntry[]>([]);
+  readonly volunteeringEntries = signal<OnboardingEvidenceEntry[]>([]);
+  // Counts are kept as computed number signals so the summary labels and the
+  // existing test suite (which reads these as numbers) stay compatible.
+  readonly qualificationsAdded = computed(() => this.qualificationEntries().length);
+  readonly employmentAdded = computed(() => this.employmentEntries().length);
+  readonly volunteeringAdded = computed(() => this.volunteeringEntries().length);
   readonly registrationLegalReady = computed(() => {
     const requirements = this.registrationRequirements();
     const configuration = this.legalConfiguration();
@@ -297,7 +317,7 @@ export class LandingAuthComponent implements OnInit {
       : loginPasswordError(this.loginPassword());
   }
 
-  goToSetupStep(step: 1 | 2 | 3): void {
+  goToSetupStep(step: 1 | 2 | 3 | 4 | 5 | 6): void {
     if (this.isLoading()) return;
     this.errorMessage.set(null);
     this.setupStep.set(step);
@@ -305,7 +325,7 @@ export class LandingAuthComponent implements OnInit {
 
   previousSetupStep(): void {
     const step = this.setupStep();
-    if (step && step > 1) this.goToSetupStep((step - 1) as 1 | 2 | 3);
+    if (step && step > 1) this.goToSetupStep((step - 1) as 1 | 2 | 3 | 4 | 5 | 6);
   }
 
   continueSetup(): void {
@@ -329,6 +349,12 @@ export class LandingAuthComponent implements OnInit {
         return;
       }
       void this.finishSetup();
+    } else if (step === 4) {
+      this.setupStep.set(5);
+    } else if (step === 5) {
+      this.setupStep.set(6);
+    } else if (step === 6) {
+      this.onboarded.emit(this.setupAccount()!);
     }
   }
 
@@ -388,6 +414,62 @@ export class LandingAuthComponent implements OnInit {
     this.onboarded.emit(account);
   }
 
+  onQualificationAdded(entry: EvidenceEntry): void {
+    this.qualificationEntries.update(list => [...list, this.toOnboardingEntry(entry)]);
+  }
+
+  onEmploymentAdded(entry: EvidenceEntry): void {
+    this.employmentEntries.update(list => [...list, this.toOnboardingEntry(entry)]);
+  }
+
+  onVolunteeringAdded(entry: EvidenceEntry): void {
+    this.volunteeringEntries.update(list => [...list, this.toOnboardingEntry(entry)]);
+  }
+
+  async confirmOnboardingEntry(step: 4 | 5 | 6, entryId: string): Promise<void> {
+    const list = this.entriesFor(step);
+    const target = list().find(candidate => candidate.entryId === entryId);
+    if (!target || target.confirmed || target.confirming) return;
+    this.errorMessage.set(null);
+    list.update(entries => entries.map(candidate =>
+      candidate.entryId === entryId ? {...candidate, confirming: true} : candidate));
+    try {
+      await firstValueFrom(this.browserSession.ensureCsrf());
+      const confirmed = await firstValueFrom(this.evidenceApi.confirmEvidence(
+        entryId, `"${target.version}"`, 'body', false, {transferCache: false},
+      ));
+      list.update(entries => entries.map(candidate =>
+        candidate.entryId === entryId
+          ? {...candidate, confirmed: true, confirming: false, version: confirmed.version}
+          : candidate));
+    } catch (error: unknown) {
+      this.browserSession.handleAuthenticatedError(error);
+      list.update(entries => entries.map(candidate =>
+        candidate.entryId === entryId ? {...candidate, confirming: false} : candidate));
+      this.showError(this.httpErrorMessage(error, 'This entry could not be confirmed. Please try again.'));
+    } finally {
+      this.browserSession.invalidateCsrf();
+    }
+  }
+
+  private entriesFor(step: 4 | 5 | 6) {
+    if (step === 4) return this.qualificationEntries;
+    if (step === 5) return this.employmentEntries;
+    return this.volunteeringEntries;
+  }
+
+  private toOnboardingEntry(entry: EvidenceEntry): OnboardingEvidenceEntry {
+    const latest = [...entry.revisions].sort((left, right) =>
+      right.revisionNumber - left.revisionNumber)[0];
+    return {
+      entryId: entry.entryId,
+      heading: latest?.heading ?? '',
+      version: entry.version,
+      confirmed: latest?.confirmationState === 'USER_CONFIRMED',
+      confirming: false,
+    };
+  }
+
   async finishSetup(): Promise<void> {
     if (this.isLoading()) return;
     const account = this.setupAccount();
@@ -416,8 +498,13 @@ export class LandingAuthComponent implements OnInit {
       if (!response.success || !response.user?.profile) {
         throw new Error(response.message || 'Profile setup could not be saved.');
       }
+      const updatedAccount = this.accountFromResponse(response);
+      if (!updatedAccount) {
+        throw new Error(response.message || 'Profile setup could not be saved.');
+      }
+      this.setupAccount.set(updatedAccount);
       this.browserSession.invalidateCsrf();
-      this.emitProfileFromResponse(response);
+      this.setupStep.set(4);
     } catch (error: unknown) {
       this.browserSession.handleAuthenticatedError(error);
       this.showError(this.httpErrorMessage(error, 'Your setup could not be saved. Please try again.'));
@@ -479,15 +566,26 @@ export class LandingAuthComponent implements OnInit {
     }
   }
 
-  private emitProfileFromResponse(response: GatewayResponse): void {
-    if (!response.user) return;
+  private accountFromResponse(response: GatewayResponse): {
+    profile: UserProfile;
+    id?: string;
+    name: string;
+    email: string;
+  } | null {
+    if (!response.user) return null;
     const profile = normaliseProfile(response.user.profile);
-    this.onboarded.emit({
+    return {
       profile,
       id: response.user.id,
       name: response.user.name || '',
       email: response.user.email || '',
-    });
+    };
+  }
+
+  private emitProfileFromResponse(response: GatewayResponse): void {
+    const account = this.accountFromResponse(response);
+    if (!account) return;
+    this.onboarded.emit(account);
   }
 
   private beginSetup(response: GatewayResponse): void {

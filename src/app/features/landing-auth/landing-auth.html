@@ -1,5 +1,7 @@
 <div class="min-h-screen bg-slate-50 flex flex-col justify-between py-12 px-4 sm:px-6 lg:px-8 font-sans">
-  <div class="max-w-md w-full mx-auto space-y-8 my-auto">
+  <div class="w-full mx-auto space-y-8 my-auto"
+       [class.max-w-md]="!(setupStep() && setupStep()! >= 4)"
+       [class.setup-evidence-shell]="setupStep() && setupStep()! >= 4">
     <div class="text-center select-none">
       <img class="brand-logo mx-auto mb-4" src="brand/jobseeker-copilot-logo.svg"
            alt="Job Seeker Copilot logo" width="52" height="52" />
@@ -21,7 +23,7 @@
           <span aria-label="Setup progress">{{ setupProgress() }}</span>
         </div>
         <div class="setup-progress" aria-hidden="true">
-          @for (step of [1, 2, 3]; track step) {
+          @for (step of [1, 2, 3, 4, 5, 6]; track step) {
             <span [class.complete]="step <= (setupStep() ?? 1)"></span>
           }
         </div>
@@ -105,6 +107,102 @@
               </div>
             </fieldset>
           </section>
+        } @else if (setupStep() === 4) {
+          <section aria-labelledby="setup-qualifications-title" class="setup-step setup-step-evidence">
+            <mat-icon>school</mat-icon>
+            <h3 id="setup-qualifications-title">Add your qualifications and training</h3>
+            <span class="setup-optional-badge">Optional</span>
+            <p>Record any qualifications or training. You can add several, or skip and do this later.</p>
+            <app-evidence-library
+              [onboardingCategory]="'QUALIFICATION_TRAINING'"
+              (entryAdded)="onQualificationAdded($event)"></app-evidence-library>
+            <p class="setup-evidence-summary" aria-live="polite">
+              {{ qualificationsAdded() }} added so far
+            </p>
+            @if (qualificationEntries().length) {
+              <ul class="setup-evidence-list">
+                @for (item of qualificationEntries(); track item.entryId) {
+                  <li class="setup-evidence-item">
+                    <span class="setup-evidence-heading">{{ item.heading }}</span>
+                    @if (item.confirmed) {
+                      <span class="setup-evidence-chip confirmed">Confirmed</span>
+                    } @else {
+                      <span class="setup-evidence-chip draft">Draft</span>
+                      <button type="button" class="setup-evidence-confirm"
+                              (click)="confirmOnboardingEntry(4, item.entryId)"
+                              [disabled]="item.confirming || isLoading()">
+                        {{ item.confirming ? 'Confirming…' : 'Confirm' }}
+                      </button>
+                    }
+                  </li>
+                }
+              </ul>
+            }
+          </section>
+        } @else if (setupStep() === 5) {
+          <section aria-labelledby="setup-employment-title" class="setup-step setup-step-evidence">
+            <mat-icon>work_outline</mat-icon>
+            <h3 id="setup-employment-title">Add your employment history</h3>
+            <span class="setup-optional-badge">Optional</span>
+            <p>Add the roles you have held. Save as many as you like, or skip and add them later.</p>
+            <app-evidence-library
+              [onboardingCategory]="'EMPLOYMENT'"
+              (entryAdded)="onEmploymentAdded($event)"></app-evidence-library>
+            <p class="setup-evidence-summary" aria-live="polite">
+              {{ employmentAdded() }} added so far
+            </p>
+            @if (employmentEntries().length) {
+              <ul class="setup-evidence-list">
+                @for (item of employmentEntries(); track item.entryId) {
+                  <li class="setup-evidence-item">
+                    <span class="setup-evidence-heading">{{ item.heading }}</span>
+                    @if (item.confirmed) {
+                      <span class="setup-evidence-chip confirmed">Confirmed</span>
+                    } @else {
+                      <span class="setup-evidence-chip draft">Draft</span>
+                      <button type="button" class="setup-evidence-confirm"
+                              (click)="confirmOnboardingEntry(5, item.entryId)"
+                              [disabled]="item.confirming || isLoading()">
+                        {{ item.confirming ? 'Confirming…' : 'Confirm' }}
+                      </button>
+                    }
+                  </li>
+                }
+              </ul>
+            }
+          </section>
+        } @else if (setupStep() === 6) {
+          <section aria-labelledby="setup-volunteering-title" class="setup-step setup-step-evidence">
+            <mat-icon>volunteer_activism</mat-icon>
+            <h3 id="setup-volunteering-title">Add your volunteering experience</h3>
+            <span class="setup-optional-badge">Optional</span>
+            <p>Share any volunteering you have done. Add as many as you like, or skip to finish.</p>
+            <app-evidence-library
+              [onboardingCategory]="'VOLUNTEERING'"
+              (entryAdded)="onVolunteeringAdded($event)"></app-evidence-library>
+            <p class="setup-evidence-summary" aria-live="polite">
+              {{ volunteeringAdded() }} added so far
+            </p>
+            @if (volunteeringEntries().length) {
+              <ul class="setup-evidence-list">
+                @for (item of volunteeringEntries(); track item.entryId) {
+                  <li class="setup-evidence-item">
+                    <span class="setup-evidence-heading">{{ item.heading }}</span>
+                    @if (item.confirmed) {
+                      <span class="setup-evidence-chip confirmed">Confirmed</span>
+                    } @else {
+                      <span class="setup-evidence-chip draft">Draft</span>
+                      <button type="button" class="setup-evidence-confirm"
+                              (click)="confirmOnboardingEntry(6, item.entryId)"
+                              [disabled]="item.confirming || isLoading()">
+                        {{ item.confirming ? 'Confirming…' : 'Confirm' }}
+                      </button>
+                    }
+                  </li>
+                }
+              </ul>
+            }
+          </section>
         }
 
         <div class="setup-actions">
@@ -115,11 +213,13 @@
           }
           <button id="btn-next-step" type="button" class="setup-next"
                   (click)="continueSetup()" [disabled]="isLoading()">
-            {{ setupStep() === 3 ? (isLoading() ? 'Saving…' : 'Finish setup') : 'Continue' }}
+            {{ setupStep() === 3
+              ? (isLoading() ? 'Saving…' : 'Continue')
+              : (setupStep() === 6 ? 'Finish' : 'Continue') }}
           </button>
         </div>
         <button type="button" class="setup-later" (click)="skipSetup()" [disabled]="isLoading()">
-          Set this up later
+          {{ setupStep() && setupStep()! >= 4 ? 'Skip' : 'Set this up later' }}
         </button>
       } @else {
       <div class="flex p-1 bg-slate-100 border border-slate-200 rounded-2xl" role="tablist" aria-label="Account access">
