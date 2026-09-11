@@ -1,3 +1,9 @@
+:host {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+}
+
 .job-card,
 .upload-modal {
   background: var(--color-surface);
@@ -12,6 +18,19 @@
   box-shadow: var(--shadow-card-hover);
 }
 
+.job-card,
+.job-card-header-row,
+.job-card-actions,
+.job-meta,
+.expanded-content,
+.documents-area {
+  min-width: 0;
+}
+
+.job-card {
+  max-width: 100%;
+}
+
 .job-main-toggle:focus-visible,
 .job-meta-toggle:focus-visible,
 .card-caret-button:focus-visible,
@@ -23,6 +42,8 @@
   color: var(--text-primary);
   font-size: 0.98rem !important;
   font-weight: 700;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .job-card-trigger {
@@ -45,8 +66,9 @@
 
 .card-caret-button {
   border-radius: 6px;
-  height: 1.6rem;
-  width: 1.6rem;
+  height: 2.75rem;
+  min-width: 2.75rem;
+  width: 2.75rem;
 }
 
 .card-caret-button:hover {
@@ -58,9 +80,28 @@
   font-size: 0.82rem !important;
 }
 
+.job-company,
+.job-meta > span,
+.discovery-status,
+.expanded-content h4,
+.expanded-content li,
+.expanded-content dd {
+  overflow-wrap: anywhere;
+}
+
 .job-meta {
   gap: 0.35rem 1rem !important;
   margin-top: 0.55rem !important;
+}
+
+.job-meta > span {
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+}
+
+.job-meta > span > mat-icon {
+  flex: 0 0 auto;
 }
 
 .job-meta mat-icon {
@@ -115,6 +156,14 @@
   white-space: pre-line;
 }
 
+@media (min-width: 521px) {
+  .job-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 .description-toggle {
   background: transparent;
   border: 0;
@@ -142,6 +191,50 @@
 
 .description-load-error {
   color: #b91c1c;
+}
+
+.nhs-preview-note {
+  align-items: flex-start;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.65rem;
+  color: #1e3a8a;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.45rem;
+  overflow-wrap: anywhere;
+  padding: 0.65rem 0.75rem;
+}
+
+.nhs-preview-note a {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+@media (max-width: 520px) {
+  .job-card-trigger {
+    padding: 0.75rem !important;
+  }
+
+  .job-card-header-row {
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .job-main-toggle {
+    flex-basis: 100%;
+    min-height: 2.75rem;
+  }
+
+  .job-card-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  .job-meta-toggle {
+    min-height: 2.75rem;
+  }
 }
 
 .source-badge,
@@ -184,6 +277,10 @@
   display: flex;
   gap: 0.75rem;
   justify-content: space-between;
+}
+
+.match-explanation header > div {
+  min-width: 0;
 }
 
 .match-explanation header h4,

@@ -66,7 +66,7 @@ const PAYMENT_ORDER_STATUSES = new Set<PaymentOrderStatus>([
 const PAYMENT_ORDER_MESSAGE_CODES: Readonly<Record<PaymentOrderStatus, string>> = {
   PENDING_CHECKOUT: 'PAYMENT_PENDING',
   CHECKOUT_OPEN: 'PAYMENT_PENDING',
-  FULFILLED: 'CREDITS_ADDED',
+  FULFILLED: 'GENERATIONS_ADDED',
   EXPIRED: 'CHECKOUT_EXPIRED',
   CANCELLED: 'CHECKOUT_CANCELLED',
   REFUNDED: 'PAYMENT_REFUNDED',
@@ -76,12 +76,12 @@ const PAYMENT_ORDER_MESSAGE_CODES: Readonly<Record<PaymentOrderStatus, string>> 
 };
 const PAYMENT_ORDER_PLANS: Readonly<Record<string, {
   bonusDocumentCredits: number;
-  documentCredits: number;
+  documentGenerations: number;
   priceMinor: number;
 }>> = {
-  starter: {bonusDocumentCredits: 5, documentCredits: 10, priceMinor: 799},
-  active: {bonusDocumentCredits: 13, documentCredits: 25, priceMinor: 1699},
-  power: {bonusDocumentCredits: 30, documentCredits: 60, priceMinor: 3499},
+  starter: {bonusDocumentCredits: 5, documentGenerations: 10, priceMinor: 499},
+  active: {bonusDocumentCredits: 13, documentGenerations: 25, priceMinor: 1199},
+  power: {bonusDocumentCredits: 30, documentGenerations: 60, priceMinor: 1999},
 };
 
 @Component({
@@ -145,20 +145,6 @@ export class App implements OnInit, OnDestroy {
   documentGenerationMode = signal<DocumentGenerationMode>('REQUIRED_VALIDATION');
   commuteRoutingMode = signal<CommuteRoutingMode>('DISTANCE_ONLY');
   legalConfiguration = signal<PublicLegalConfiguration>(DRAFT_LEGAL_CONFIGURATION);
-  jobSearchProviderModeLabel = computed(() => {
-    switch (this.jobSearchProviderMode()) {
-      case 'FIXTURE': return 'Fixture-backed';
-      case 'REAL_PROVIDERS': return 'Real providers';
-      default: return 'Required validation';
-    }
-  });
-  documentGenerationModeLabel = computed(() => {
-    switch (this.documentGenerationMode()) {
-      case 'FIXTURE_LLM': return 'Fixture-generated';
-      case 'REAL_LLM': return 'Real OpenAI generation';
-      default: return 'Not enabled for this beta';
-    }
-  });
   activeWorkspaceTab = signal<WorkspaceTab>('search');
   readonly jobSearchReadiness = computed(() => searchReadiness(this.structuredProfile()));
   selectedApplicationId = signal<string | null>(null);
@@ -309,25 +295,25 @@ export class App implements OnInit, OnDestroy {
     const order = this.paymentOrder();
     switch (this.paymentOrderState()) {
       case 'fulfilled':
-        return `${order?.totalGrantedDocumentCredits ?? 0} document credits were added after secure server confirmation.`;
+        return `${order?.totalGrantedDocumentGenerations ?? 0} document generations were added after secure server confirmation.`;
       case 'expired':
-        return 'The secure checkout expired before payment was confirmed. No document credits were added for this order.';
+        return 'The secure checkout expired before payment was confirmed. No document generations were added for this order.';
       case 'cancelled':
-        return 'The secure server confirms that this checkout was cancelled. No document credits were added for this order.';
+        return 'The secure server confirms that this checkout was cancelled. No document generations were added for this order.';
       case 'refunded':
-        return 'The payment service has recorded a refund or partial refund. Your document-credit balance reflects the authoritative payment record.';
+        return 'The payment service has recorded a refund or partial refund. Your document generation allowance reflects the authoritative payment record.';
       case 'disputed':
         return 'The payment service has recorded a dispute. Your balance may be restricted while the payment is reviewed.';
       case 'manual-review':
-        return 'This payment needs manual review. Document credits are not described as added unless fulfilment is securely confirmed.';
+        return 'This payment needs manual review. Document generations are not described as added unless fulfilment is securely confirmed.';
       case 'invalid':
-        return 'This page did not contain one valid order reference. No payment or document-credit outcome can be inferred from the return link.';
+        return 'This page did not contain one valid order reference. No payment or document-generation outcome can be inferred from the return link.';
       case 'unavailable':
-        return 'We could not securely check the order. No payment or document-credit outcome can be inferred from this page; try the status check again.';
+        return 'We could not securely check the order. No payment or document-generation outcome can be inferred from this page; try the status check again.';
       case 'pending':
-        return 'The secure payment record is not final yet. No document credits are described as added unless fulfilment is confirmed. You can check again.';
+        return 'The secure payment record is not final yet. No document generations are described as added unless fulfilment is confirmed. You can check again.';
       default:
-        return 'We are checking the owner-scoped server record. The return URL itself never confirms payment or adds document credits.';
+        return 'We are checking the owner-scoped server record. The return URL itself never confirms payment or adds document generations.';
     }
   }
 
@@ -497,15 +483,15 @@ export class App implements OnInit, OnDestroy {
     if (!response || typeof response.pricingPlanId !== 'string') return false;
     const plan = PAYMENT_ORDER_PLANS[response.pricingPlanId];
     const promotionIsSafe = plan !== undefined
-      && (response.promotionBonusDocumentCredits === 0
-        || response.promotionBonusDocumentCredits === plan.bonusDocumentCredits);
+      && (response.promotionBonusDocumentGenerations === 0
+        || response.promotionBonusDocumentGenerations === plan.bonusDocumentCredits);
     const fulfilledAtIsSafe = response.status !== 'FULFILLED'
       || (typeof response.fulfilledAt === 'string'
         && Number.isFinite(Date.parse(response.fulfilledAt)));
     const grantedCreditsAreSafe = response.status === 'FULFILLED'
-      ? response.totalGrantedDocumentCredits
-        === response.documentCredits + response.promotionBonusDocumentCredits
-      : response.totalGrantedDocumentCredits === 0;
+      ? response.totalGrantedDocumentGenerations
+        === response.documentGenerations + response.promotionBonusDocumentGenerations
+      : response.totalGrantedDocumentGenerations === 0;
     return typeof response?.orderId === 'string'
       && response.orderId.toLowerCase() === expectedOrderId
       && PAYMENT_ORDER_STATUSES.has(response.status)
@@ -518,11 +504,11 @@ export class App implements OnInit, OnDestroy {
       && ['SOLE_TRADER', 'LIMITED_COMPANY'].includes(response.legalEntityType)
       && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/
         .test(response.legalEntityConfigurationVersion)
-      && Number.isInteger(response.documentCredits)
-      && response.documentCredits === plan.documentCredits
-      && Number.isInteger(response.promotionBonusDocumentCredits)
+      && Number.isInteger(response.documentGenerations)
+      && response.documentGenerations === plan.documentGenerations
+      && Number.isInteger(response.promotionBonusDocumentGenerations)
       && promotionIsSafe
-      && Number.isInteger(response.totalGrantedDocumentCredits)
+      && Number.isInteger(response.totalGrantedDocumentGenerations)
       && grantedCreditsAreSafe
       && Number.isInteger(response.priceMinor)
       && response.priceMinor === plan.priceMinor
@@ -530,7 +516,7 @@ export class App implements OnInit, OnDestroy {
       && Number.isFinite(Date.parse(response.expiresAt))
       && fulfilledAtIsSafe
       && response.messageCode === PAYMENT_ORDER_MESSAGE_CODES[response.status]
-      && response.creditsAdded === (response.status === 'FULFILLED');
+      && response.generationsAdded === (response.status === 'FULFILLED');
   }
 
   private routePath(url: string): string {
@@ -757,7 +743,7 @@ export class App implements OnInit, OnDestroy {
   refreshDocumentCreditBalance() {
     if (!this.isLoggedIn()) return;
     this.paymentService.wallet().subscribe({
-      next: (wallet) => this.updateDocumentCreditBalance(wallet.balanceDocumentCredits),
+      next: (wallet) => this.updateDocumentCreditBalance(wallet.remainingDocumentGenerations),
       error: (error) => console.warn('Unable to refresh document-credit balance:', error),
     });
   }

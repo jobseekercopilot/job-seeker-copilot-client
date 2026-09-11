@@ -201,26 +201,18 @@ describe('payment BFF routes', () => {
     return `http://127.0.0.1:${address.port}`;
   }
 
-  it('serves wallet through the session-derived owner boundary', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(profileResponse())
-      .mockResolvedValueOnce(new Response(
-        '{"userId":"session-owner-123","balanceTokens":120000}',
-        {status: 200, headers: {'Content-Type': 'application/json'}},
-      ));
+  it.each([
+    '/api/v1/payment/wallet',
+    '/api/v1/payment/pricing',
+    '/api/v1/payment/transactions',
+  ])('does not expose the legacy customer payment boundary %s', async path => {
+    const fetchMock = vi.fn();
     const origin = await start(fetchMock as typeof fetch);
 
-    const response = await fetch(`${origin}/api/v1/payment/wallet`, {
-      headers: {Cookie: 'jsc-access-local=session-cookie'},
-    });
+    const response = await fetch(`${origin}${path}`);
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get('cache-control')).toBe('private, no-store');
-    expect(await response.json()).toEqual({
-      userId: 'session-owner-123',
-      balanceTokens: 120000,
-    });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('rejects a payment mutation without matching CSRF before downstream calls', async () => {

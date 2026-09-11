@@ -11,6 +11,17 @@ describe('NavigationBar', () => {
     }).compileComponents();
   });
 
+  it('shows the public-beta status beside the product brand', () => {
+    const fixture = TestBed.createComponent(NavigationBar);
+    fixture.detectChanges();
+
+    const badge = fixture.nativeElement.querySelector('.public-beta-badge');
+    expect(badge).not.toBeNull();
+    expect(badge.textContent.trim()).toBe('Public beta');
+    expect(fixture.nativeElement.querySelector('.header-title').textContent)
+      .toContain('Job Seeker Copilot');
+  });
+
   it('contains the only account actions and no duplicate workspace navigation', () => {
     const fixture = TestBed.createComponent(NavigationBar);
     fixture.componentRef.setInput('userName', 'Alex Taylor');
@@ -24,6 +35,53 @@ describe('NavigationBar', () => {
     expect(text).toContain('Experience & achievements');
     expect(text).toContain('Sign out');
     expect(fixture.nativeElement.querySelector('.workspace-navigation')).toBeNull();
+  });
+
+  it('turns an exhausted balance into a clear generation-pack action', () => {
+    const fixture = TestBed.createComponent(NavigationBar);
+    fixture.componentRef.setInput('documentCreditBalance', 0);
+    fixture.detectChanges();
+
+    const trigger = fixture.nativeElement.querySelector('.token-balance-pill');
+    expect(trigger.textContent).toContain('Get generations');
+    expect(trigger.textContent).not.toContain('0 generations');
+    expect(trigger.getAttribute('aria-label')).toContain('No document generations remain');
+
+    trigger.click();
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.querySelector('.token-dropdown').textContent;
+    expect(text).toContain('No generations remaining');
+    expect(text).toContain('Choose a one-off pack');
+    expect(text).toContain('Choose a generation pack');
+    expect(text).toContain('View generation history');
+  });
+
+  it('keeps a direct generation-pack route in the mobile header at every balance state', () => {
+    const fixture = TestBed.createComponent(NavigationBar);
+    fixture.componentRef.setInput('documentCreditBalance', null);
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector('.mobile-packs-link');
+    expect(link).not.toBeNull();
+    expect(link.getAttribute('href')).toBe('/payment');
+    expect(link.getAttribute('aria-label')).toBe('Buy document generation packs');
+    expect(link.textContent).toContain('Packs');
+
+    fixture.componentRef.setInput('documentCreditBalance', 0);
+    fixture.detectChanges();
+    expect(link.textContent).toContain('Get packs');
+  });
+
+  it('keeps the exact remaining balance for a non-empty allowance', () => {
+    const fixture = TestBed.createComponent(NavigationBar);
+    fixture.componentRef.setInput('documentCreditBalance', 7);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.token-balance-pill').textContent)
+      .toContain('Documents: 7 generations');
+    expect(fixture.nativeElement.querySelector('.token-balance-pill').textContent)
+      .not.toContain('Get generations');
   });
 
   it('emits profile and experience destinations from the user menu', () => {
@@ -47,6 +105,19 @@ describe('NavigationBar', () => {
     fixture.componentRef.setInput('userEmail', 'alex@example.test');
     fixture.detectChanges();
     fixture.componentInstance.toggleDropdown();
+    fixture.detectChanges();
+
+    const result = await axe.run(fixture.nativeElement, {
+      rules: {'color-contrast': {enabled: false}},
+    });
+    expect(result.violations).toEqual([]);
+  });
+
+  it('has no automated accessibility violations in the exhausted-balance menu', async () => {
+    const fixture = TestBed.createComponent(NavigationBar);
+    fixture.componentRef.setInput('documentCreditBalance', 0);
+    fixture.detectChanges();
+    fixture.componentInstance.toggleTokenDropdown();
     fixture.detectChanges();
 
     const result = await axe.run(fixture.nativeElement, {

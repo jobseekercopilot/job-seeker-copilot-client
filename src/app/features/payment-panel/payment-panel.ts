@@ -25,13 +25,13 @@ interface ExpectedPlan {
 
 const EXPECTED_PLANS: Readonly<Record<string, ExpectedPlan>> = {
   starter: {
-    credits: 10, applications: 5, bonusCredits: 5, name: 'Starter', priceMinor: 799, sortOrder: 1,
+    credits: 10, applications: 5, bonusCredits: 5, name: 'Starter', priceMinor: 499, sortOrder: 1,
   },
   active: {
-    credits: 25, applications: 12, bonusCredits: 13, name: 'Active', priceMinor: 1699, sortOrder: 2,
+    credits: 25, applications: 12, bonusCredits: 13, name: 'Active', priceMinor: 1199, sortOrder: 2,
   },
   power: {
-    credits: 60, applications: 30, bonusCredits: 30, name: 'Power', priceMinor: 3499, sortOrder: 3,
+    credits: 60, applications: 30, bonusCredits: 30, name: 'Power', priceMinor: 1999, sortOrder: 3,
   },
 };
 
@@ -46,6 +46,7 @@ const DETERMINISTIC_CHECKOUT_ERRORS = new Set([
   'IDEMPOTENCY_KEY_REQUIRED',
   'LEGAL_ENTITY_NOT_CONFIGURED',
   'LIVE_RELEASE_NOT_AUTHORISED',
+  'STRIPE_CATALOG_NOT_CONFIGURED',
   'PAYMENTS_DISABLED',
   'PAYMENT_ACCESS_REVOKED',
   'PAYMENT_REVIEW_REQUIRED',
@@ -118,16 +119,6 @@ export class PaymentPanelComponent {
     const promotion = this.catalog()?.promotion;
     return promotion?.enabled === true && promotion.status === 'AVAILABLE';
   });
-  spentPercent = computed(() => {
-    const wallet = this.wallet();
-    const remaining = wallet?.balanceDocumentCredits ?? 0;
-    const spent = wallet?.lifetimeSpentDocumentCredits ?? 0;
-    const total = remaining + spent;
-    return total > 0 ? Math.round((spent / total) * 100) : 0;
-  });
-  ringStyle = computed(() =>
-    `conic-gradient(#2563eb 0 ${this.spentPercent()}%, #dbeafe ${this.spentPercent()}% 100%)`,
-  );
   visibleTransactions = computed(() => this.transactions());
 
   constructor() {
@@ -199,7 +190,7 @@ export class PaymentPanelComponent {
   formatCredits(value: number | null | undefined, includeSign = false): string {
     const credits = value ?? 0;
     const sign = includeSign && credits > 0 ? '+' : '';
-    const unit = Math.abs(credits) === 1 ? 'credit' : 'credits';
+    const unit = Math.abs(credits) === 1 ? 'generation' : 'generations';
     return `${sign}${credits.toLocaleString('en-GB')} ${unit}`;
   }
 
@@ -220,7 +211,7 @@ export class PaymentPanelComponent {
   }
 
   planUsageSummary(plan: DocumentCreditPlan): string {
-    const remainder = plan.documentCredits - (plan.fullApplicationEquivalent * 2);
+    const remainder = plan.documentGenerations - (plan.fullApplicationEquivalent * 2);
     const suffix = remainder === 1 ? ', plus one individual document' : '';
     return `Up to ${plan.fullApplicationEquivalent} complete applications${suffix}`;
   }
@@ -232,14 +223,9 @@ export class PaymentPanelComponent {
   }
 
   transactionActivity(transaction: DocumentCreditTransaction): string {
-    if (transaction.type === 'DOCUMENT_RESERVED'
-      || transaction.type === 'DOCUMENT_SPENT'
-      || transaction.type === 'REFUND_REVERSAL'
-      || transaction.type === 'DISPUTE_REVERSAL'
-      || transaction.type === 'DOCUMENT_RESERVATION_RELEASED') {
-      return this.defaultTransactionDescription(transaction.type);
-    }
-    return transaction.description.trim() || this.defaultTransactionDescription(transaction.type);
+    // The upstream ledger description is retained for internal reconciliation,
+    // but the customer boundary renders only this allowlisted product language.
+    return this.defaultTransactionDescription(transaction.type);
   }
 
   readinessMessage(code: CheckoutReadinessCode | undefined = this.readiness()?.code): string {
@@ -252,8 +238,8 @@ export class PaymentPanelComponent {
     const wallet = this.wallet();
     if (!wallet) {
       return this.loading()
-        ? 'Checking your document-credit account before enabling checkout.'
-        : 'Purchasing is blocked because your document-credit account could not be verified.';
+        ? 'Checking your document generation allowance before enabling checkout.'
+        : 'Purchasing is blocked because your document generation allowance could not be verified.';
     }
     if (wallet.status === 'BLOCKED_REVIEW') {
       return 'Purchasing is paused while your payment account is reviewed.';
@@ -262,8 +248,6 @@ export class PaymentPanelComponent {
       return 'Purchasing is unavailable for this account. Contact support if you need help.';
     }
     switch (code) {
-      case 'READY':
-        return 'Secure one-off checkout is available.';
       case 'PROVIDER_UNAVAILABLE':
       case 'PAYMENT_PROVIDER_UNAVAILABLE':
         return 'The payment provider is temporarily unavailable. Purchasing is paused and no payment has been requested.';
@@ -271,6 +255,8 @@ export class PaymentPanelComponent {
         return 'The payment service is temporarily unavailable. Purchasing is paused and no payment has been requested.';
       case 'LIVE_RELEASE_NOT_AUTHORISED':
         return 'Purchasing is prepared but has not been authorised for this release.';
+      case 'STRIPE_CATALOG_NOT_CONFIGURED':
+        return 'Purchasing is blocked until the approved payment catalogue is configured.';
       case 'TAX_STATUS_NOT_CONFIGURED':
         return 'Purchasing is blocked until the seller tax status has completed release review.';
       case 'LEGAL_ENTITY_NOT_CONFIGURED':
@@ -348,7 +334,7 @@ export class PaymentPanelComponent {
         },
         error: () => {
           this.catalog.set(null);
-          this.dataError.set('Document-credit pricing is temporarily unavailable.');
+          this.dataError.set('Document generation pricing is temporarily unavailable.');
         },
       });
       this.paymentService.checkoutReadiness().subscribe({
@@ -366,18 +352,18 @@ export class PaymentPanelComponent {
         if (!this.walletIsSafe(wallet)) {
           this.wallet.set(null);
           this.dataError.set(
-            'Your document-credit account is unavailable because its current state could not be verified.',
+            'Your document generation allowance is unavailable because its current state could not be verified.',
           );
           this.loading.set(false);
           return;
         }
         this.wallet.set(wallet);
-        this.balanceChanged.emit(wallet.balanceDocumentCredits);
+        this.balanceChanged.emit(wallet.remainingDocumentGenerations);
         this.loading.set(false);
       },
       error: () => {
         this.wallet.set(null);
-        this.dataError.set('Your document-credit balance is temporarily unavailable.');
+        this.dataError.set('Your document generation allowance is temporarily unavailable.');
         this.loading.set(false);
       },
     });
@@ -391,13 +377,13 @@ export class PaymentPanelComponent {
           || !response.transactions.every(transaction => this.transactionIsSafe(transaction))) {
           this.transactions.set([]);
           this.dataError.set(
-            'Your document-credit history is unavailable because its current state could not be verified.',
+            'Your document generation history is unavailable because its current state could not be verified.',
           );
           return;
         }
         this.transactions.set(response.transactions);
       },
-      error: () => this.dataError.set('Your document-credit history is temporarily unavailable.'),
+      error: () => this.dataError.set('Your document generation history is temporarily unavailable.'),
     });
   }
 
@@ -409,8 +395,8 @@ export class PaymentPanelComponent {
       || catalog.currency !== 'GBP'
       || catalog.billingCountry !== 'GB'
       || catalog.automaticRenewal !== false
-      || catalog.creditUnit !== 'DOCUMENT'
-      || catalog.freeAllowanceCredits !== 2
+      || catalog.generationUnit !== 'DOCUMENT'
+      || catalog.freeAllowanceGenerations !== 2
       || catalog.displayedPriceIsCheckoutTotal !== true
       || !['NOT_CONFIGURED', 'NOT_VAT_REGISTERED', 'VAT_REGISTERED'].includes(catalog.taxStatus)
       || !['VAT_INCLUDED', 'VAT_NOT_CHARGED'].includes(catalog.taxTreatment)
@@ -444,9 +430,9 @@ export class PaymentPanelComponent {
         && plan.description.length <= 256
         && plan.name === expected.name
         && plan.currency === 'GBP'
-        && plan.documentCredits === expected.credits
+        && plan.documentGenerations === expected.credits
         && plan.fullApplicationEquivalent === expected.applications
-        && plan.promotionBonusDocumentCredits
+        && plan.promotionBonusDocumentGenerations
           === (promotionAvailable ? expected.bonusCredits : 0)
         && plan.priceMinor === expected.priceMinor
         && plan.sortOrder === expected.sortOrder;
@@ -457,11 +443,11 @@ export class PaymentPanelComponent {
     return wallet !== null
       && typeof wallet === 'object'
       && [
-        wallet.balanceDocumentCredits,
-        wallet.lifetimePurchasedDocumentCredits,
-        wallet.lifetimeSpentDocumentCredits,
-        wallet.lifetimeReversedDocumentCredits,
-        wallet.reviewDebtDocumentCredits,
+        wallet.remainingDocumentGenerations,
+        wallet.lifetimePurchasedDocumentGenerations,
+        wallet.lifetimeUsedDocumentGenerations,
+        wallet.lifetimeReversedDocumentGenerations,
+        wallet.reviewDebtDocumentGenerations,
       ].every(value => Number.isInteger(value) && value >= 0)
       && typeof wallet.freeAllowanceGranted === 'boolean'
       && ['ACTIVE', 'BLOCKED_REVIEW', 'REVOKED'].includes(wallet.status);
@@ -474,6 +460,7 @@ export class PaymentPanelComponent {
       'READY',
       'PAYMENTS_DISABLED',
       'LIVE_RELEASE_NOT_AUTHORISED',
+      'STRIPE_CATALOG_NOT_CONFIGURED',
       'TAX_STATUS_NOT_CONFIGURED',
       'LEGAL_ENTITY_NOT_CONFIGURED',
       'PROVIDER_UNAVAILABLE',
@@ -493,6 +480,7 @@ export class PaymentPanelComponent {
       'READY',
       'PAYMENTS_DISABLED',
       'LIVE_RELEASE_NOT_AUTHORISED',
+      'STRIPE_CATALOG_NOT_CONFIGURED',
       'NOT_CHECKED',
       'UNAVAILABLE',
     ].includes(readiness.providerCode);
@@ -515,12 +503,12 @@ export class PaymentPanelComponent {
       && typeof transaction === 'object'
       && ORDER_ID.test(transaction.id)
       && DOCUMENT_CREDIT_TRANSACTION_TYPES.has(transaction.type)
-      && Number.isInteger(transaction.documentCredits)
-      && transaction.documentCredits >= 0
-      && Number.isInteger(transaction.balanceBeforeDocumentCredits)
-      && transaction.balanceBeforeDocumentCredits >= 0
-      && Number.isInteger(transaction.balanceAfterDocumentCredits)
-      && transaction.balanceAfterDocumentCredits >= 0
+      && Number.isInteger(transaction.documentGenerations)
+      && transaction.documentGenerations >= 0
+      && Number.isInteger(transaction.balanceBeforeDocumentGenerations)
+      && transaction.balanceBeforeDocumentGenerations >= 0
+      && Number.isInteger(transaction.balanceAfterDocumentGenerations)
+      && transaction.balanceAfterDocumentGenerations >= 0
       && typeof transaction.operationId === 'string'
       && transaction.operationId.trim().length > 0
       && typeof transaction.description === 'string'
@@ -529,9 +517,9 @@ export class PaymentPanelComponent {
   }
 
   private transactionBalanceChangeIsSafe(transaction: DocumentCreditTransaction): boolean {
-    const before = transaction.balanceBeforeDocumentCredits;
-    const after = transaction.balanceAfterDocumentCredits;
-    const magnitude = transaction.documentCredits;
+    const before = transaction.balanceBeforeDocumentGenerations;
+    const after = transaction.balanceAfterDocumentGenerations;
+    const magnitude = transaction.documentGenerations;
     switch (transaction.type) {
       case 'FREE_ALLOWANCE_GRANTED':
       case 'PURCHASE':
@@ -573,11 +561,11 @@ export class PaymentPanelComponent {
     const catalog = this.catalog();
     const snapshot = response.pricingSnapshot;
     const expected = EXPECTED_PLANS[plan.id];
-    const bonusIsSafe = Number.isInteger(response.promotionBonusDocumentCredits)
-      && response.promotionBonusDocumentCredits >= 0
+    const bonusIsSafe = Number.isInteger(response.promotionBonusDocumentGenerations)
+      && response.promotionBonusDocumentGenerations >= 0
       && (response.promotionGuaranteed
-        ? response.promotionBonusDocumentCredits === expected?.bonusCredits
-        : response.promotionBonusDocumentCredits === 0);
+        ? response.promotionBonusDocumentGenerations === expected?.bonusCredits
+        : response.promotionBonusDocumentGenerations === 0);
     return catalog !== null
       && expected !== undefined
       && ORDER_ID.test(response.orderId)
@@ -593,7 +581,7 @@ export class PaymentPanelComponent {
       && snapshot.catalogVersion === catalog.catalogVersion
       && snapshot.pricingPlanId === plan.id
       && snapshot.pricingPlanName === plan.name
-      && snapshot.documentCredits === plan.documentCredits
+      && snapshot.documentGenerations === plan.documentGenerations
       && snapshot.priceMinor === plan.priceMinor
       && snapshot.currency === catalog.currency
       && snapshot.billingCountry === catalog.billingCountry
@@ -614,12 +602,12 @@ export class PaymentPanelComponent {
   }
 
   private signedTransactionAmount(transaction: DocumentCreditTransaction): number {
-    const absolute = Math.abs(transaction.documentCredits);
+    const absolute = Math.abs(transaction.documentGenerations);
     if (transaction.type === 'DOCUMENT_RESERVED'
       || transaction.type === 'REFUND_REVERSAL'
       || transaction.type === 'DISPUTE_REVERSAL') return -absolute;
     if (transaction.type === 'ADJUSTMENT') {
-      return transaction.balanceAfterDocumentCredits < transaction.balanceBeforeDocumentCredits
+      return transaction.balanceAfterDocumentGenerations < transaction.balanceBeforeDocumentGenerations
         ? -absolute
         : absolute;
     }
@@ -628,19 +616,19 @@ export class PaymentPanelComponent {
 
   private defaultTransactionDescription(type: DocumentCreditTransaction['type']): string {
     switch (type) {
-      case 'FREE_ALLOWANCE_GRANTED': return 'Free document credits added';
-      case 'PURCHASE': return 'Document credits purchased';
+      case 'FREE_ALLOWANCE_GRANTED': return 'Free document generations added';
+      case 'PURCHASE': return 'Document generations purchased';
       case 'PROMOTION_BONUS': return 'Founding offer bonus added';
       case 'DOCUMENT_RESERVED':
-        return 'Document credit reserved while generation is running';
+        return 'Document generation reserved while generation is running';
       case 'DOCUMENT_SPENT':
-        return 'Delivered document completed from the reserved credit';
+        return 'Delivered document completed from the reserved generation';
       case 'DOCUMENT_RESERVATION_RELEASED':
-        return 'Document credit restored because generation did not complete';
-      case 'REFUND_REVERSAL': return 'Credits reversed after a payment refund';
-      case 'DISPUTE_REVERSAL': return 'Credits reversed after a payment dispute';
-      case 'ADJUSTMENT': return 'Document-credit adjustment';
-      default: return 'Document-credit activity';
+        return 'Document generation restored because generation did not complete';
+      case 'REFUND_REVERSAL': return 'Generations reversed after a payment refund';
+      case 'DISPUTE_REVERSAL': return 'Generations reversed after a payment dispute';
+      case 'ADJUSTMENT': return 'Document generation adjustment';
+      default: return 'Document generation activity';
     }
   }
 
@@ -664,6 +652,8 @@ export class PaymentPanelComponent {
         return 'Purchasing is currently disabled. No payment has been requested.';
       case 'LIVE_RELEASE_NOT_AUTHORISED':
         return 'Purchasing has not been authorised for this release. No payment has been requested.';
+      case 'STRIPE_CATALOG_NOT_CONFIGURED':
+        return 'Checkout is blocked until the approved payment catalogue is configured. No payment has been requested.';
       case 'TAX_STATUS_NOT_CONFIGURED':
         return 'Checkout is blocked until the seller tax status has completed release review. No payment has been requested.';
       case 'LEGAL_ENTITY_NOT_CONFIGURED':

@@ -725,15 +725,15 @@ test('pins durable generation, atomic selection and exact lifecycle contracts', 
     '/api/v1/document-generation/document-versions/{documentId}'
   ].delete;
 
-  assert.equal(gateway.version, '2.8.1');
+  assert.equal(gateway.version, '3.0.0');
   assert.equal(gateway.sourceRepository, 'jobseekercopilot/document-generation-gateway');
-  assert.equal(gateway.sourceCommit, 'cd9b71a3d4dbfbe41d6784f3eeeb7b1b113f5218');
+  assert.equal(gateway.sourceCommit, '3eadf7c3eb58ead6ead687fff64c398c0833e3ff');
   assert.equal(
     gateway.sha256,
-    '864ba3c36b2ba4bcd1749edc597ed903a21e7dfa515bb2809d3bc9b9cf878f42',
+    '930d8612d035c72a18107a7ea0afe3c1af52b2f86240c61b27c096c388dce895',
   );
   assert.equal(gateway.output, 'src/app/api/document-generation-gateway');
-  assert.equal(contract.info.version, '2.8.1');
+  assert.equal(contract.info.version, '3.0.0');
   assert.equal(start.operationId, 'startOperation');
   assert.equal(start.requestBody.required, true);
   assert.equal(

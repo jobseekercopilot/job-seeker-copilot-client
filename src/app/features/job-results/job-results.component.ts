@@ -50,6 +50,7 @@ import {
   EvidenceRevisionConfirmationStateEnum,
 } from '../../api';
 import {
+  approvedNhsJobsAdvertUrl,
   logMalformedProviderResult,
   providerPlainText,
 } from '../../../shared/provider-content-policy';
@@ -248,8 +249,6 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.activeRoleState()?.freshness ?? null);
   readonly qualitySummary = computed(() =>
     this.activeRoleState()?.qualitySummary ?? null);
-  readonly activeProviderResults = computed(() =>
-    this.activeRoleState()?.providerResults ?? []);
   readonly freshnessLabel = computed(() => {
     const freshness = this.freshness();
     if (!freshness) return 'Freshness not reported';
@@ -286,76 +285,14 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     if (reasons.length === 0) return null;
     return `${reasons.join(', ')} filtered before ranking.`;
   });
-  providerDegraded = computed(() => {
-    const statuses = this.providerStatuses();
-    return statuses.some(status => status !== 'SUCCESS' && status !== 'DISABLED');
-  });
-  readonly reportedProviderOrigin = computed<'LIVE' | 'FIXTURE' | 'MIXED' | 'UNKNOWN' | null>(
-    () => {
-      const enabledResults = this.activeProviderResults()
-        .filter(result => result.status !== 'DISABLED');
-      if (enabledResults.length === 0) return null;
-      const successfulResults = enabledResults.filter(result => result.status === 'SUCCESS');
-      const assessedResults = successfulResults.length ? successfulResults : enabledResults;
-      const modes = new Set(assessedResults.map(result => {
-        const provenance = result.dataProvenance;
-        if (provenance?.dataOrigin === 'LIVE_PROVIDER') return 'LIVE';
-        if (provenance?.dataOrigin === 'FIXTURE') return 'FIXTURE';
-        if (provenance?.providerMode === 'LIVE') return 'LIVE';
-        if (provenance?.providerMode === 'FIXTURE') return 'FIXTURE';
-        return 'UNKNOWN';
-      }));
-      if (modes.has('UNKNOWN')) return 'UNKNOWN';
-      if (modes.has('LIVE') && modes.has('FIXTURE')) return 'MIXED';
-      if (modes.has('FIXTURE')) return 'FIXTURE';
-      if (modes.has('LIVE')) return 'LIVE';
-      return 'UNKNOWN';
-    },
-  );
-  readonly providerProvenanceCaution = computed(() =>
-    this.providerDegraded()
-      || this.reportedProviderOrigin() === 'MIXED'
-      || this.reportedProviderOrigin() === 'UNKNOWN');
-  providerModeLabel = computed(() => {
-    const statuses = this.providerStatuses().filter(status => status !== 'DISABLED');
-    const hasSuccess = statuses.includes('SUCCESS');
-    const reportedOrigin = this.reportedProviderOrigin();
-    if (statuses.includes('CONFIGURATION_ERROR') && !hasSuccess) {
-      return 'Real-provider configuration error';
-    }
-    if (statuses.length > 0 && !hasSuccess) {
-      if (reportedOrigin === 'FIXTURE') return 'Fixture-backed provider data unavailable';
-      if (reportedOrigin === 'MIXED') return 'Mixed provider data unavailable';
-      if (reportedOrigin === 'UNKNOWN') return 'Provider data unavailable — origin not verified';
-      return 'Providers temporarily unavailable';
-    }
-    if (reportedOrigin === 'FIXTURE') return 'Fixture-backed provider data';
-    if (reportedOrigin === 'MIXED') return 'Mixed live and fixture provider data';
-    if (reportedOrigin === 'UNKNOWN') return 'Provider data origin not verified';
-    if (!reportedOrigin && this.activeRoleSearched()) return 'Provider data origin not reported';
-    if (!reportedOrigin && this.providerMode() === 'FIXTURE') return 'Fixture mode configured';
-    if (!reportedOrigin && this.providerMode() === 'REQUIRED_VALIDATION') return 'Required validation';
-    if (this.providerDegraded()) return 'Real providers — partial availability';
-    return reportedOrigin === 'LIVE' ? 'Real providers' : 'Real-provider mode configured';
-  });
   emptyStateMessage = computed(() => {
     if (this.providerMode() !== 'REAL_PROVIDERS') {
       return 'No jobs match your current profile.';
     }
     const statuses = this.providerStatuses().filter(status => status !== 'DISABLED');
     const hasSuccess = statuses.includes('SUCCESS');
-    const hasFailure = statuses.some(status => status !== 'SUCCESS');
-    if (statuses.includes('CONFIGURATION_ERROR') && !hasSuccess) {
-      return 'Provider setup is incomplete. No fixtures used.';
-    }
-    if (!hasSuccess && statuses.includes('RATE_LIMITED')) {
-      return 'Providers rate limited. Try later.';
-    }
     if (statuses.length > 0 && !hasSuccess) {
-      return 'Providers unavailable. Try later.';
-    }
-    if (hasSuccess && hasFailure) {
-      return 'No matches; some providers unavailable.';
+      return 'No jobs to show for this search. Refresh or update your preferences and try again.';
     }
     return 'No jobs match your current profile.';
   });
@@ -425,9 +362,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       : (choice: DocumentChoice | null) => choice !== null;
     return this.evidencePurposes.every(purpose =>
       allowed(choices[purpose])
-      && (choices[purpose] !== 'UPLOAD' || this.validApplicationUploadFile(files[purpose])))
-      && (this.documentChoiceEntryPoint() !== 'GENERATE'
-        || this.evidencePurposes.some(purpose => choices[purpose] === 'GENERATE'));
+      && (choices[purpose] !== 'UPLOAD' || this.validApplicationUploadFile(files[purpose])));
   });
   readonly sortOptions: { value: SortOption; label: string }[] = [
     { value: 'MOST_RELEVANT', label: 'Best assessed match' },
@@ -511,6 +446,10 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         return 'Completeness unknown';
     }
   });
+  readonly generationNhsPreview = computed(() =>
+    this.isNhsJobsPreview(this.evidenceSelectionJob()));
+  readonly generationNhsOfficialAdvertUrl = computed(() =>
+    this.nhsOfficialAdvertUrl(this.evidenceSelectionJob()));
   readonly canGenerateFromSelection = computed(() =>
     !this.evidenceLoading()
     && !this.evidenceLoadError()
@@ -1247,20 +1186,28 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     this.jobService.getJobDetails(provider, externalJobId).subscribe({
       next: details => {
         if (!this.isCurrentJobDetailsRequest(jobKey, requestSequence)) return;
+        const safeDetails: Job = this.isNhsJobsPreview(job)
+          ? {
+              ...details,
+              descriptionCompleteness: details.description?.trim()
+                ? JobDescriptionCompletenessEnum.Preview
+                : JobDescriptionCompletenessEnum.Unknown,
+            }
+          : details;
         // Provider detail records use the provider's raw identifier. Keep the
         // search result identity stable so the inline panel remains attached
         // to the card that opened it while applying the richer advert fields.
         const hydratedJob: Job = {
           ...job,
-          ...details,
+          ...safeDetails,
           id: job.id,
           canonicalJobId: job.canonicalJobId,
         };
         this.evidenceSelectionJob.set(hydratedJob);
         if (!this.generationJobDescriptionEdited()) {
-          this.generationJobDescription.set(details.description?.trim() ?? '');
+          this.generationJobDescription.set(safeDetails.description?.trim() ?? '');
           this.generationJobDescriptionConfirmed.set(
-            details.descriptionCompleteness
+            safeDetails.descriptionCompleteness
               === JobDescriptionCompletenessEnum.Full,
           );
         }
@@ -1269,11 +1216,35 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       error: () => {
         if (!this.isCurrentJobDetailsRequest(jobKey, requestSequence)) return;
         this.generationJobDetailsLoading.set(false);
+        if (this.isNhsJobsPreview(job)) {
+          this.generationJobDetailsError.set(null);
+          this.generationJobDescriptionConfirmed.set(false);
+          return;
+        }
         this.generationJobDetailsError.set(
           'The provider advert could not be refreshed automatically. You can retry or review and complete the editable text below.',
         );
       },
     });
+  }
+
+  private isNhsJobsPreview(job: Job | null): boolean {
+    if (!job) return false;
+    const provider = job.primarySource?.trim() || job.provider?.trim();
+    return provider?.toUpperCase() === 'NHS_JOBS'
+      && job.descriptionCompleteness !== JobDescriptionCompletenessEnum.Full;
+  }
+
+  private nhsOfficialAdvertUrl(job: Job | null): string | null {
+    if (!this.isNhsJobsPreview(job) || !job) return null;
+    for (const source of job.sources ?? []) {
+      for (const candidate of [source.listingUrl, source.applyUrl]) {
+        const approved = approvedNhsJobsAdvertUrl(candidate);
+        if (approved) return approved;
+      }
+    }
+    return approvedNhsJobsAdvertUrl(job.sourceUrl)
+      ?? approvedNhsJobsAdvertUrl(job.url);
   }
 
   retryEvidenceSelection(): void {
@@ -1647,7 +1618,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     if (!job || !job.applicationId || !this.canContinueDocumentChoice()) {
       this.documentChoiceError.set(
         this.documentChoiceEntryPoint() === 'GENERATE'
-          ? 'Choose an action for both documents and select at least one document to generate.'
+          ? 'Choose an action for both documents and select a valid file for each upload.'
           : 'Choose Upload or Not now for both documents and select each upload file.',
       );
       return;
@@ -1715,8 +1686,8 @@ export class JobResultsComponent implements OnInit, OnDestroy {
     const outputs = this.activeEvidencePurposes();
     const names = outputs.map(purpose => this.documentPurposeLabel(purpose));
     const charge = outputs.length === 1
-      ? '1 document credit if delivered'
-      : `${outputs.length} document credits if both are delivered`;
+      ? '1 document generation if delivered'
+      : `${outputs.length} document generations if both are delivered`;
     return `Generate ${names.join(' and ')} (${charge})`;
   }
 
@@ -1864,8 +1835,8 @@ export class JobResultsComponent implements OnInit, OnDestroy {
             && typeof (responseError as {message?: unknown}).message === 'string'
           ? (responseError as {message: string}).message
           : '';
-    const message = detail.includes('Insufficient AI Credit') || detail.includes('Insufficient document credit')
-      ? 'There are not enough document credits for this job. No generation request was made.'
+    const message = detail.includes('Insufficient AI Credit') || detail.includes('Insufficient document generation')
+      ? 'There are not enough document generations for this job. No generation request was made.'
       : status === 400 || status === 409
         ? 'One of the selected entries changed or is no longer eligible. Review Experience & achievements and choose again.'
         : 'Generation failed. Please try again.';
@@ -2056,12 +2027,14 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       if (!summary) return [];
       const label = this.documentPurposeLabel(output);
       if (summary.deterministicFallbackUsed) {
-        return [`${label} recovered with an evidence-based fallback — no document credit used.`];
+        return [summary.charged
+          ? `${label} was delivered with an evidence-based fallback and used one document generation.`
+          : `${label} recovery did not deliver a chargeable document, so no document generation was used.`];
       }
       if (summary.reconciliationStatus === 'RECOVERED') {
         return [summary.charged
           ? `${label} recovered safely without a duplicate request.`
-          : `${label} recovered safely without a duplicate request or document-credit charge.`];
+          : `${label} recovered safely without a duplicate request or document-generation charge.`];
       }
       if (summary.retried) {
         return [`${label} completed after an automatic provider retry.`];
@@ -2096,6 +2069,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
       cvDocumentId: mergedCvDocumentId,
       coverLetterDocumentId: mergedCoverLetterDocumentId,
     });
+    this.refreshApplicationRecord(jobId, response.applicationId);
     this.generationOutputsByJob.delete(jobId);
     if (!partial) this.clearEvidenceDraft(jobId);
     this.finishGeneration(jobId, message);
@@ -2304,6 +2278,7 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         this.openDocumentChoice({
           ...job,
           applicationId: record.id,
+          applicationVersion: record.version,
           applicationStatus: record.status,
           cvDocumentId: record.cvDocumentId,
           coverLetterDocumentId: record.coverLetterDocumentId,
@@ -2401,9 +2376,14 @@ export class JobResultsComponent implements OnInit, OnDestroy {
           return;
         }
         const current = this.currentJob(jobId) ?? job;
-        const patch = purpose === 'CV'
-          ? {cvDocumentId: result.documentId}
-          : {coverLetterDocumentId: result.documentId};
+        const patch: Partial<Job> = {
+          ...(purpose === 'CV'
+            ? {cvDocumentId: result.documentId}
+            : {coverLetterDocumentId: result.documentId}),
+          ...(Number.isSafeInteger(result.applicationVersion)
+            ? {applicationVersion: result.applicationVersion}
+            : {}),
+        };
         this.updateJobLocally(jobId, patch);
         this.generatedDocumentIds.update(documentIds => ({
           ...documentIds,
@@ -2523,7 +2503,15 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         });
         this.applicationChanged.emit();
       },
-      error: () => {
+      error: error => {
+        if ((error as {status?: number})?.status === 409) {
+          this.refreshApplicationRecord(jobId, job.applicationId as string);
+          this.notify.emit({
+            message: 'Application changed. Refreshing it now; review before retrying.',
+            type: 'info',
+          });
+          return;
+        }
         this.notify.emit({
           message: 'Status update failed. Please try again.',
           type: 'error',
@@ -2708,6 +2696,19 @@ export class JobResultsComponent implements OnInit, OnDestroy {
         coverLetterDocumentId: record.coverLetterDocumentId,
       },
     }));
+  }
+
+  private refreshApplicationRecord(
+    jobId: string,
+    applicationId: string,
+  ): void {
+    this.applicationTracker.listApplications().subscribe({
+      next: records => {
+        const current = records.find(record => record.id === applicationId);
+        if (current) this.applyApplicationRecord(jobId, current);
+      },
+      error: () => undefined,
+    });
   }
 
   private reconcilePersistedApplication(job: Job): Job {

@@ -13,7 +13,12 @@
   border-radius: var(--radius-control);
   color: inherit;
   cursor: pointer;
+  min-width: 0;
   text-decoration: none;
+}
+
+.brand-home-link > div {
+  min-width: 0;
 }
 
 .brand-home-link:focus-visible {
@@ -32,6 +37,7 @@
   color: var(--text-primary);
   font-size: 1rem !important;
   font-weight: 750;
+  line-height: 1.15;
 }
 
 .header-subtitle {
@@ -39,13 +45,18 @@
   letter-spacing: 0.04em;
 }
 
-.standard-badge,
+.public-beta-badge,
 .session-badge {
   background: var(--color-soft-blue);
   border: 1px solid #bfdbfe;
   border-radius: 6px !important;
   color: #1d4ed8;
   padding: 0.12rem 0.35rem !important;
+}
+
+.public-beta-badge {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .user-menu-button,
@@ -57,6 +68,7 @@
 
 .user-menu-button {
   border-radius: var(--radius-control) !important;
+  min-height: 44px;
   padding: 0.35rem 0.6rem !important;
 }
 
@@ -206,4 +218,75 @@
   border: 1px solid #bfdbfe;
   color: #1d4ed8;
   cursor: pointer;
+}
+
+.mobile-packs-link {
+  align-items: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-control);
+  color: #1d4ed8;
+  display: none;
+  font-size: 0.7rem;
+  font-weight: 800;
+  gap: 0.25rem;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.35rem 0.5rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.mobile-packs-link mat-icon {
+  font-size: 1rem;
+  height: 1rem;
+  width: 1rem;
+}
+
+.mobile-packs-link:hover {
+  background: #dbeafe;
+}
+
+.mobile-packs-link:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+@media (max-width: 639px) {
+  .mobile-packs-link {
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-inner {
+    padding-left: 0.75rem !important;
+    padding-right: 0.5rem !important;
+  }
+
+  .brand-home-link {
+    gap: 0.5rem !important;
+  }
+
+  .header-title {
+    flex-wrap: wrap;
+    font-size: 0.875rem !important;
+    gap: 0.25rem 0.35rem !important;
+  }
+
+  .public-beta-badge {
+    font-size: 0.55rem !important;
+  }
+
+  .header-subtitle {
+    display: none;
+  }
+
+  #header-stats {
+    gap: 0.25rem !important;
+  }
+
+  .user-menu-button {
+    padding: 0.25rem !important;
+  }
 }

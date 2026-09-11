@@ -1,3 +1,9 @@
+:host {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+}
+
 .job-results-panel {
   background: var(--color-surface);
   border: 1px solid var(--border-subtle);
@@ -176,20 +182,6 @@
 .job-results-panel p {
   color: var(--text-secondary);
 }
-.provider-mode-badge {
-  border: 1px solid color-mix(in srgb, var(--mat-sys-primary) 35%, transparent);
-  border-radius: 999px;
-  color: var(--mat-sys-primary);
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 0.2rem 0.55rem;
-  white-space: nowrap;
-}
-
-.provider-mode-partial {
-  border-color: #d97706;
-  color: #b45309;
-}
 
 .search-trust-summary {
   background: color-mix(in srgb, var(--mat-sys-primary) 7%, white);
@@ -321,6 +313,23 @@
   background: #fffbeb;
   border: 1px solid #fde68a;
   color: #78350f !important;
+}
+
+.nhs-advert-guidance {
+  align-items: flex-start;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1e3a8a !important;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.45rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.nhs-advert-guidance a {
+  color: #1d4ed8;
+  font-weight: 750;
 }
 
 .selector-loading {

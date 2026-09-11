@@ -71,6 +71,12 @@
             @if (setupLocationLookup().attributionProvider === 'GOOGLE_MAPS') {
               <p>Suggestions provided by Google Maps</p>
             }
+            @if (setupLocationLookup().attributionProvider === 'POSTCODES_IO') {
+              <p>
+                Postcode suggestions provided by Postcodes.io.
+                <a href="#postcode-data-attribution">View data acknowledgements</a>.
+              </p>
+            }
             @if (showSetupLocationDropdown() && setupLocationSuggestions().length) {
               <div id="setup-location-options" role="listbox" aria-label="Matching UK locations">
                 @for (location of setupLocationSuggestions(); track location.id) {

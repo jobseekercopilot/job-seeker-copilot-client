@@ -413,6 +413,43 @@ describe('JobCardComponent', () => {
     expect(fixture.debugElement.query(By.css('.description-toggle'))).toBeNull();
   });
 
+  it('keeps long provider content inside a narrow job card while retaining the full text', () => {
+    const longTitle = 'SeniorSoftwarePlatformAccessibilityEngineer'.repeat(4);
+    const longCompany = 'ExampleInternationalRecruitmentOrganisation'.repeat(3);
+    const longLocation = 'VeryLongLocationWithoutOptionalBreaks'.repeat(4);
+    const longDescription = 'ContinuousProviderDescriptionWithoutWhitespace'.repeat(20);
+    const fixture = createFixture({
+      job: {
+        ...job,
+        title: longTitle,
+        company: longCompany,
+        location: longLocation,
+        description: longDescription,
+      },
+    });
+
+    const host = fixture.nativeElement as HTMLElement;
+    const title = fixture.debugElement.query(By.css('.job-title')).nativeElement as HTMLElement;
+    const company = fixture.debugElement.query(By.css('.job-company')).nativeElement as HTMLElement;
+    const location = fixture.debugElement.query(By.css('.job-meta > span')).nativeElement as HTMLElement;
+
+    expect(title.textContent).toContain(longTitle);
+    expect(title.classList.contains('truncate')).toBe(false);
+    expect(company.textContent).toContain(longCompany);
+    expect(location.textContent).toContain(longLocation);
+    expect(getComputedStyle(host).display).toBe('block');
+    expect(getComputedStyle(host).minWidth).toMatch(/^0(?:px)?$/);
+    expect(getComputedStyle(title).overflowWrap).toBe('anywhere');
+    expect(getComputedStyle(title).whiteSpace).toBe('normal');
+    expect(getComputedStyle(company).overflowWrap).toBe('anywhere');
+    expect(getComputedStyle(location).overflowWrap).toBe('anywhere');
+
+    expandCard(fixture);
+    const description = fixture.debugElement.query(By.css('.job-description')).nativeElement as HTMLElement;
+    expect(description.textContent).toContain(longDescription.slice(0, 80));
+    expect(getComputedStyle(description).overflowWrap).toBe('anywhere');
+  });
+
   it('loads the complete provider advert when a preview Read full advert action is used', () => {
     const previewJob: Job = {
       ...job,
@@ -433,6 +470,32 @@ describe('JobCardComponent', () => {
 
     expect(requested).toEqual([previewJob]);
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('presents an NHS search preview as a supported limitation with an official link', () => {
+    const previewJob: Job = {
+      ...job,
+      externalJobId: '5554443',
+      primarySource: 'NHS_JOBS',
+      descriptionCompleteness: JobDescriptionCompletenessEnum.Preview,
+      sourceUrl: 'https://beta.jobs.nhs.uk/candidate/jobadvert/M0048-26-0423',
+    };
+    const fixture = createFixture({job: previewJob});
+    const requested: Job[] = [];
+    fixture.componentInstance.requestFullDescription.subscribe(value => requested.push(value));
+
+    expandCard(fixture);
+
+    const notice = fixture.debugElement.query(By.css('[data-testid="nhs-preview-note"]'))
+      .nativeElement as HTMLElement;
+    const officialLink = notice.querySelector('a') as HTMLAnchorElement;
+    expect(notice.textContent).toContain('official search-feed preview');
+    expect(officialLink.getAttribute('href'))
+      .toBe('https://beta.jobs.nhs.uk/candidate/jobadvert/M0048-26-0423');
+    expect(officialLink.getAttribute('target')).toBe('_blank');
+    expect(officialLink.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(fixture.debugElement.query(By.css('.description-toggle'))).toBeNull();
+    expect(requested).toEqual([]);
   });
 
   it('keeps an expanded description open while the in-card generation panel becomes active', () => {

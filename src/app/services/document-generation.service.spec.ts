@@ -319,6 +319,45 @@ describe('DocumentGenerationService', () => {
     }));
   });
 
+  it('keeps a charged fallback summary when the fallback document was delivered', async () => {
+    approveOperation.mockReturnValue(of({
+      ...completedOperation(),
+      outputResults: {
+        CV: {
+          recoverySummary: {
+            generationSource: 'DETERMINISTIC_FALLBACK',
+            structuralRepairStatus: 'NOT_REQUIRED',
+            duplicateItemsRemoved: 0,
+            providerAttemptCount: 1,
+            automaticRetryCount: 0,
+            retried: false,
+            retainedResponseReplayed: false,
+            deterministicFallbackUsed: true,
+            fallbackReason: 'RECONCILIATION_EXHAUSTED',
+            reconciliationStatus: 'RECOVERED',
+            reconciliationAttempts: 1,
+            reconciliationSource: 'DETERMINISTIC_FALLBACK',
+            billingStatus: 'COMMITTED',
+            charged: true,
+            released: false,
+          },
+        },
+      },
+    }));
+
+    const response = await firstValueFrom(
+      TestBed.inject(DocumentGenerationService).generate(job, evidence),
+    );
+
+    expect(response.recovery?.CV).toEqual(expect.objectContaining({
+      generationSource: 'DETERMINISTIC_FALLBACK',
+      fallbackReason: 'RECONCILIATION_EXHAUSTED',
+      billingStatus: 'COMMITTED',
+      charged: true,
+      released: false,
+    }));
+  });
+
   it('approves and returns the successful cover letter when the CV failed', async () => {
     getOperation.mockReturnValue(of({
       operationId,
@@ -442,14 +481,14 @@ describe('DocumentGenerationService', () => {
       }))
       .mockImplementationOnce(() => of({
         operationId,
-        state: 'CREDIT_COMMITTED',
+        state: 'ALLOWANCE_COMMITTED',
         replaySafe: true,
         failureCode: 'DOWNSTREAM_RETRYABLE',
       }));
     getOperation
       .mockImplementationOnce(() => of({
         operationId,
-        state: 'CREDIT_COMMITTED',
+        state: 'ALLOWANCE_COMMITTED',
         replaySafe: true,
         failureCode: 'DOWNSTREAM_RETRYABLE',
       }))
@@ -481,13 +520,13 @@ describe('DocumentGenerationService', () => {
       }))
       .mockImplementationOnce(() => of({
         operationId,
-        state: 'CREDIT_COMMITTED',
+        state: 'ALLOWANCE_COMMITTED',
         replaySafe: true,
         failureCode: 'DOWNSTREAM_RETRYABLE',
       }));
     getOperation.mockReturnValue(of({
       operationId,
-      state: 'CREDIT_COMMITTED',
+      state: 'ALLOWANCE_COMMITTED',
       replaySafe: true,
       failureCode: 'DOWNSTREAM_RETRYABLE',
     }));
@@ -584,7 +623,7 @@ describe('DocumentGenerationService', () => {
     getOperation
       .mockImplementationOnce(() => of({
         operationId,
-        state: 'CREDIT_COMMITTED',
+        state: 'ALLOWANCE_COMMITTED',
         replaySafe: true,
         failureCode: 'DOWNSTREAM_RETRYABLE',
         deadlineAt: new Date(now - 60_000).toISOString(),
@@ -598,7 +637,7 @@ describe('DocumentGenerationService', () => {
       }));
     startOperation.mockReturnValue(of({
       operationId,
-      state: 'CREDIT_COMMITTED',
+      state: 'ALLOWANCE_COMMITTED',
       replaySafe: true,
       failureCode: 'DOWNSTREAM_RETRYABLE',
       deadlineAt: new Date(now + (10 * 60 * 1000)).toISOString(),
@@ -883,7 +922,7 @@ describe('DocumentGenerationService', () => {
       TestBed.inject(DocumentGenerationService).resume(canonicalJobId),
     )).rejects.toMatchObject({
       code: 'DESCRIPTION_REQUIRED',
-      message: expect.stringContaining('No document credit was used'),
+      message: expect.stringContaining('No document generation was used'),
     });
   });
 

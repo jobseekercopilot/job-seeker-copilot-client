@@ -44,6 +44,7 @@
 .pricing-card p,
 .transactions p,
 .checkout-status p,
+.empty-balance-state p,
 .promotion-note p,
 .purchase-confirmation p,
 .no-charge-rule p {
@@ -82,43 +83,13 @@
   text-decoration-thickness: 2px;
 }
 
-.usage-summary-body {
-  align-items: center;
-  display: flex;
-  gap: 1rem;
-}
-
-.usage-ring {
-  align-items: center;
-  border-radius: 50%;
-  display: grid;
-  flex: 0 0 auto;
-  height: 5.25rem;
-  place-items: center;
-  position: relative;
-  width: 5.25rem;
-}
-
-.usage-ring::after {
-  background: var(--color-surface, #fff);
-  border-radius: 50%;
-  content: '';
-  height: 3.65rem;
-  position: absolute;
-  width: 3.65rem;
-}
-
-.usage-ring span {
-  font-size: 0.82rem;
-  font-weight: 850;
-  position: relative;
-  z-index: 1;
-}
-
 .usage-stats {
+  background: var(--color-surface-soft, #f7f9fc);
+  border-radius: 10px;
   display: grid;
   gap: 0.55rem;
   min-width: 0;
+  padding: 0.8rem;
   width: 100%;
 }
 
@@ -137,6 +108,26 @@
 .usage-stats strong {
   font-size: 0.9rem;
   white-space: nowrap;
+}
+
+.empty-balance-state {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.empty-balance-state strong {
+  display: block;
+  font-size: 0.95rem;
+  margin-bottom: 0.2rem;
+}
+
+.empty-balance-action {
+  display: block;
+  margin-top: 0;
+  text-align: center;
+  text-decoration: none;
 }
 
 .secondary-button,
@@ -163,6 +154,7 @@
 .purchase-button:focus-visible,
 .purchase-confirmation input:focus-visible,
 .text-link:focus-visible,
+.empty-balance-action:focus-visible,
 .purchase-confirmation a:focus-visible {
   outline: 3px solid #f59e0b;
   outline-offset: 3px;
@@ -179,7 +171,8 @@
 .promotion-note,
 .checkout-status,
 .credit-rules,
-.purchase-confirmation {
+.purchase-confirmation,
+.empty-balance-state {
   border-radius: 10px;
   padding: 0.85rem 1rem;
 }
@@ -245,11 +238,6 @@
   gap: 0.75rem;
 }
 
-.checkout-status.checkout-ready {
-  background: #ecfdf5;
-  border-color: #a7f3d0;
-}
-
 .status-dot {
   background: #64748b;
   border-radius: 50%;
@@ -257,10 +245,6 @@
   height: 0.65rem;
   margin-top: 0.35rem;
   width: 0.65rem;
-}
-
-.checkout-ready .status-dot {
-  background: #059669;
 }
 
 .pricing-grid {
@@ -397,7 +381,6 @@
 @media (max-width: 640px) {
   .payment-header,
   .summary-credit-header,
-  .usage-summary-body,
   .wallet-meta {
     align-items: stretch;
     flex-direction: column;
@@ -405,10 +388,6 @@
 
   .credit-rules {
     grid-template-columns: 1fr;
-  }
-
-  .usage-ring {
-    align-self: center;
   }
 
   .secondary-button {

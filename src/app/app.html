@@ -56,7 +56,7 @@
   } @else if (paymentReturnStatus()) {
     <main class="payment-return-page mx-auto px-4 sm:px-6 lg:px-8 mt-8">
       <section class="payment-return-card">
-        <span class="eyebrow">Document-credit checkout</span>
+        <span class="eyebrow">Document generation checkout</span>
         <h1>{{ paymentReturnTitle() }}</h1>
         <p role="status" aria-live="polite">{{ paymentReturnMessage() }}</p>
         <div class="payment-return-actions">
@@ -101,8 +101,8 @@
         <section class="tokens-page">
           <div class="tokens-page-header">
             <div>
-              <span class="eyebrow">Document credits</span>
-              <h1>Document-credit packs</h1>
+              <span class="eyebrow">Document generations</span>
+              <h1>Document generation packs</h1>
               <p>Choose a one-off pack. There is no subscription or automatic renewal.</p>
             </div>
           </div>
@@ -118,9 +118,9 @@
         <section class="tokens-page">
           <div class="tokens-page-header">
             <div>
-              <span class="eyebrow">Document credits</span>
-              <h1>Credit history</h1>
-              <p>Track purchases, successful document generation, restored credits and running balances.</p>
+              <span class="eyebrow">Document generations</span>
+              <h1>Generation history</h1>
+              <p>Track purchases, successful document deliveries, restored generations and your remaining allowance.</p>
             </div>
           </div>
           <app-payment-panel
@@ -135,11 +135,7 @@
         <div class="dashboard-grid grid grid-cols-1 gap-5 items-start">
         
         <!-- ================= LEFT COLUMN: CLAIMANT PROFILE (4 Cols) ================= -->
-        <section id="left-sidebar" class="dashboard-left flex flex-col gap-5">
-          <div class="workspace-status-line">
-            <span class="capability-state state-available">Available</span>
-            <strong>Profile</strong>
-          </div>
+        <aside id="left-sidebar" class="dashboard-left flex flex-col gap-5" aria-label="Profile">
           
           <!-- Claimant Professional Profile -->
           <app-claimant-profile #claimantProfile
@@ -156,7 +152,7 @@
                                 (findJobsRequested)="triggerJobSearch()">
           </app-claimant-profile>
 
-        </section>
+        </aside>
 
         <!-- ================= CENTER COLUMN: WORKSPACE ================= -->
         <section id="center-workspace" class="dashboard-center flex flex-col gap-5">
@@ -192,15 +188,6 @@
 
           <div data-testid="workspace-panel-search"
                [hidden]="activeWorkspaceTab() !== 'search'">
-            <div class="workspace-status-line">
-              <span class="capability-state"
-                    [class.state-fixture]="jobSearchProviderMode() === 'FIXTURE'"
-                    [class.state-available]="jobSearchProviderMode() === 'REAL_PROVIDERS'"
-                    [class.state-unavailable]="jobSearchProviderMode() === 'REQUIRED_VALIDATION'">
-                {{ jobSearchProviderModeLabel() }}
-              </span>
-              <strong>Job search, matching and details</strong>
-            </div>
             @if (jobSearchReadiness().ready) {
               <app-job-results #jobResults
                 [skills]="profileSkills()"
@@ -227,10 +214,6 @@
           </div>
           @if (activeWorkspaceTab() === 'applications') {
           <div data-testid="workspace-panel-applications">
-            <div class="workspace-status-line">
-              <span class="capability-state state-available">Available</span>
-              <strong>Application tracking and status history</strong>
-            </div>
             <app-my-applications #myApplications
               [selectedApplicationId]="selectedApplicationId()"
               (notify)="showToast($event.message, $event.type)"
@@ -240,15 +223,6 @@
           </div>
           } @else if (activeWorkspaceTab() === 'documents') {
           <div data-testid="workspace-panel-documents">
-            <div class="workspace-status-line">
-              <span class="capability-state"
-                    [class.state-fixture]="documentGenerationMode() === 'FIXTURE_LLM'"
-                    [class.state-available]="documentGenerationMode() === 'REAL_LLM'"
-                    [class.state-unavailable]="documentGenerationMode() === 'REQUIRED_VALIDATION'">
-                {{ documentGenerationModeLabel() }}
-              </span>
-              <strong>Documents, storage and export</strong>
-            </div>
             @if (documentGenerationMode() !== 'REQUIRED_VALIDATION') {
               @if (documentGenerationMode() === 'FIXTURE_LLM') {
                 <p class="capability-fixture-notice" role="status">
@@ -265,7 +239,7 @@
             } @else {
               <section class="capability-placeholder" data-testid="workspace-documents">
                 <span class="capability-state state-unavailable">Not enabled for this beta</span>
-                <h2>Documents, storage and export</h2>
+                <h2>Documents unavailable</h2>
                 <p>The secure document runtime has not been validated in this environment.</p>
               </section>
             }
@@ -282,13 +256,9 @@
             [legalVersion]="legalConfiguration().version ?? ''"
             (balanceChanged)="updateDocumentCreditBalance($event)" />
 
-          <section data-testid="workspace-reporting">
-            <div class="workspace-status-line">
-              <span class="capability-state state-available">Available</span>
-              <strong>Reporting &amp; job-search evidence</strong>
-            </div>
+          <div data-testid="workspace-reporting">
             <app-reporting-panel #reportingPanel></app-reporting-panel>
-          </section>
+          </div>
         </aside>
 
       </div>
@@ -297,7 +267,24 @@
   }
 </div>
 <footer class="public-legal-footer">
-  <span>Job Seeker Copilot</span>
-  <a href="/privacy">Privacy Policy</a>
-  <a href="/terms">Terms of Use</a>
+  <nav class="public-footer-links" aria-label="Legal links">
+    <span>Job Seeker Copilot</span>
+    <a href="/privacy">Privacy Policy</a>
+    <a href="/terms">Terms of Use</a>
+  </nav>
+
+  <section id="postcode-data-attribution"
+           class="postcode-data-attribution"
+           aria-labelledby="postcode-data-attribution-heading">
+    <h2 id="postcode-data-attribution-heading">Postcode data acknowledgements</h2>
+    <p>
+      Postcode search uses Postcodes.io for Great Britain only.
+      Northern Ireland postcode lookup is not enabled for this beta.
+      <a href="https://postcodes.io/docs/licences/" rel="noopener noreferrer">Postcodes.io licence details</a>.
+    </p>
+    <p>Contains Ordnance Survey data © Crown copyright and database right 2025.</p>
+    <p>Contains Royal Mail data © Royal Mail copyright and database right 2025.</p>
+    <p>Contains National Statistics data © Crown copyright and database right 2025.</p>
+    <p>Contains NRS data © Crown copyright and database right 2025.</p>
+  </section>
 </footer>

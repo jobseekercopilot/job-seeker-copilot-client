@@ -33,11 +33,11 @@ describe('App', () => {
   });
   const searchJobs = vi.fn(() => of({jobs: [], totalResults: 0}));
   const wallet = vi.fn(() => of({
-    balanceDocumentCredits: 7,
-    lifetimePurchasedDocumentCredits: 7,
-    lifetimeSpentDocumentCredits: 0,
-    lifetimeReversedDocumentCredits: 0,
-    reviewDebtDocumentCredits: 0,
+    remainingDocumentGenerations: 7,
+    lifetimePurchasedDocumentGenerations: 7,
+    lifetimeUsedDocumentGenerations: 0,
+    lifetimeReversedDocumentGenerations: 0,
+    reviewDebtDocumentGenerations: 0,
     freeAllowanceGranted: true,
     status: 'ACTIVE' as const,
   }));
@@ -46,16 +46,16 @@ describe('App', () => {
     orderId,
     status: 'FULFILLED' as const,
     pricingPlanId: 'starter',
-    documentCredits: 10,
-    promotionBonusDocumentCredits: 5,
-    totalGrantedDocumentCredits: 15,
-    priceMinor: 799,
+    documentGenerations: 10,
+    promotionBonusDocumentGenerations: 5,
+    totalGrantedDocumentGenerations: 15,
+    priceMinor: 499,
     currency: 'GBP' as const,
     createdAt: '2026-08-15T10:00:00Z',
     expiresAt: '2026-08-15T11:00:00Z',
     fulfilledAt: '2026-08-15T10:02:00Z',
-    creditsAdded: true,
-    messageCode: 'CREDITS_ADDED',
+    generationsAdded: true,
+    messageCode: 'GENERATIONS_ADDED',
     taxStatus: 'NOT_VAT_REGISTERED' as const,
     taxTreatment: 'VAT_NOT_CHARGED' as const,
     legalEntityType: 'SOLE_TRADER' as const,
@@ -164,7 +164,7 @@ describe('App', () => {
     TestBed.inject(MatDialog).closeAll();
   });
 
-  it('refreshes and displays document credits when the secure session is restored', async () => {
+  it('refreshes and displays document generations when the secure session is restored', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -172,23 +172,29 @@ describe('App', () => {
 
     expect(wallet).toHaveBeenCalledWith();
     expect(fixture.componentInstance.documentCreditBalance()).toBe(7);
-    expect(fixture.nativeElement.textContent).toContain('Documents: 7 credits');
+    expect(fixture.nativeElement.textContent).toContain('Documents: 7 generations');
   });
 
-  it('renders the canonical product workspace with honest capability states', async () => {
+  it('renders the canonical product workspace without redundant capability strips', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
 
     const text = fixture.nativeElement.textContent;
-    expect(text).toContain('Profile');
     expect(text).toContain('Job search');
     expect(text).toContain('Applications');
     expect(text).toContain('Documents');
-    expect(text).toContain('Reporting & job-search evidence');
-    expect(text).toContain('Document credits');
-    expect(text).toContain('Fixture-backed');
+    expect(text).toContain('Document generations');
+    expect(text).not.toContain('Real providers');
+    expect(text).not.toContain('Job search, matching and details');
+    expect(text).not.toContain('Reporting & job-search evidence');
+    expect(fixture.nativeElement.querySelectorAll('.workspace-status-line')).toHaveLength(0);
+    expect(fixture.nativeElement.querySelector('#left-sidebar')?.tagName).toBe('ASIDE');
+    expect(fixture.nativeElement.querySelector('#left-sidebar')?.getAttribute('aria-label')).toBe('Profile');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-reporting"] app-reporting-panel')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="job-search-provider-mode"]')).toBeNull();
+    expect(fixture.componentInstance.jobSearchProviderMode()).toBe('FIXTURE');
     expect(fixture.componentInstance.commuteRoutingMode()).toBe('DISTANCE_ONLY');
     expect(searchJobs).toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-tab-evidence"]')).toBeNull();
@@ -197,11 +203,14 @@ describe('App', () => {
 
     fixture.nativeElement.querySelector('[data-testid="workspace-tab-applications"]').click();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Application tracking');
+    expect(fixture.nativeElement.textContent).not.toContain('Application tracking and status history');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-applications"] app-my-applications')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="applications-workspace"]')?.getAttribute('aria-label')).toBe('Applications');
 
     fixture.nativeElement.querySelector('[data-testid="workspace-tab-documents"]').click();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Documents, storage and export');
+    expect(fixture.nativeElement.textContent).not.toContain('Documents, storage and export');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-panel-documents"] app-documents-workspace')).not.toBeNull();
 
     fixture.nativeElement.querySelector('#btn-profile-dropdown').click();
     fixture.detectChanges();
@@ -260,8 +269,30 @@ describe('App', () => {
     window.dispatchEvent(new PopStateEvent('popstate'));
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Terms of Use');
-    expect(fixture.nativeElement.textContent).toContain('One document credit covers one successfully delivered tailored CV');
+    expect(fixture.nativeElement.textContent).toContain('One document generation covers one successfully delivered tailored CV');
     window.history.pushState({}, '', '/dashboard');
+  });
+
+  it('publishes the reviewed Postcodes.io data notices in the global footer', () => {
+    status.set('anonymous');
+    user.set(null);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    const acknowledgement = fixture.nativeElement.querySelector(
+      '#postcode-data-attribution',
+    ) as HTMLElement;
+    const text = acknowledgement.textContent;
+    expect(acknowledgement.getAttribute('aria-labelledby'))
+      .toBe('postcode-data-attribution-heading');
+    expect(text).toContain('Great Britain only');
+    expect(text).toContain('Northern Ireland postcode lookup is not enabled');
+    expect(text).toContain('Contains Ordnance Survey data © Crown copyright and database right 2025.');
+    expect(text).toContain('Contains Royal Mail data © Royal Mail copyright and database right 2025.');
+    expect(text).toContain('Contains National Statistics data © Crown copyright and database right 2025.');
+    expect(fixture.nativeElement.querySelector(
+      'a[href="https://postcodes.io/docs/licences/"]',
+    )).not.toBeNull();
   });
 
   it('trusts only the owner-scoped order record on a checkout return and strips the query', async () => {
@@ -276,7 +307,7 @@ describe('App', () => {
     expect(fixture.componentInstance.paymentOrderState()).toBe('fulfilled');
     expect(fixture.nativeElement.textContent).toContain('Payment confirmed');
     expect(fixture.nativeElement.textContent).toContain(
-      '15 document credits were added after secure server confirmation',
+      '15 document generations were added after secure server confirmation',
     );
     expect(fixture.nativeElement.textContent).not.toContain('Stripe payment received');
   });
@@ -287,9 +318,9 @@ describe('App', () => {
       .mockReturnValueOnce(of({
         ...fulfilledOrder,
         status: 'CHECKOUT_OPEN',
-        totalGrantedDocumentCredits: 0,
+        totalGrantedDocumentGenerations: 0,
         fulfilledAt: null,
-        creditsAdded: false,
+        generationsAdded: false,
         messageCode: 'PAYMENT_PENDING',
       }))
       .mockReturnValueOnce(of(fulfilledOrder));
@@ -319,9 +350,9 @@ describe('App', () => {
         .mockReturnValueOnce(of({
           ...fulfilledOrder,
           status: pendingStatus,
-          totalGrantedDocumentCredits: 0,
+          totalGrantedDocumentGenerations: 0,
           fulfilledAt: null,
-          creditsAdded: false,
+          generationsAdded: false,
           messageCode,
         }))
         .mockReturnValueOnce(of(fulfilledOrder));
@@ -354,9 +385,9 @@ describe('App', () => {
       orderStatus.mockReturnValue(of({
         ...fulfilledOrder,
         status: terminalStatus,
-        totalGrantedDocumentCredits: 0,
+        totalGrantedDocumentGenerations: 0,
         fulfilledAt,
-        creditsAdded: false,
+        generationsAdded: false,
         messageCode,
       }));
       window.history.replaceState({}, '', `/payment/cancel?order_id=${orderId}`);
@@ -377,17 +408,17 @@ describe('App', () => {
     ['fulfilled order that reports zero granted credits', 'FULFILLED', 0],
   ] as const)(
     'rejects a malformed total: %s',
-    async (_case, responseStatus, totalGrantedDocumentCredits) => {
+    async (_case, responseStatus, totalGrantedDocumentGenerations) => {
       orderStatus.mockReturnValue(of({
         ...fulfilledOrder,
         status: responseStatus,
-        totalGrantedDocumentCredits,
+        totalGrantedDocumentGenerations,
         fulfilledAt: responseStatus === 'FULFILLED'
           ? fulfilledOrder.fulfilledAt
           : null,
-        creditsAdded: responseStatus === 'FULFILLED',
+        generationsAdded: responseStatus === 'FULFILLED',
         messageCode: responseStatus === 'FULFILLED'
-          ? 'CREDITS_ADDED'
+          ? 'GENERATIONS_ADDED'
           : 'PAYMENT_PENDING',
       }));
       window.history.replaceState({}, '', `/payment/success?order_id=${orderId}`);
@@ -397,12 +428,12 @@ describe('App', () => {
       fixture.detectChanges();
 
       expect(fixture.componentInstance.paymentOrderState()).toBe('unavailable');
-      expect(fixture.nativeElement.textContent).not.toContain('credits were added');
+      expect(fixture.nativeElement.textContent).not.toContain('generations were added');
     },
   );
 
   it('does not call payment status for a malformed return identifier', () => {
-    window.history.replaceState({}, '', '/payment/success?order_id=not-an-order&price=799');
+    window.history.replaceState({}, '', '/payment/success?order_id=not-an-order&price=499');
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
 
@@ -410,7 +441,7 @@ describe('App', () => {
     expect(window.location.search).toBe('');
     expect(fixture.componentInstance.paymentOrderState()).toBe('invalid');
     expect(fixture.nativeElement.textContent).toContain(
-      'No payment or document-credit outcome can be inferred',
+      'No payment or document-generation outcome can be inferred',
     );
   });
 
@@ -418,9 +449,9 @@ describe('App', () => {
     orderStatus.mockReturnValue(of({
       ...fulfilledOrder,
       pricingPlanId: 'unexpected-plan',
-      documentCredits: 99,
-      promotionBonusDocumentCredits: 0,
-      totalGrantedDocumentCredits: 99,
+      documentGenerations: 99,
+      promotionBonusDocumentGenerations: 0,
+      totalGrantedDocumentGenerations: 99,
       priceMinor: 1,
     }));
     window.history.replaceState({}, '', `/payment/success?order_id=${orderId}`);
@@ -431,9 +462,9 @@ describe('App', () => {
 
     expect(fixture.componentInstance.paymentOrderState()).toBe('unavailable');
     expect(fixture.nativeElement.textContent).toContain(
-      'No payment or document-credit outcome can be inferred',
+      'No payment or document-generation outcome can be inferred',
     );
-    expect(fixture.nativeElement.textContent).not.toContain('credits were added');
+    expect(fixture.nativeElement.textContent).not.toContain('generations were added');
   });
 
   it('does not trust a fulfilled order without matching reviewed seller and tax provenance', async () => {
@@ -451,10 +482,10 @@ describe('App', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.paymentOrderState()).toBe('unavailable');
-    expect(fixture.nativeElement.textContent).not.toContain('credits were added');
+    expect(fixture.nativeElement.textContent).not.toContain('generations were added');
   });
 
-  it('enables the documents workspace for validated real OpenAI generation', async () => {
+  it('enables the documents workspace without exposing the internal generation mode', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -462,11 +493,28 @@ describe('App', () => {
     fixture.nativeElement.querySelector('[data-testid="workspace-tab-documents"]').click();
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.textContent).toContain('Real OpenAI generation');
+    expect(fixture.nativeElement.textContent).not.toContain('Real OpenAI generation');
+    expect(fixture.nativeElement.textContent).not.toContain('Documents, storage and export');
     expect(fixture.nativeElement.querySelector('app-documents-workspace')).not.toBeNull();
     expect(fixture.nativeElement.textContent).not.toContain(
       'Document wording is fixture-generated',
     );
+  });
+
+  it('uses a customer-facing heading when the document workspace is unavailable', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.componentInstance.documentGenerationMode.set('REQUIRED_VALIDATION');
+    fixture.nativeElement.querySelector('[data-testid="workspace-tab-documents"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Documents unavailable');
+    expect(fixture.nativeElement.textContent).toContain(
+      'The secure document runtime has not been validated in this environment.',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain('Documents, storage and export');
+    expect(fixture.nativeElement.querySelector('app-documents-workspace')).toBeNull();
   });
 
   it('preserves search state while mounting only the selected Applications or Documents workspace', async () => {

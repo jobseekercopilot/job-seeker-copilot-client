@@ -7,50 +7,59 @@
     <div class="summary-credit-card">
       <div class="summary-credit-header">
         <div>
-          <span class="eyebrow">Document credits</span>
-          <h2>Your document credits</h2>
+          <span class="eyebrow">Document generations</span>
+          <h2>Your document generations</h2>
         </div>
         <a class="text-link" href="/payment/history">View history</a>
       </div>
 
       @if (wallet(); as currentWallet) {
-        <div class="usage-summary-body">
-          <div class="usage-ring" [style.background]="ringStyle()" aria-hidden="true">
-            <span>{{ spentPercent() }}%</span>
-          </div>
+        @if (currentWallet.remainingDocumentGenerations > 0) {
           <div class="usage-stats">
             <div>
               <span>Available</span>
-              <strong>{{ formatCredits(currentWallet.balanceDocumentCredits) }}</strong>
+              <strong>{{ formatCredits(currentWallet.remainingDocumentGenerations) }}</strong>
             </div>
             <div>
               <span>Successfully used</span>
-              <strong>{{ formatCredits(currentWallet.lifetimeSpentDocumentCredits) }}</strong>
+              <strong>{{ formatCredits(currentWallet.lifetimeUsedDocumentGenerations) }}</strong>
             </div>
           </div>
-        </div>
+        } @else {
+          <div class="empty-balance-state">
+            <div role="status">
+              <strong>No generations remaining</strong>
+              <p>Choose a one-off pack when you want to create another tailored CV or cover letter.</p>
+            </div>
+            <a class="purchase-button empty-balance-action" href="/payment">View generation packs</a>
+          </div>
+        }
       } @else {
-        <p role="status">Your document-credit balance is unavailable.</p>
+        <p role="status">Your document generation allowance is unavailable.</p>
       }
     </div>
   } @else {
     <div class="payment-header">
       <div>
-        <span class="eyebrow">Document credits</span>
+        <span class="eyebrow">Document generations</span>
         <h2>
           @if (mode() === 'history') {
-            Credit history
+            Generation history
           } @else if (wallet(); as currentWallet) {
-            {{ formatCredits(currentWallet.balanceDocumentCredits) }} available
+            {{ currentWallet.remainingDocumentGenerations > 0
+              ? formatCredits(currentWallet.remainingDocumentGenerations) + ' available'
+              : 'Choose a generation pack' }}
           } @else {
             Balance unavailable
           }
         </h2>
         <p>
           @if (mode() === 'history') {
-            Review purchases, successful generations, restored credits and balance changes.
+            Review purchases, successful deliveries, restored generations and allowance changes.
+          } @else if (wallet()?.remainingDocumentGenerations === 0) {
+            You have no generations remaining. Choose a one-off pack below whenever you need another tailored document. There is no subscription or automatic renewal.
           } @else {
-            Search, matching, tracking, editing, downloads and uploads remain free. Credits are used only for successfully delivered tailored documents.
+            Search, matching, tracking, editing, downloads and uploads do not use your allowance. A generation is used only for a successfully delivered tailored document.
           }
         </p>
       </div>
@@ -70,22 +79,22 @@
   @if (mode() === 'purchase') {
     <div class="credit-rules" aria-labelledby="credit-rules-heading">
       <div>
-        <h3 id="credit-rules-heading">One credit means one delivered document</h3>
+        <h3 id="credit-rules-heading">One generation means one delivered document</h3>
         <ul>
-          <li>One tailored CV or one cover letter uses one document credit.</li>
-          <li>A complete CV and cover-letter application uses two credits.</li>
-          <li>A regeneration is a new document and uses another credit after you choose it.</li>
+          <li>One tailored CV or one cover letter uses one document generation.</li>
+          <li>A complete CV and cover-letter application uses two generations.</li>
+          <li>A regeneration is a new document and uses another generation after you choose it.</li>
         </ul>
       </div>
       <div class="no-charge-rule">
-        <strong>No credit is used</strong>
-        <p>for a failed or cancelled generation, a duplicate or replayed request, an upload, or a no-charge fallback. A reservation is released automatically when delivery does not complete.</p>
+        <strong>No generation is used</strong>
+        <p>for a failed or cancelled generation, a duplicate or replayed request, or an upload. A reservation is released automatically when delivery does not complete.</p>
       </div>
     </div>
 
     <div class="wallet-meta">
       <span>Free account allowance</span>
-      <strong>{{ catalog()?.freeAllowanceCredits ?? 2 }} document credits</strong>
+      <strong>{{ catalog()?.freeAllowanceGenerations ?? 2 }} document generations</strong>
     </div>
 
     @if (promotionAvailable()) {
@@ -95,16 +104,18 @@
       </aside>
     }
 
-    <div class="checkout-status" [class.checkout-ready]="checkoutAvailable()" role="status">
-      <span class="status-dot" aria-hidden="true"></span>
-      <div>
-        <strong>{{ checkoutAvailable() ? 'Secure checkout ready' : 'Purchasing unavailable' }}</strong>
-        <p>{{ readinessMessage() }}</p>
+    @if (readiness() !== null && !checkoutAvailable()) {
+      <div class="checkout-status" role="status">
+        <span class="status-dot" aria-hidden="true"></span>
+        <div>
+          <strong>Purchasing unavailable</strong>
+          <p>{{ readinessMessage() }}</p>
+        </div>
       </div>
-    </div>
+    }
 
     @if (plans().length > 0) {
-      <div class="pricing-grid" aria-label="One-off document-credit packs">
+      <div class="pricing-grid" aria-label="One-off document generation packs">
         @for (plan of plans(); track plan.id) {
           <article
             class="pricing-card"
@@ -119,7 +130,7 @@
               <p>{{ plan.description }}</p>
             </div>
             <strong class="plan-price">{{ formatPrice(plan.priceMinor) }}</strong>
-            <span class="plan-credit-count">{{ formatCredits(plan.documentCredits) }}</span>
+            <span class="plan-credit-count">{{ formatCredits(plan.documentGenerations) }}</span>
             <ul>
               <li>{{ planUsageSummary(plan) }}</li>
               <li>One-off purchase</li>
@@ -145,7 +156,7 @@
             type="checkbox"
             [checked]="purchaseTermsAccepted()"
             (change)="acceptPurchaseTerms($event)" />
-          <span>I confirm that my billing address is in the United Kingdom, understand this is a one-off purchase rather than a subscription, request immediate supply of the digital credits and acknowledge that once fully supplied I may lose a statutory 14-day cancellation right.</span>
+          <span>I confirm that my billing address is in the United Kingdom, understand this is a one-off purchase rather than a subscription, request immediate supply of the digital document generation allowance and acknowledge that once fully supplied I may lose a statutory 14-day cancellation right.</span>
         </label>
         <p>{{ taxMessage() }} Tax details, where applicable, are confirmed before payment.</p>
         <p>By continuing, you agree to the <a href="/terms">Terms of Use</a> and acknowledge the <a href="/privacy">Privacy Policy</a>.</p>
@@ -156,7 +167,7 @@
   @if (mode() === 'history') {
     <div class="transactions">
       @if (visibleTransactions().length > 0) {
-        <div class="transactions-table" role="table" aria-label="Document-credit history">
+        <div class="transactions-table" role="table" aria-label="Document generation history">
           <div class="transactions-row transactions-heading" role="row">
             <span role="columnheader">Date</span>
             <span role="columnheader">Activity</span>
@@ -168,12 +179,12 @@
               <span role="cell">{{ formatDate(transaction.createdAt) }}</span>
               <strong role="cell">{{ transactionActivity(transaction) }}</strong>
               <span role="cell"><em>{{ formatTransactionCredits(transaction) }}</em></span>
-              <span role="cell"><em>{{ formatCredits(transaction.balanceAfterDocumentCredits) }}</em></span>
+              <span role="cell"><em>{{ formatCredits(transaction.balanceAfterDocumentGenerations) }}</em></span>
             </div>
           }
         </div>
       } @else if (!dataError()) {
-        <p>No document-credit activity yet.</p>
+        <p>No document generation activity yet.</p>
       }
     </div>
   }

@@ -10,12 +10,12 @@ import {PaymentPanelComponent} from './payment-panel';
 
 describe('PaymentPanelComponent', () => {
   const catalog = {
-    catalogVersion: '2026-08-15',
+    catalogVersion: 'public-beta-2026-08-22',
     currency: 'GBP' as const,
     billingCountry: 'GB' as const,
     automaticRenewal: false as const,
-    creditUnit: 'DOCUMENT' as const,
-    freeAllowanceCredits: 2,
+    generationUnit: 'DOCUMENT' as const,
+    freeAllowanceGenerations: 2,
     displayedPriceIsCheckoutTotal: true,
     taxStatus: 'NOT_VAT_REGISTERED' as const,
     taxTreatment: 'VAT_NOT_CHARGED' as const,
@@ -29,20 +29,20 @@ describe('PaymentPanelComponent', () => {
     plans: [
       {
         id: 'starter', name: 'Starter', description: 'For a focused start.',
-        documentCredits: 10, priceMinor: 799, currency: 'GBP' as const,
-        fullApplicationEquivalent: 5, promotionBonusDocumentCredits: 5,
+        documentGenerations: 10, priceMinor: 499, currency: 'GBP' as const,
+        fullApplicationEquivalent: 5, promotionBonusDocumentGenerations: 5,
         active: true, sortOrder: 1,
       },
       {
         id: 'active', name: 'Active', description: 'For an active search.',
-        documentCredits: 25, priceMinor: 1699, currency: 'GBP' as const,
-        fullApplicationEquivalent: 12, promotionBonusDocumentCredits: 13,
+        documentGenerations: 25, priceMinor: 1199, currency: 'GBP' as const,
+        fullApplicationEquivalent: 12, promotionBonusDocumentGenerations: 13,
         active: true, sortOrder: 2,
       },
       {
         id: 'power', name: 'Power', description: 'For heavier use.',
-        documentCredits: 60, priceMinor: 3499, currency: 'GBP' as const,
-        fullApplicationEquivalent: 30, promotionBonusDocumentCredits: 30,
+        documentGenerations: 60, priceMinor: 1999, currency: 'GBP' as const,
+        fullApplicationEquivalent: 30, promotionBonusDocumentGenerations: 30,
         active: true, sortOrder: 3,
       },
     ],
@@ -54,11 +54,11 @@ describe('PaymentPanelComponent', () => {
     status: 'CHECKOUT_OPEN' as const,
     expiresAt: '2099-08-15T16:00:00Z',
     pricingSnapshot: {
-      catalogVersion: '2026-08-15',
+      catalogVersion: 'public-beta-2026-08-22',
       pricingPlanId: 'starter',
       pricingPlanName: 'Starter',
-      documentCredits: 10,
-      priceMinor: 799,
+      documentGenerations: 10,
+      priceMinor: 499,
       currency: 'GBP' as const,
       billingCountry: 'GB' as const,
       taxStatus: 'NOT_VAT_REGISTERED' as const,
@@ -67,7 +67,7 @@ describe('PaymentPanelComponent', () => {
       legalEntityConfigurationVersion: 'seller-v1',
       displayedPriceIsCheckoutTotal: true,
     },
-    promotionBonusDocumentCredits: 5,
+    promotionBonusDocumentGenerations: 5,
     promotionGuaranteed: true,
     consumerTermsVersion: 'public-beta-v1',
     consumerAcknowledgementsRecorded: true,
@@ -75,11 +75,11 @@ describe('PaymentPanelComponent', () => {
   const checkout = vi.fn((_planId: string, _idempotencyKey: string) => of(checkoutResponse));
   const paymentService = {
     wallet: () => of({
-      balanceDocumentCredits: 2,
-      lifetimePurchasedDocumentCredits: 2,
-      lifetimeSpentDocumentCredits: 2,
-      lifetimeReversedDocumentCredits: 0,
-      reviewDebtDocumentCredits: 0,
+      remainingDocumentGenerations: 2,
+      lifetimePurchasedDocumentGenerations: 2,
+      lifetimeUsedDocumentGenerations: 2,
+      lifetimeReversedDocumentGenerations: 0,
+      reviewDebtDocumentGenerations: 0,
       freeAllowanceGranted: true,
       status: 'ACTIVE' as const,
     }),
@@ -96,19 +96,19 @@ describe('PaymentPanelComponent', () => {
         {
           id: 'c6d1d329-78d4-4dd1-bf75-5f30fdaec764',
           type: 'FREE_ALLOWANCE_GRANTED' as const,
-          documentCredits: 2,
-          balanceBeforeDocumentCredits: 0,
-          balanceAfterDocumentCredits: 2,
+          documentGenerations: 2,
+          balanceBeforeDocumentGenerations: 0,
+          balanceAfterDocumentGenerations: 2,
           operationId: 'FREE_ALLOWANCE:user-1',
-          description: 'Free document credits added',
+          description: 'Free document generations added',
           createdAt: '2026-08-15T10:00:00Z',
         },
         {
           id: 'af9f39c1-df42-4be9-97e9-4c87c8f7ea02',
           type: 'DOCUMENT_RESERVED' as const,
-          documentCredits: 1,
-          balanceBeforeDocumentCredits: 2,
-          balanceAfterDocumentCredits: 1,
+          documentGenerations: 1,
+          balanceBeforeDocumentGenerations: 2,
+          balanceAfterDocumentGenerations: 1,
           operationId: 'DOCUMENT_RESERVATION_CREATE:test',
           description: 'Credit reserved',
           createdAt: '2026-08-15T10:01:00Z',
@@ -116,19 +116,19 @@ describe('PaymentPanelComponent', () => {
         {
           id: '6e9f91aa-e716-4789-bfa1-b234efb4eec5',
           type: 'REFUND_REVERSAL' as const,
-          documentCredits: 10,
-          balanceBeforeDocumentCredits: 1,
-          balanceAfterDocumentCredits: 0,
+          documentGenerations: 10,
+          balanceBeforeDocumentGenerations: 1,
+          balanceAfterDocumentGenerations: 0,
           operationId: 'REFUND:order-1',
-          description: 'Credits restored after a refund',
+          description: 'Generations restored after a refund',
           createdAt: '2026-08-15T11:00:00Z',
         },
         {
           id: '977b0b53-139e-47ab-999c-c08ac5fb2b15',
           type: 'DOCUMENT_RESERVATION_RELEASED' as const,
-          documentCredits: 1,
-          balanceBeforeDocumentCredits: 0,
-          balanceAfterDocumentCredits: 1,
+          documentGenerations: 1,
+          balanceBeforeDocumentGenerations: 0,
+          balanceAfterDocumentGenerations: 1,
           operationId: 'DOCUMENT_RESERVATION_RELEASE:test',
           description: '',
           createdAt: '2026-08-15T11:01:00Z',
@@ -136,9 +136,9 @@ describe('PaymentPanelComponent', () => {
         {
           id: 'c3d38711-2d43-4783-8f4f-b23ff395b921',
           type: 'DOCUMENT_SPENT' as const,
-          documentCredits: 1,
-          balanceBeforeDocumentCredits: 1,
-          balanceAfterDocumentCredits: 1,
+          documentGenerations: 1,
+          balanceBeforeDocumentGenerations: 1,
+          balanceAfterDocumentGenerations: 1,
           operationId: 'DOCUMENT_DELIVERY:test',
           description: 'Document generated successfully',
           createdAt: '2026-08-15T11:02:00Z',
@@ -164,17 +164,71 @@ describe('PaymentPanelComponent', () => {
     fixture.detectChanges();
 
     const text = fixture.nativeElement.textContent;
-    expect(text).toContain('2 credits available');
+    expect(text).toContain('2 generations available');
     expect(text).toContain('Starter');
-    expect(text).toContain('£7.99');
-    expect(text).toContain('10 credits');
+    expect(text).toContain('£4.99');
+    expect(text).toContain('10 generations');
     expect(text).toContain('Active');
-    expect(text).toContain('25 credits');
+    expect(text).toContain('£11.99');
+    expect(text).toContain('25 generations');
     expect(text).toContain('Power');
-    expect(text).toContain('60 credits');
+    expect(text).toContain('£19.99');
+    expect(text).toContain('60 generations');
     expect(text).toContain('No subscription or automatic renewal');
     expect(text).not.toContain('token');
     expect(text).not.toContain('25–30');
+    expect(text).not.toContain('£7.99');
+    expect(text).not.toContain('£16.99');
+    expect(text).not.toContain('£34.99');
+    expect(text).not.toContain('Secure checkout ready');
+    expect(text).not.toContain('Secure one-off checkout is available');
+  });
+
+  it('replaces an exhausted balance with a clear one-off pack action', () => {
+    const fixture = TestBed.createComponent(PaymentPanelComponent);
+    fixture.componentRef.setInput('mode', 'summary');
+    fixture.componentRef.setInput('userId', 'user-1');
+    fixture.detectChanges();
+
+    fixture.componentInstance.wallet.set({
+      remainingDocumentGenerations: 0,
+      lifetimePurchasedDocumentGenerations: 2,
+      lifetimeUsedDocumentGenerations: 2,
+      lifetimeReversedDocumentGenerations: 0,
+      reviewDebtDocumentGenerations: 0,
+      freeAllowanceGranted: true,
+      status: 'ACTIVE',
+    });
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent;
+    const action = fixture.nativeElement.querySelector('.empty-balance-action');
+    expect(text).toContain('No generations remaining');
+    expect(text).toContain('Choose a one-off pack');
+    expect(text).not.toContain('0 generations');
+    expect(text).not.toContain('100%');
+    expect(fixture.nativeElement.querySelector('.usage-ring')).toBeNull();
+    expect(action?.textContent.trim()).toBe('View generation packs');
+    expect(action?.getAttribute('href')).toBe('/payment');
+  });
+
+  it('uses an action-oriented purchase heading when no generations remain', () => {
+    const fixture = TestBed.createComponent(PaymentPanelComponent);
+    fixture.componentRef.setInput('userId', 'user-1');
+    fixture.componentRef.setInput('legalReady', true);
+    fixture.componentRef.setInput('legalVersion', checkoutResponse.consumerTermsVersion);
+    fixture.detectChanges();
+
+    fixture.componentInstance.wallet.update(wallet => wallet && ({
+      ...wallet,
+      remainingDocumentGenerations: 0,
+    }));
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Choose a generation pack');
+    expect(text).toContain('You have no generations remaining');
+    expect(text).not.toContain('0 generations available');
   });
 
   it('has no automated accessibility violations in purchase and history modes', async () => {
@@ -189,6 +243,17 @@ describe('PaymentPanelComponent', () => {
     })).violations).toEqual([]);
 
     fixture.componentRef.setInput('mode', 'history');
+    fixture.detectChanges();
+    expect((await axe.run(fixture.nativeElement, {
+      rules: {'color-contrast': {enabled: false}},
+    })).violations).toEqual([]);
+
+    fixture.componentRef.setInput('mode', 'summary');
+    fixture.detectChanges();
+    fixture.componentInstance.wallet.update(wallet => wallet && ({
+      ...wallet,
+      remainingDocumentGenerations: 0,
+    }));
     fixture.detectChanges();
     expect((await axe.run(fixture.nativeElement, {
       rules: {'color-contrast': {enabled: false}},
@@ -217,7 +282,7 @@ describe('PaymentPanelComponent', () => {
 
     expect(unavailableCatalog).not.toHaveBeenCalled();
     expect(unavailableReadiness).not.toHaveBeenCalled();
-    expect(fixture.nativeElement.textContent).toContain('2 credits');
+    expect(fixture.nativeElement.textContent).toContain('2 generations');
     expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
   });
 
@@ -225,7 +290,7 @@ describe('PaymentPanelComponent', () => {
     const unsafeCatalog = {
       ...catalog,
       plans: catalog.plans.map(plan => plan.id === 'active'
-        ? {...plan, promotionBonusDocumentCredits: 12}
+        ? {...plan, promotionBonusDocumentGenerations: 12}
         : plan),
     };
     await TestBed.resetTestingModule();
@@ -259,7 +324,7 @@ describe('PaymentPanelComponent', () => {
         promotion: {...catalog.promotion, enabled, status},
         plans: catalog.plans.map(plan => ({
           ...plan,
-          promotionBonusDocumentCredits: 0,
+          promotionBonusDocumentGenerations: 0,
         })),
       };
       await TestBed.resetTestingModule();
@@ -303,9 +368,9 @@ describe('PaymentPanelComponent', () => {
         promotion: {...catalog.promotion, enabled, status},
         plans: catalog.plans.map(plan => ({
           ...plan,
-          promotionBonusDocumentCredits: starterBonus === 0
+          promotionBonusDocumentGenerations: starterBonus === 0
             ? 0
-            : plan.promotionBonusDocumentCredits,
+            : plan.promotionBonusDocumentGenerations,
         })),
       };
       await TestBed.resetTestingModule();
@@ -536,6 +601,8 @@ describe('PaymentPanelComponent', () => {
       .toContain('payment service is temporarily unavailable');
     expect(fixture.componentInstance.readinessMessage('PAYMENT_PROVIDER_UNAVAILABLE'))
       .toContain('payment provider is temporarily unavailable');
+    expect(fixture.componentInstance.readinessMessage('STRIPE_CATALOG_NOT_CONFIGURED'))
+      .toContain('approved payment catalogue is configured');
   });
 
   it('keeps checkout disabled for a wallet in payment review', async () => {
@@ -547,11 +614,11 @@ describe('PaymentPanelComponent', () => {
         useValue: {
           ...paymentService,
           wallet: () => of({
-            balanceDocumentCredits: 2,
-            lifetimePurchasedDocumentCredits: 0,
-            lifetimeSpentDocumentCredits: 0,
-            lifetimeReversedDocumentCredits: 0,
-            reviewDebtDocumentCredits: 1,
+            remainingDocumentGenerations: 2,
+            lifetimePurchasedDocumentGenerations: 0,
+            lifetimeUsedDocumentGenerations: 0,
+            lifetimeReversedDocumentGenerations: 0,
+            reviewDebtDocumentGenerations: 1,
             freeAllowanceGranted: true,
             status: 'BLOCKED_REVIEW',
           }),
@@ -822,20 +889,20 @@ describe('PaymentPanelComponent', () => {
     fixture.componentRef.setInput('userId', 'user-1');
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.textContent).toContain('Free document credits added');
-    expect(fixture.nativeElement.textContent).toContain('Credits reversed after a payment refund');
-    expect(fixture.nativeElement.textContent).not.toContain('Credits restored after a refund');
-    expect(fixture.nativeElement.textContent).toContain('-10 credits');
+    expect(fixture.nativeElement.textContent).toContain('Free document generations added');
+    expect(fixture.nativeElement.textContent).toContain('Generations reversed after a payment refund');
+    expect(fixture.nativeElement.textContent).not.toContain('Generations restored after a refund');
+    expect(fixture.nativeElement.textContent).toContain('-10 generations');
     expect(fixture.nativeElement.textContent).toContain(
-      'Document credit restored because generation did not complete',
+      'Document generation restored because generation did not complete',
     );
-    expect(fixture.nativeElement.textContent).toContain('+1 credit');
+    expect(fixture.nativeElement.textContent).toContain('+1 generation');
     expect(fixture.nativeElement.textContent).toContain(
-      'Document credit reserved while generation is running',
+      'Document generation reserved while generation is running',
     );
-    expect(fixture.nativeElement.textContent).toContain('-1 credit');
+    expect(fixture.nativeElement.textContent).toContain('-1 generation');
     expect(fixture.nativeElement.textContent).toContain(
-      'Delivered document completed from the reserved credit',
+      'Delivered document completed from the reserved generation',
     );
     expect(fixture.nativeElement.textContent).toContain('No further balance change');
     expect(fixture.nativeElement.textContent).not.toContain('Document generated successfully');
@@ -852,7 +919,7 @@ describe('PaymentPanelComponent', () => {
           transactions: () => of({transactions: [{
             id: 'tx-without-a-verified-contract',
             type: 'PURCHASE',
-            documentCredits: 10,
+            documentGenerations: 10,
           }]}),
         },
       }],

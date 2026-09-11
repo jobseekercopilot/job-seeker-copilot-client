@@ -303,6 +303,52 @@ describe('JobResultsComponent', () => {
     expect(fixture.componentInstance.roleStates()['programming'].currentPage).toBe(2);
   });
 
+  it.each([
+    'CLOSEST',
+    'HIGHEST_SALARY',
+    'NEWEST_POSTED',
+    'OLDEST_POSTED',
+    'COMPANY_AZ',
+    'JOB_TITLE_AZ',
+  ])('keeps %s selected while its sorted results are loading', sort => {
+    const fixture = createFixture();
+    const sortedResponse = new Subject<JobSearchResponse>();
+    queuedSearchResponses.push(sortedResponse);
+    const select = fixture.debugElement.query(By.css('.sort-select'))
+      .nativeElement as HTMLSelectElement;
+
+    select.value = sort;
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    expect(jobService.calls.at(-1)).toEqual(expect.objectContaining({
+      targetRole: 'cleaning',
+      page: 1,
+      sort,
+    }));
+    expect(fixture.componentInstance.selectedSort()).toBe(sort);
+    const loadingSelect = fixture.debugElement.query(By.css('.sort-select'))
+      ?.nativeElement as HTMLSelectElement | undefined;
+    expect(loadingSelect).toBe(select);
+    expect(loadingSelect?.value).toBe(sort);
+    expect(loadingSelect?.disabled).toBe(true);
+
+    sortedResponse.next(responseForRequest(currentResponse, {
+      targetRole: 'cleaning',
+      page: 1,
+      pageSize: 10,
+      sort,
+    }));
+    sortedResponse.complete();
+    fixture.detectChanges();
+
+    const loadedSelect = fixture.debugElement.query(By.css('.sort-select'))
+      .nativeElement as HTMLSelectElement;
+    expect(loadedSelect).toBe(select);
+    expect(loadedSelect.value).toBe(sort);
+    expect(loadedSelect.disabled).toBe(false);
+  });
+
   it('applies source filter before sorting and paginating', () => {
     currentResponse = singleRoleResponse([
       ...jobsFor('adzuna', 12, 'Adzuna').map((job, index) => ({
@@ -320,6 +366,17 @@ describe('JobResultsComponent', () => {
     clickButtonContaining(fixture, 'Adzuna');
     fixture.componentInstance.selectSort('HIGHEST_SALARY');
     fixture.detectChanges();
+
+    const filterPanel = fixture.nativeElement.querySelector('.filter-panel') as HTMLElement;
+    expect(filterPanel.textContent).toContain('Counts show jobs on this page.');
+    expect(filterPanel.textContent).toContain('All Job Sites');
+    expect(filterPanel.textContent).toContain('10 jobs');
+    expect(filterPanel.textContent).toContain('Adzuna');
+    expect(filterPanel.textContent).toContain('6 jobs');
+    expect(filterPanel.textContent).toContain('Reed.co.uk');
+    expect(filterPanel.textContent).toContain('4 jobs');
+    expect(filterPanel.textContent).not.toContain('16 jobs');
+    expect(filterPanel.querySelector('[aria-label="Adzuna: 6 jobs on this page"]')).not.toBeNull();
 
     expect(jobCards(fixture)).toHaveLength(6);
     expect(fixture.nativeElement.textContent)
@@ -394,12 +451,15 @@ describe('JobResultsComponent', () => {
     );
     const fixture = createFixture('REAL_PROVIDERS');
 
-    expect(fixture.nativeElement.textContent).toContain('Real providers — partial availability');
+    expect(fixture.nativeElement.querySelector('[data-testid="job-search-provider-mode"]')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Real providers');
     expect(fixture.nativeElement.textContent).toContain('real developer role');
-    expect(fixture.nativeElement.textContent).toContain('JSEARCH has reached its current request limit');
+    expect(fixture.nativeElement.textContent).not.toContain('JSEARCH has reached its current request limit');
+    expect(fixture.componentInstance.providerWarnings())
+      .toContain('JSEARCH has reached its current request limit. Results from other job sites are still shown.');
   });
 
-  it('uses response provenance instead of the independently configured provider mode', () => {
+  it('does not expose provider implementation-mode labels with returned jobs', () => {
     currentResponse = singleRoleResponse(
       [job('fixture-labelled result', {})],
       'developer',
@@ -416,10 +476,11 @@ describe('JobResultsComponent', () => {
     );
 
     const fixtureReportedByRealConfiguration = createFixture('REAL_PROVIDERS');
-    expect(fixtureReportedByRealConfiguration.nativeElement.textContent)
-      .toContain('Fixture-backed provider data');
-    expect(fixtureReportedByRealConfiguration.nativeElement.textContent)
-      .not.toContain('Real providers');
+    expect(fixtureReportedByRealConfiguration.nativeElement.textContent).toContain('fixture-labelled result');
+    expect(fixtureReportedByRealConfiguration.nativeElement.textContent).not.toContain('Fixture-backed provider data');
+    expect(fixtureReportedByRealConfiguration.nativeElement.querySelector(
+      '[data-testid="job-search-provider-mode"]',
+    )).toBeNull();
     fixtureReportedByRealConfiguration.destroy();
 
     currentResponse = singleRoleResponse(
@@ -434,10 +495,11 @@ describe('JobResultsComponent', () => {
     );
 
     const fixtureReportedByFixtureConfiguration = createFixture('FIXTURE');
-    expect(fixtureReportedByFixtureConfiguration.nativeElement.textContent)
-      .toContain('Real providers');
-    expect(fixtureReportedByFixtureConfiguration.nativeElement.textContent)
-      .not.toContain('Fixture-backed provider data');
+    expect(fixtureReportedByFixtureConfiguration.nativeElement.textContent).toContain('live-labelled result');
+    expect(fixtureReportedByFixtureConfiguration.nativeElement.textContent).not.toContain('Real providers');
+    expect(fixtureReportedByFixtureConfiguration.nativeElement.querySelector(
+      '[data-testid="job-search-provider-mode"]',
+    )).toBeNull();
   });
 
   it('keeps provider partial failures scoped to the role that returned them', () => {
@@ -471,7 +533,9 @@ describe('JobResultsComponent', () => {
     clickButtonContaining(fixture, 'programming');
 
     expect(fixture.nativeElement.textContent)
-      .toContain('JSEARCH has reached its current request limit');
+      .not.toContain('JSEARCH has reached its current request limit');
+    expect(fixture.componentInstance.providerWarnings())
+      .toContain('JSEARCH has reached its current request limit. Results from other job sites are still shown.');
     expect(fixture.nativeElement.textContent).toContain('programming result');
     expect(fixture.componentInstance.searchStatus())
       .toBe(TargetRoleJobResultsSearchStatusEnum.Partial);
@@ -482,6 +546,7 @@ describe('JobResultsComponent', () => {
 
     expect(fixture.nativeElement.textContent)
       .not.toContain('JSEARCH has reached its current request limit');
+    expect(fixture.componentInstance.providerWarnings()).toEqual([]);
     expect(fixture.nativeElement.textContent).toContain('cleaning result');
     expect(fixture.componentInstance.searchStatus())
       .toBe(TargetRoleJobResultsSearchStatusEnum.Complete);
@@ -520,9 +585,14 @@ describe('JobResultsComponent', () => {
     );
     const fixture = createFixture('REAL_PROVIDERS');
 
-    expect(fixture.nativeElement.textContent).toContain('Real-provider configuration error');
     expect(fixture.nativeElement.textContent)
-      .toContain('Provider setup is incomplete. No fixtures used.');
+      .not.toContain('REED needs provider-account validation. Results from other job sites are still shown.');
+    expect(fixture.componentInstance.providerWarnings())
+      .toContain('REED needs provider-account validation. Results from other job sites are still shown.');
+    expect(fixture.nativeElement.querySelector('[data-testid="job-search-provider-mode"]')).toBeNull();
+    expect(fixture.nativeElement.textContent)
+      .toContain('No jobs to show for this search. Refresh or update your preferences and try again.');
+    expect(fixture.nativeElement.textContent).not.toContain('No fixtures used');
   });
 
   it('distinguishes unavailable real providers from a successful zero-result search', () => {
@@ -537,9 +607,11 @@ describe('JobResultsComponent', () => {
     );
     const unavailable = createFixture('REAL_PROVIDERS');
     expect(unavailable.nativeElement.textContent)
-      .toContain('Provider data unavailable — origin not verified');
+      .not.toContain('ADZUNA was temporarily unavailable. Results from other job sites are still shown.');
+    expect(unavailable.componentInstance.providerWarnings())
+      .toContain('ADZUNA was temporarily unavailable. Results from other job sites are still shown.');
     expect(unavailable.nativeElement.textContent)
-      .toContain('Providers unavailable. Try later.');
+      .toContain('No jobs to show for this search. Refresh or update your preferences and try again.');
 
     currentResponse = singleRoleResponse(
       [],
@@ -554,7 +626,8 @@ describe('JobResultsComponent', () => {
       ],
     );
     const zeroResults = createFixture('REAL_PROVIDERS');
-    expect(zeroResults.nativeElement.textContent).toContain('Real providers');
+    expect(zeroResults.nativeElement.querySelector('[data-testid="job-search-provider-mode"]')).toBeNull();
+    expect(zeroResults.nativeElement.textContent).not.toContain('Real providers');
     expect(zeroResults.nativeElement.textContent)
       .toContain('No jobs match your current profile.');
   });
@@ -868,7 +941,9 @@ describe('JobResultsComponent', () => {
     expect(state.searchStatus).toBe(TargetRoleJobResultsSearchStatusEnum.Partial);
     expect(state.matchingStatus).toBe(TargetRoleJobResultsMatchingStatusEnum.TimedOut);
     expect(fixture.nativeElement.textContent)
-      .toContain('JSEARCH has reached its current request limit');
+      .not.toContain('JSEARCH has reached its current request limit');
+    expect(fixture.componentInstance.providerWarnings())
+      .toContain('JSEARCH has reached its current request limit. Results from other job sites are still shown.');
   });
 
   it('falls back to top-level metadata for a legacy matching role group', () => {
@@ -1142,7 +1217,7 @@ describe('JobResultsComponent', () => {
     );
   });
 
-  it('creates the application before offering an explicit non-empty generation choice', () => {
+  it('creates the application before offering independent document choices', () => {
     const applicationId = '10000000-0000-4000-8000-000000000001';
     currentResponse = singleRoleResponse([job('Application-first role', {
       id: 'application-first-role',
@@ -1153,6 +1228,7 @@ describe('JobResultsComponent', () => {
     applicationTracker.createApplication.mockReturnValue(of({
       id: applicationId,
       status: 'SAVED',
+      version: 4,
     }));
     const fixture = createFixture();
     const selectedJob = fixture.componentInstance.paginatedJobs()[0];
@@ -1162,12 +1238,18 @@ describe('JobResultsComponent', () => {
 
     expect(applicationTracker.createApplication).toHaveBeenCalledWith(selectedJob);
     expect(documentGenerationService.generate).not.toHaveBeenCalled();
-    expect(fixture.componentInstance.documentChoiceJob()).toMatchObject({applicationId});
+    expect(fixture.componentInstance.documentChoiceJob()).toMatchObject({
+      applicationId,
+      applicationVersion: 4,
+    });
     expect(fixture.componentInstance.canContinueDocumentChoice()).toBe(false);
     expect(fixture.nativeElement.textContent).toContain('Application saved');
-    expect(fixture.nativeElement.textContent).toContain('Uploading is free');
+    expect(fixture.nativeElement.textContent).toContain('Uploading does not use your allowance');
     expect(fixture.nativeElement.textContent).toContain(
-      '1 document credit after successful delivery; no charge if delivery fails.',
+      '1 document generation after successful delivery; no charge if delivery fails.',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'Upload and Not now are free and use no allowance.',
     );
 
     fixture.componentInstance.chooseDocumentAction('CV', 'GENERATE');
@@ -1178,8 +1260,38 @@ describe('JobResultsComponent', () => {
 
     expect(fixture.componentInstance.evidenceSelectionJob()).toMatchObject({applicationId});
     expect(fixture.componentInstance.activeEvidencePurposes()).toEqual(['CV']);
-    expect(fixture.nativeElement.textContent).toContain('Generate CV (1 document credit if delivered)');
+    expect(fixture.nativeElement.textContent).toContain('Generate CV (1 document generation if delivered)');
     expect(fixture.nativeElement.textContent).not.toContain('Cover letter evidence');
+  });
+
+  it('continues with both documents omitted without generation, upload, or allowance use', () => {
+    const applicationId = '10000000-0000-4000-8000-000000000013';
+    currentResponse = singleRoleResponse([job('Documents later role', {
+      id: 'documents-later-role',
+      canonicalJobId: 'canonical-documents-later-role',
+      applicationId,
+    })]);
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+    const notifications: Array<{message: string; type: string}> = [];
+    fixture.componentInstance.notify.subscribe(notification => notifications.push(notification));
+
+    fixture.componentInstance.prepareApplicationDocuments(selectedJob, 'GENERATE');
+    fixture.componentInstance.chooseDocumentAction('CV', 'OMIT');
+    fixture.componentInstance.chooseDocumentAction('COVER_LETTER', 'OMIT');
+
+    expect(fixture.componentInstance.canContinueDocumentChoice()).toBe(true);
+    fixture.componentInstance.continueDocumentChoice();
+
+    expect(documentGenerationService.generate).not.toHaveBeenCalled();
+    expect(documentGenerationService.uploadApplicationDocument).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.evidenceSelectionJob()).toBeNull();
+    expect(fixture.componentInstance.documentChoiceJob()).toBeNull();
+    expect(fixture.componentInstance.activeEvidencePurposes()).toEqual([]);
+    expect(notifications).toContainEqual({
+      message: 'Application saved. Add documents later.',
+      type: 'success',
+    });
   });
 
   it('keeps an invalid upload explanation visible while the other document choice changes', () => {
@@ -1218,6 +1330,7 @@ describe('JobResultsComponent', () => {
     applicationTracker.createApplication.mockReturnValue(of({
       id: applicationId,
       status: 'SAVED',
+      version: 1,
     }));
     documentGenerationService.uploadApplicationDocument.mockImplementation(
       (request: any, onProgress: (progress: any) => void) => {
@@ -1230,6 +1343,7 @@ describe('JobResultsComponent', () => {
           fileType: 'PDF',
           state: 'COMPLETED',
           documentId,
+          applicationVersion: 2,
         });
       },
     );
@@ -1253,6 +1367,7 @@ describe('JobResultsComponent', () => {
       file,
     });
     expect(fixture.componentInstance.jobs()[0].cvDocumentId).toBe(documentId);
+    expect(fixture.componentInstance.jobs()[0].applicationVersion).toBe(2);
     expect(fixture.componentInstance.applicationUploadState(selectedJob, 'CV')).toMatchObject({
       phase: 'COMPLETED',
       percent: 100,
@@ -1526,6 +1641,105 @@ describe('JobResultsComponent', () => {
       expect.objectContaining({descriptionCompleteness: 'FULL'}),
       expect.any(Object),
     );
+  });
+
+  it('keeps a refreshed NHS preview incomplete until the user confirms it', () => {
+    evidenceEntries = [evidenceEntry(
+      '50000000-0000-4000-8000-000000000001',
+      'PROJECT',
+      'Production software project',
+      1,
+    )];
+    const fixture = createFixture();
+    const selectedJob: Job = {
+      ...fixture.componentInstance.paginatedJobs()[0],
+      primarySource: 'NHS_JOBS',
+      externalJobId: '5554443',
+      sourceUrl: 'https://beta.jobs.nhs.uk/candidate/jobadvert/M0048-26-0423',
+      descriptionCompleteness: JobDescriptionCompletenessEnum.Preview,
+    };
+    const refreshedPreview =
+      'Official NHS Jobs search preview responsibility and requirement. '.repeat(12);
+    jobService.getJobDetails.mockReturnValueOnce(of({
+      ...selectedJob,
+      description: refreshedPreview,
+      // A preview fallback must remain incomplete even if an upstream field
+      // is accidentally promoted to FULL.
+      descriptionCompleteness: JobDescriptionCompletenessEnum.Full,
+    }));
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.generationJobDescription())
+      .toBe(refreshedPreview.trim());
+    expect(fixture.componentInstance.evidenceSelectionJob()?.descriptionCompleteness)
+      .toBe(JobDescriptionCompletenessEnum.Preview);
+    expect(fixture.componentInstance.generationJobDescriptionNeedsConfirmation())
+      .toBe(true);
+    expect(fixture.componentInstance.generationJobDescriptionConfirmed())
+      .toBe(false);
+    const guidance = fixture.debugElement
+      .query(By.css('[data-testid="nhs-advert-guidance"]'));
+    expect(guidance.nativeElement.textContent)
+      .toContain('copy and paste its responsibilities');
+    const officialLink: HTMLAnchorElement = guidance.query(By.css('a')).nativeElement;
+    expect(officialLink.getAttribute('href'))
+      .toBe('https://beta.jobs.nhs.uk/candidate/jobadvert/M0048-26-0423');
+    expect(officialLink.getAttribute('target')).toBe('_blank');
+    expect(officialLink.getAttribute('rel')).toBe('noopener noreferrer');
+
+    const evidence = fixture.componentInstance.eligibleEvidence()[0];
+    fixture.componentInstance.toggleEvidence('CV', evidence);
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', evidence);
+    expect(fixture.componentInstance.canGenerateFromSelection()).toBe(false);
+
+    const confirmation: HTMLInputElement = fixture.debugElement
+      .query(By.css('.job-advert-confirmation input')).nativeElement;
+    confirmation.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.canGenerateFromSelection()).toBe(true);
+
+    fixture.componentInstance.confirmEvidenceGeneration();
+
+    expect(documentGenerationService.generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: refreshedPreview.trim(),
+        descriptionCompleteness: 'USER_CONFIRMED',
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it('keeps an NHS preview usable without a red retry failure when refresh is unavailable', () => {
+    const fixture = createFixture();
+    const selectedJob: Job = {
+      ...fixture.componentInstance.paginatedJobs()[0],
+      primarySource: 'NHS_JOBS',
+      externalJobId: '5554443',
+      sourceUrl: 'https://www.jobs.nhs.uk/candidate/jobadvert/C123',
+      description: 'Official NHS Jobs search preview.',
+      descriptionCompleteness: JobDescriptionCompletenessEnum.Preview,
+    };
+    jobService.getJobDetails.mockReturnValueOnce(
+      throwError(() => ({status: 404})),
+    );
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.generationJobDetailsError()).toBeNull();
+    expect(fixture.componentInstance.generationJobDescription())
+      .toBe('Official NHS Jobs search preview.');
+    expect(fixture.componentInstance.generationJobDescriptionNeedsConfirmation())
+      .toBe(true);
+    expect(fixture.componentInstance.generationJobDescriptionConfirmed())
+      .toBe(false);
+    expect(fixture.debugElement.query(By.css('.job-advert-review .selector-load-error')))
+      .toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Retry provider advert');
+    expect(fixture.debugElement.query(By.css('[data-testid="nhs-advert-guidance"]')))
+      .not.toBeNull();
   });
 
   it('hydrates a preview card from Read full advert without opening generation', () => {
@@ -2016,9 +2230,129 @@ describe('JobResultsComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.generationMessages()[selectedJob.id!])
-      .toBe('CV and Cover letter ready. CV recovered with an evidence-based fallback — no document credit used.');
+      .toBe('CV and Cover letter ready. CV recovery did not deliver a chargeable document, so no document generation was used.');
     expect(fixture.componentInstance.generationMessages()[selectedJob.id!])
       .not.toContain('generated successfully');
+  });
+
+  it('refreshes the authoritative application version after generation completes', () => {
+    const applicationId = '10000000-0000-4000-8000-000000000021';
+    const canonicalJobId = 'canonical-generation-version-role';
+    currentResponse = singleRoleResponse([job('Generation version role', {
+      id: canonicalJobId,
+      canonicalJobId,
+      applicationId,
+      applicationVersion: 2,
+      applicationStatus: 'SAVED',
+    })]);
+    evidenceEntries = [evidenceEntry(
+      '50000000-0000-4000-8000-000000000021',
+      'PROJECT',
+      'Production delivery',
+      1,
+    )];
+    documentGenerationService.generate.mockReturnValueOnce(of({
+      applicationId,
+      cvDocumentId: '20000000-0000-4000-8000-000000000021',
+      coverLetterDocumentId: '20000000-0000-4000-8000-000000000022',
+      downloads: {},
+    }));
+    applicationTracker.listApplications
+      .mockReturnValueOnce(of([]))
+      .mockReturnValueOnce(of([{
+        id: applicationId,
+        canonicalJobId,
+        status: 'DOCUMENTS_GENERATED',
+        version: 5,
+        cvDocumentId: '20000000-0000-4000-8000-000000000021',
+        coverLetterDocumentId: '20000000-0000-4000-8000-000000000022',
+      }]));
+    const fixture = createFixture();
+    const selectedJob = fixture.componentInstance.paginatedJobs()[0];
+
+    fixture.componentInstance.openEvidenceSelection(selectedJob);
+    const [evidence] = fixture.componentInstance.eligibleEvidence();
+    fixture.componentInstance.toggleEvidence('CV', evidence);
+    fixture.componentInstance.toggleEvidence('COVER_LETTER', evidence);
+    confirmGenerationAdvert(fixture);
+    fixture.componentInstance.confirmEvidenceGeneration();
+
+    expect(applicationTracker.listApplications).toHaveBeenCalledTimes(2);
+    expect(fixture.componentInstance.jobs()[0]).toMatchObject({
+      applicationId,
+      applicationStatus: 'DOCUMENTS_GENERATED',
+      applicationVersion: 5,
+    });
+  });
+
+  it('refreshes a stale application after 409 and waits for a deliberate applied retry', () => {
+    const applicationId = '10000000-0000-4000-8000-000000000031';
+    const canonicalJobId = 'canonical-stale-apply-role';
+    currentResponse = singleRoleResponse([job('Stale apply role', {
+      id: canonicalJobId,
+      canonicalJobId,
+      applicationId,
+      applicationVersion: 2,
+      applicationStatus: 'DOCUMENTS_GENERATED',
+    })]);
+    applicationTracker.listApplications
+      .mockReturnValueOnce(of([]))
+      .mockReturnValueOnce(of([{
+        id: applicationId,
+        canonicalJobId,
+        status: 'DOCUMENTS_GENERATED',
+        version: 3,
+      }]));
+    applicationTracker.updateStatus.mockReturnValueOnce(
+      throwError(() => ({status: 409})),
+    );
+    const fixture = createFixture();
+    const notifications: Array<{message: string; type: string}> = [];
+    fixture.componentInstance.notify.subscribe(notification => notifications.push(notification));
+
+    fixture.componentInstance.updateApplicationStatus(
+      fixture.componentInstance.jobs()[0],
+      'APPLIED',
+    );
+
+    expect(applicationTracker.updateStatus).toHaveBeenCalledTimes(1);
+    expect(applicationTracker.updateStatus).toHaveBeenNthCalledWith(
+      1,
+      applicationId,
+      'APPLIED',
+      2,
+    );
+    expect(fixture.componentInstance.jobs()[0]).toMatchObject({
+      applicationStatus: 'DOCUMENTS_GENERATED',
+      applicationVersion: 3,
+    });
+    expect(notifications.at(-1)).toEqual(expect.objectContaining({
+      type: 'info',
+      message: expect.stringContaining('review before retrying'),
+    }));
+
+    applicationTracker.updateStatus.mockReturnValueOnce(of({
+      id: applicationId,
+      canonicalJobId,
+      status: 'APPLIED',
+      version: 4,
+    }));
+    fixture.componentInstance.updateApplicationStatus(
+      fixture.componentInstance.jobs()[0],
+      'APPLIED',
+    );
+
+    expect(applicationTracker.updateStatus).toHaveBeenCalledTimes(2);
+    expect(applicationTracker.updateStatus).toHaveBeenNthCalledWith(
+      2,
+      applicationId,
+      'APPLIED',
+      3,
+    );
+    expect(fixture.componentInstance.jobs()[0]).toMatchObject({
+      applicationStatus: 'APPLIED',
+      applicationVersion: 4,
+    });
   });
 
   it('reconciles retained drafts against evidence that is still eligible', () => {
@@ -2482,7 +2816,7 @@ describe('JobResultsComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.generationErrors()[selectedJob.id!])
-      .toBe('There are not enough document credits for this job. No generation request was made.');
+      .toBe('There are not enough document generations for this job. No generation request was made.');
   });
 
   function createFixture(

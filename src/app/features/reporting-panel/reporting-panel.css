@@ -1,7 +1,15 @@
+:host {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+}
+
 .reporting-panel {
   display: grid;
   gap: 0.8rem;
   color: var(--text-primary);
+  max-width: 100%;
+  min-width: 0;
 }
 
 .reporting-header,
@@ -19,6 +27,8 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
+  max-width: 100%;
+  min-width: 0;
   padding: 0.9rem;
 }
 
@@ -67,6 +77,8 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
+  max-width: 100%;
+  min-width: 0;
   padding: 0.9rem;
 }
 
@@ -115,7 +127,7 @@
   border-radius: var(--radius-control);
   display: grid;
   gap: 0.5rem;
-  grid-template-columns: 0.65rem 1fr auto auto;
+  grid-template-columns: 0.65rem minmax(0, 1fr) auto auto;
   padding: 0.55rem 0.65rem;
 }
 
@@ -219,6 +231,7 @@
   display: block;
   font-size: 0.84rem;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .timeline-card span,
@@ -227,6 +240,7 @@
   display: block;
   font-size: 0.76rem;
   margin-top: 0.16rem;
+  overflow-wrap: anywhere;
 }
 
 .journal-card pre {
@@ -240,6 +254,7 @@
   max-height: 14rem;
   min-height: 8rem;
   overflow: auto;
+  overflow-wrap: anywhere;
   padding: 0.7rem;
   white-space: pre-wrap;
 }

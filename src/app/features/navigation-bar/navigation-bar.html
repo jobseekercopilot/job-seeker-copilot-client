@@ -13,8 +13,8 @@
       <div>
         <h1 class="header-title text-lg sm:text-xl font-extrabold flex items-center gap-2 font-display">
           Job Seeker Copilot
-          <span class="standard-badge inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider">
-            Career Support
+          <span class="public-beta-badge inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider">
+            Public beta
           </span>
         </h1>
         <p class="header-subtitle text-[10px] sm:text-2xs uppercase tracking-widest font-bold">Your job search workspace</p>
@@ -23,13 +23,23 @@
 
     <!-- Quick Actions / User stats -->
     <div id="header-stats" class="flex items-center gap-3 relative">
+      <a class="mobile-packs-link"
+         routerLink="/payment"
+         aria-label="Buy document generation packs">
+        <mat-icon aria-hidden="true">add_card</mat-icon>
+        <span>{{ documentCreditBalance() === 0 ? 'Get packs' : 'Packs' }}</span>
+      </a>
+
       @if (documentCreditBalance() !== null) {
         <div class="token-menu-widget relative hidden sm:block">
           <button type="button"
                   class="token-balance-pill flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-extrabold"
                   (click)="toggleTokenDropdown()"
+                  [attr.aria-label]="documentCreditBalance() === 0
+                    ? 'No document generations remain. Open generation options.'
+                    : 'Open document generation balance and options.'"
                   [attr.aria-expanded]="tokenDropdownOpen()">
-            Documents: {{ formatCredits(documentCreditBalance()) }}
+            {{ documentCreditBalance() === 0 ? 'Get generations' : 'Documents: ' + formatCredits(documentCreditBalance()) }}
             <mat-icon class="text-[14px] w-3.5 h-3.5 leading-none">keyboard_arrow_down</mat-icon>
           </button>
 
@@ -37,18 +47,22 @@
             <button type="button"
                     class="fixed inset-0 z-40 bg-transparent w-full h-full cursor-default focus:outline-none"
                     (click)="closeTokenDropdown()">
-              <span class="sr-only">Close document-credit menu</span>
+              <span class="sr-only">Close document generation menu</span>
             </button>
 
             <div class="token-dropdown absolute right-0 mt-2.5 w-64 rounded-2xl shadow-lg z-50 py-3.5 px-4 text-left animate-fade-in origin-top-right">
               <div class="token-dropdown-header">
-                <span>Document credits</span>
-                <strong>{{ formatCredits(documentCreditBalance()) }}</strong>
+                <span>Document generations</span>
+                <strong>{{ documentCreditBalance() === 0 ? 'No generations remaining' : formatCredits(documentCreditBalance()) }}</strong>
               </div>
-              <p>One successfully delivered CV or cover letter uses one credit.</p>
+              <p>{{ documentCreditBalance() === 0
+                ? 'Choose a one-off pack when you want to create another tailored CV or cover letter.'
+                : 'One successfully delivered CV or cover letter uses one generation.' }}</p>
               <div class="token-dropdown-actions">
-                <a class="token-primary-action" href="/payment" (click)="closeTokenDropdown()">View credit packs</a>
-                <a class="token-secondary-action" href="/payment/history" (click)="closeTokenDropdown()">View credit history</a>
+                <a class="token-primary-action" href="/payment" (click)="closeTokenDropdown()">
+                  {{ documentCreditBalance() === 0 ? 'Choose a generation pack' : 'View generation packs' }}
+                </a>
+                <a class="token-secondary-action" href="/payment/history" (click)="closeTokenDropdown()">View generation history</a>
                 <button type="button" class="token-secondary-action" (click)="refreshBalance()">Refresh balance</button>
               </div>
             </div>

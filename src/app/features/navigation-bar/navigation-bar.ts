@@ -63,6 +63,6 @@ export class NavigationBar {
 
   formatCredits(value: number | null): string {
     const count = value ?? 0;
-    return `${count.toLocaleString('en-GB')} ${count === 1 ? 'credit' : 'credits'}`;
+    return `${count.toLocaleString('en-GB')} ${count === 1 ? 'generation' : 'generations'}`;
   }
 }

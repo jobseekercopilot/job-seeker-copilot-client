@@ -6,19 +6,15 @@
       <div class="flex items-center gap-3">
         <mat-icon class="panel-icon">work</mat-icon>
         <h2 class="text-lg font-semibold m-0">Job Matches</h2>
-        <span class="provider-mode-badge"
-              [class.provider-mode-partial]="providerProvenanceCaution()"
-              data-testid="job-search-provider-mode">
-          {{ providerModeLabel() }}
-        </span>
       </div>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      @if (!loading() && roleResults().length > 0) {
+      @if (roleResults().length > 0) {
         <label class="sort-control inline-flex items-center gap-2">
           <span class="text-xs font-semibold">Sort</span>
           <select class="sort-select"
                   [value]="selectedSort()"
+                  [disabled]="loading()"
                   (change)="selectSort($any($event.target).value)">
             @for (option of sortOptions; track option.value) {
               <option [value]="option.value">{{ option.label }}</option>
@@ -62,15 +58,21 @@
         <h3 class="m-0 text-sm font-semibold">Filters</h3>
       </div>
       <section class="filter-section">
-        <h4 class="filter-section-title m-0 mb-2 text-xs font-semibold uppercase tracking-wider">Sources</h4>
+        <div class="mb-2 flex flex-wrap items-baseline gap-2">
+          <h4 class="filter-section-title m-0 text-xs font-semibold uppercase tracking-wider">Sources</h4>
+          <p class="filter-section-title m-0 text-xs">Counts show jobs on this page.</p>
+        </div>
         <div class="flex flex-wrap gap-2" aria-label="Job site filters">
           @for (option of publisherOptions(); track option.label) {
             <button type="button"
                     (click)="selectPublisher(option.label)"
                     class="source-chip inline-flex items-center gap-2 border px-3 py-1.5 text-sm font-medium transition-colors"
-                    [class.source-chip-active]="selectedPublisher() === option.label">
+                    [class.source-chip-active]="selectedPublisher() === option.label"
+                    [attr.aria-label]="option.label + ': ' + option.count + (option.count === 1 ? ' job' : ' jobs') + ' on this page'">
               <span>{{ option.label }}</span>
-              <span class="text-xs">({{ option.count }})</span>
+              <span class="text-xs">
+                {{ option.count }} job{{ option.count === 1 ? '' : 's' }}
+              </span>
             </button>
           }
         </div>
@@ -138,13 +140,6 @@
       <div class="error-state flex items-start gap-3 rounded-xl p-4">
         <mat-icon class="text-rose-500 text-lg flex-shrink-0">error_outline</mat-icon>
         <p class="text-sm m-0">{{ errMsg }}</p>
-      </div>
-    }
-
-    @for (warning of providerWarnings(); track warning) {
-      <div class="warning-state flex items-start gap-3 rounded-xl p-4">
-        <mat-icon class="text-amber-500 text-lg flex-shrink-0">warning</mat-icon>
-        <p class="text-sm m-0">{{ warning }}</p>
       </div>
     }
 
@@ -236,8 +231,8 @@
                       Choose documents for {{ jobTitle(choiceJob) }}
                     </h3>
                     <p>
-                      Choose each document independently. Uploading is free; one credit is spent only after each
-                      selected document is successfully delivered. Failed or cancelled delivery uses no credit.
+                      Choose each document independently. Uploading does not use your allowance; one generation is used only after each
+                      selected document is successfully delivered. Failed or cancelled delivery uses no generation.
                     </p>
                   </div>
                   <button type="button" class="selector-close" (click)="closeDocumentChoice()"
@@ -260,7 +255,7 @@
                                  [name]="evidenceSelectorDomId(choiceJob, 'choice-' + purpose)"
                                  [checked]="documentChoices()[purpose] === 'GENERATE'"
                                  (change)="chooseDocumentAction(purpose, 'GENERATE')" />
-                          <span><strong>Generate</strong><small>1 document credit after successful delivery; no charge if delivery fails.</small></span>
+                          <span><strong>Generate</strong><small>1 document generation after successful delivery; no charge if delivery fails.</small></span>
                         </label>
                       }
                       <label>
@@ -296,8 +291,8 @@
 
                 @if (documentChoiceEntryPoint() === 'GENERATE') {
                   <p class="selector-note">
-                    Select Generate for at least one document. You will review the exact document-credit cost
-                    before generation starts.
+                    Generate only if you want us to create a document. Upload and Not now are free and use no allowance.
+                    You will review the exact document-generation allowance before any generation starts.
                   </p>
                 }
                 <footer class="selector-actions">
@@ -417,12 +412,32 @@
                 </div>
                 @if (generationJobDetailsLoading()) {
                   <p class="selector-loading" role="status">
-                    Loading the complete advert from the provider…
+                    {{ generationNhsPreview()
+                      ? 'Checking the latest NHS Jobs preview…'
+                      : 'Loading the complete advert from the provider…' }}
                   </p>
                 } @else if (generationJobDetailsError(); as detailsError) {
                   <div class="selector-error selector-load-error" role="alert">
                     <p>{{ detailsError }}</p>
                     <button type="button" (click)="retryJobDetails()">Retry provider advert</button>
+                  </div>
+                }
+                @if (generationNhsPreview()) {
+                  <div class="selector-note nhs-advert-guidance" role="status"
+                       data-testid="nhs-advert-guidance">
+                    <strong>NHS Jobs supplies a shortened search preview here.</strong>
+                    <span>
+                      Open the full official advert, then copy and paste its responsibilities,
+                      requirements and person specification into the editable text below before generation.
+                    </span>
+                    @if (generationNhsOfficialAdvertUrl(); as officialAdvertUrl) {
+                      <a [href]="officialAdvertUrl"
+                         target="_blank"
+                         rel="noopener noreferrer"
+                         aria-label="Open the full official NHS Jobs advert in a new tab">
+                        Open full official NHS advert
+                      </a>
+                    }
                   </div>
                 }
                 @if (!generationJobDetailsLoading() && generationJobDescriptionLooksIncomplete()) {
