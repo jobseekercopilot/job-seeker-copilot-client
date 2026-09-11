@@ -4,6 +4,7 @@ import {
   Component,
   computed,
   inject,
+  input,
   OnInit,
   output,
   signal,
@@ -58,6 +59,8 @@ export class EvidenceLibraryComponent implements OnInit {
 
   readonly notify = output<{message: string; type: 'success' | 'info' | 'error'}>();
   readonly changed = output<void>();
+  readonly entryAdded = output<EvidenceEntry>();
+  readonly onboardingCategory = input<string | null>(null);
   readonly entries = signal<EvidenceEntry[]>([]);
   readonly loading = signal(true);
   readonly busy = signal(false);
@@ -128,7 +131,16 @@ export class EvidenceLibraryComponent implements OnInit {
   }));
 
   ngOnInit(): void {
-    void this.load();
+    const onboardingCategory = this.onboardingCategory();
+    if (onboardingCategory) {
+      // Onboarding mode: no list is loaded and the create form is opened by
+      // default so the user can add an entry immediately. The category is
+      // fixed to the onboarding category.
+      this.openCreate();
+      this.category.set(onboardingCategory);
+    } else {
+      void this.load();
+    }
   }
 
   async load(): Promise<void> {
@@ -273,27 +285,48 @@ export class EvidenceLibraryComponent implements OnInit {
     }
     this.busy.set(true);
     this.error.set(null);
+    const onboardingCategory = this.onboardingCategory();
     try {
       await firstValueFrom(this.browserSession.ensureCsrf());
       const request = this.request();
-      const existing = this.editingEntry();
-      if (this.editorMode() === 'edit' && existing) {
-        await firstValueFrom(this.api.updateEvidence(
-          existing.entryId, request, `"${existing.version}"`,
-          'body', false, {transferCache: false}));
-      } else {
-        await firstValueFrom(this.api.createEvidence(
-          request, 'body', false, {transferCache: false}));
+      if (onboardingCategory) {
+        // In onboarding mode the category is fixed; override to ensure the correct
+        // value is sent regardless of the component's internal category signal.
+        request.category = onboardingCategory as typeof request.category;
       }
-      this.notify.emit({
-        message: existing ? 'A new draft revision was saved.' : 'Draft evidence was added.',
-        type: 'success',
-      });
-      this.editorMode.set(null);
-      this.editingEntry.set(null);
-      this.changed.emit();
-      await this.load();
+      const existing = this.editingEntry();
+      if (onboardingCategory) {
+        // Onboarding mode always creates a new draft (never edits). Capture the
+        // created entry so it can be emitted for the parent to render + confirm.
+        const createdEntry = await firstValueFrom(this.api.createEvidence(
+          request, 'body', false, {transferCache: false}));
+        // Onboarding mode success: emit the created entry, reset the form but keep
+        // the editor open so the user can add another entry immediately.
+        this.entryAdded.emit(createdEntry);
+        this.resetForm(onboardingCategory);
+        this.editorMode.set('create');
+      } else {
+        if (this.editorMode() === 'edit' && existing) {
+          await firstValueFrom(this.api.updateEvidence(
+            existing.entryId, request, `"${existing.version}"`,
+            'body', false, {transferCache: false}));
+        } else {
+          await firstValueFrom(this.api.createEvidence(
+            request, 'body', false, {transferCache: false}));
+        }
+        // Standard (non-onboarding) success path — unchanged.
+        this.notify.emit({
+          message: existing ? 'A new draft revision was saved.' : 'Draft evidence was added.',
+          type: 'success',
+        });
+        this.editorMode.set(null);
+        this.editingEntry.set(null);
+        this.changed.emit();
+        await this.load();
+      }
     } catch (error) {
+      // Error handling is identical for both modes: set the error signal.
+      // entryAdded is NOT emitted on failure in either mode.
       this.handleWriteError(error);
     } finally {
       this.browserSession.invalidateCsrf();
