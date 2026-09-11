@@ -9,19 +9,21 @@
         Record the experience, training and achievements you may want to use in applications.
       </p>
     </div>
-    <div class="flex flex-wrap items-center gap-2">
-      <button type="button" (click)="openCreate()"
-              class="rounded-xl bg-slate-900 text-white px-4 py-2 text-xs font-bold">
-        <mat-icon class="align-middle text-base">add</mat-icon> Add experience or achievement
-      </button>
-      @if (inDialog) {
-        <button type="button" (click)="closeManager()" aria-label="Close Experience and Evidence manager"
-                class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">
-          <mat-icon class="align-middle text-base" aria-hidden="true">close</mat-icon>
-          Close
+    @if (!onboardingCategory()) {
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" (click)="openCreate()"
+                class="rounded-xl bg-slate-900 text-white px-4 py-2 text-xs font-bold">
+          <mat-icon class="align-middle text-base">add</mat-icon> Add experience or achievement
         </button>
-      }
-    </div>
+        @if (inDialog) {
+          <button type="button" (click)="closeManager()" aria-label="Close Experience and Evidence manager"
+                  class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">
+            <mat-icon class="align-middle text-base" aria-hidden="true">close</mat-icon>
+            Close
+          </button>
+        }
+      </div>
+    }
   </header>
 
   @if (migratedReviewCount() > 0) {
@@ -39,50 +41,52 @@
     </p>
   }
 
-  <div class="mt-5 flex flex-wrap gap-3 items-end">
-    <label class="text-xs font-bold text-slate-700">
-      Category
-      <select [ngModel]="categoryFilter()" (ngModelChange)="categoryFilter.set($event)"
-              class="block mt-1 rounded-lg border border-slate-300 px-2 py-2">
-        <option value="ALL">All categories</option>
-        @for (option of categories; track option[0]) {
-          <option [value]="option[0]">{{ option[1] }}</option>
-        }
-      </select>
-    </label>
-    <label class="text-xs font-bold text-slate-700">
-      Readiness
-      <select [ngModel]="stateFilter()" (ngModelChange)="stateFilter.set($event)"
-              class="block mt-1 rounded-lg border border-slate-300 px-2 py-2">
-        <option value="ALL">All states</option>
-        <option value="DRAFT">Draft</option>
-        <option value="CONFIRMED">User confirmed</option>
-        <option value="ARCHIVED">Archived</option>
-      </select>
-    </label>
-    <label class="inline-flex items-center gap-2 text-xs font-bold text-slate-700 pb-2">
-      <input type="checkbox" [checked]="includeArchived()" (change)="toggleArchived()" />
-      Show archived
-    </label>
-  </div>
+  @if (!onboardingCategory()) {
+    <div class="mt-5 flex flex-wrap gap-3 items-end">
+      <label class="text-xs font-bold text-slate-700">
+        Category
+        <select [ngModel]="categoryFilter()" (ngModelChange)="categoryFilter.set($event)"
+                class="block mt-1 rounded-lg border border-slate-300 px-2 py-2">
+          <option value="ALL">All categories</option>
+          @for (option of categories; track option[0]) {
+            <option [value]="option[0]">{{ option[1] }}</option>
+          }
+        </select>
+      </label>
+      <label class="text-xs font-bold text-slate-700">
+        Readiness
+        <select [ngModel]="stateFilter()" (ngModelChange)="stateFilter.set($event)"
+                class="block mt-1 rounded-lg border border-slate-300 px-2 py-2">
+          <option value="ALL">All states</option>
+          <option value="DRAFT">Draft</option>
+          <option value="CONFIRMED">User confirmed</option>
+          <option value="ARCHIVED">Archived</option>
+        </select>
+      </label>
+      <label class="inline-flex items-center gap-2 text-xs font-bold text-slate-700 pb-2">
+        <input type="checkbox" [checked]="includeArchived()" (change)="toggleArchived()" />
+        Show archived
+      </label>
+    </div>
 
-  <dl class="mt-4 grid sm:grid-cols-3 gap-2 text-xs">
-    <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
-      <dt class="font-extrabold text-slate-900">Draft</dt>
-      <dd class="text-slate-600 mt-1">Not available for document generation.</dd>
-    </div>
-    <div class="rounded-lg bg-emerald-50 border border-emerald-200 p-3">
-      <dt class="font-extrabold text-slate-900">User confirmed</dt>
-      <dd class="text-slate-600 mt-1">Reviewed by you and available for new documents.</dd>
-    </div>
-    <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
-      <dt class="font-extrabold text-slate-900">Archived</dt>
-      <dd class="text-slate-600 mt-1">Retained, but not used for new documents.</dd>
-    </div>
-  </dl>
-  <p class="mt-2 text-[11px] text-slate-600">
-    “User confirmed” records your review; the information is not independently verified.
-  </p>
+    <dl class="mt-4 grid sm:grid-cols-3 gap-2 text-xs">
+      <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
+        <dt class="font-extrabold text-slate-900">Draft</dt>
+        <dd class="text-slate-600 mt-1">Not available for document generation.</dd>
+      </div>
+      <div class="rounded-lg bg-emerald-50 border border-emerald-200 p-3">
+        <dt class="font-extrabold text-slate-900">User confirmed</dt>
+        <dd class="text-slate-600 mt-1">Reviewed by you and available for new documents.</dd>
+      </div>
+      <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
+        <dt class="font-extrabold text-slate-900">Archived</dt>
+        <dd class="text-slate-600 mt-1">Retained, but not used for new documents.</dd>
+      </div>
+    </dl>
+    <p class="mt-2 text-[11px] text-slate-600">
+      “User confirmed” records your review; the information is not independently verified.
+    </p>
+  }
 
   @if (editorMode()) {
     <form ngNoForm novalidate class="mt-5 rounded-2xl border-2 border-indigo-100 bg-indigo-50/40 p-5 space-y-4"
@@ -97,14 +101,16 @@
         <button type="button" (click)="cancelEditor()" class="text-xs font-bold text-slate-700">Cancel</button>
       </div>
 
-      <label class="field-label">Category
-        <select [ngModel]="category()" (ngModelChange)="changeCategory($event)"
-                name="category" [disabled]="editorMode() === 'edit'" class="field-control">
-          @for (option of categories; track option[0]) {
-            <option [value]="option[0]">{{ option[1] }}</option>
-          }
-        </select>
-      </label>
+      @if (!onboardingCategory()) {
+        <label class="field-label">Category
+          <select [ngModel]="category()" (ngModelChange)="changeCategory($event)"
+                  name="category" [disabled]="editorMode() === 'edit'" class="field-control">
+            @for (option of categories; track option[0]) {
+              <option [value]="option[0]">{{ option[1] }}</option>
+            }
+          </select>
+        </label>
+      }
 
       @if (['EMPLOYMENT', 'VOLUNTEERING', 'FREELANCE'].includes(category())) {
         <div class="grid sm:grid-cols-2 gap-3">
@@ -347,6 +353,7 @@
     </div>
   }
 
+  @if (!onboardingCategory()) {
   <div class="mt-5 grid md:grid-cols-2 gap-4" aria-live="polite">
     @if (loading()) {
       <p class="text-sm text-slate-600">Loading your evidence…</p>
@@ -456,4 +463,5 @@
       </article>
     }
   </div>
+  }
 </section>

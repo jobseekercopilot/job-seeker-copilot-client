@@ -143,7 +143,7 @@
 .setup-progress {
   display: grid;
   gap: 0.35rem;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   margin-top: -0.75rem;
 }
 
@@ -310,4 +310,124 @@
   .animate-spin {
     animation: none !important;
   }
+}
+
+/* Optional evidence steps (4, 5, 6) embed EvidenceLibraryComponent, which
+   needs a wider shell than the credential/preference steps. */
+.setup-evidence-shell {
+  max-width: 44rem;
+}
+
+.setup-optional-badge {
+  align-self: start;
+  background: var(--color-soft-blue);
+  border-radius: 999px;
+  color: var(--color-primary);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 0.15rem 0.6rem;
+  text-transform: uppercase;
+}
+
+.setup-evidence-summary {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* Allow the embedded evidence form to use the full available width without
+   horizontal overflow on both mobile and desktop viewports. */
+.setup-step-evidence app-evidence-library {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* List of evidence entries added during onboarding, with a per-entry Confirm
+   action so the user can promote a draft without leaving the setup flow. */
+.setup-evidence-list {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.setup-evidence-item {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-control);
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+}
+
+.setup-evidence-heading {
+  color: var(--text-primary);
+  flex: 1;
+  font-size: 0.8rem;
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.setup-evidence-chip {
+  border-radius: 999px;
+  flex: 0 0 auto;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.55rem;
+  text-transform: uppercase;
+}
+
+.setup-evidence-chip.draft {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.setup-evidence-chip.confirmed {
+  background: var(--color-soft-blue);
+  color: var(--color-primary);
+}
+
+.setup-evidence-confirm {
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-control);
+  color: #fff;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-weight: 800;
+}
+
+.setup-evidence-confirm:disabled {
+  opacity: 0.5;
+}
+
+
+/* Onboarding steps 4/5/6: demote the embedded evidence form's "Add more
+   detail" toggle to a small, right-aligned text link so it stays secondary to
+   the primary fields and step actions. */
+.setup-step-evidence ::ng-deep .advanced-toggle {
+  display: flex;
+  margin-left: auto;
+  width: fit-content;
+  border: 0;
+  background: transparent;
+  padding: 0.1rem 0;
+  color: var(--color-primary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.15rem;
+}
+
+.setup-step-evidence ::ng-deep .advanced-toggle mat-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  font-size: 0.9rem;
 }

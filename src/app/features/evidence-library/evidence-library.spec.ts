@@ -1,5 +1,6 @@
 import {TestBed} from '@angular/core/testing';
 import axe from 'axe-core';
+import fc from 'fast-check';
 import {of, Subject, throwError} from 'rxjs';
 import type {EvidenceEntry, EvidenceRevision} from '../../api';
 import {EvidenceLibraryService} from '../../api';
@@ -326,7 +327,311 @@ describe('EvidenceLibraryComponent', () => {
     });
     expect(result.violations.map(violation => violation.id)).toEqual([]);
   });
+
+  // Task 3.1 — template conditional rendering (Requirements 6.2, 6.3)
+  // These tests are written ahead of the template changes (task 3) and are
+  // expected to fail until the @if (!onboardingCategory()) guards and the
+  // openCreate() ngOnInit branch are added to evidence-library.html.
+  describe('onboarding mode template', () => {
+    it('hides the category selector when onboardingCategory is set', async () => {
+      const fixture = TestBed.createComponent(EvidenceLibraryComponent);
+      fixture.componentRef.setInput('onboardingCategory', 'QUALIFICATION_TRAINING');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      // The category selector (both the filter-bar category select and the
+      // in-form category select) must not be present in onboarding mode.
+      // The filter bar lives in `.flex.flex-wrap.gap-3.items-end`; the in-form
+      // category select is `select[name="category"]`.
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('.flex.flex-wrap.gap-3.items-end select')).toBeNull();
+      expect(el.querySelector('select[name="category"]')).toBeNull();
+    });
+
+    it('hides the entry list and filter controls when onboardingCategory is set', async () => {
+      const fixture = TestBed.createComponent(EvidenceLibraryComponent);
+      fixture.componentRef.setInput('onboardingCategory', 'EMPLOYMENT');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+
+      // Filter controls (Category / Readiness selects and "Show archived" checkbox) must be absent.
+      // The filter bar is the `.flex.flex-wrap.gap-3.items-end` block; it must not render at all.
+      expect(el.querySelector('.flex.flex-wrap.gap-3.items-end')).toBeNull();
+      // "Category" and "Readiness" filter label text should not be present.
+      const labelTexts = Array.from(el.querySelectorAll('label')).map(l => l.textContent ?? '');
+      expect(labelTexts.some(t => /^Category\s*$/.test(t.trim()))).toBe(false);
+      expect(labelTexts.some(t => /^Readiness\s*$/.test(t.trim()))).toBe(false);
+      // The "Show archived" toggle must be absent.
+      expect(el.textContent).not.toContain('Show archived');
+
+      // The entry-list area (evidence-card elements) should not be rendered
+      expect(el.querySelector('[data-testid="evidence-card"]')).toBeNull();
+
+      // The state legend (Draft / User confirmed / Archived grid) should not be rendered
+      expect(el.querySelector('dl')).toBeNull();
+    });
+
+    it('renders the create form open by default in onboarding mode', async () => {
+      const fixture = TestBed.createComponent(EvidenceLibraryComponent);
+      fixture.componentRef.setInput('onboardingCategory', 'VOLUNTEERING');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+
+      // The editor form should be present without the user having clicked "Add"
+      const form = el.querySelector('form');
+      expect(form).not.toBeNull();
+
+      // editorMode signal should be 'create'
+      expect(fixture.componentInstance.editorMode()).toBe('create');
+    });
+
+    it('shows the full UI — filter controls, entry list, and no open form — when onboardingCategory is null', async () => {
+      // Baseline: verify standard mode is unaffected (Requirement 6.5 / 9.4)
+      const fixture = TestBed.createComponent(EvidenceLibraryComponent);
+      // default is null, so no setInput call
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+
+      // Filter controls must be present
+      const selects = el.querySelectorAll('select');
+      expect(selects.length).toBeGreaterThanOrEqual(2);
+
+      // Entry list area must be rendered (the component renders the loading/empty state)
+      // At minimum the "Add experience or achievement" button must be visible
+      expect(el.textContent).toContain('Add experience or achievement');
+
+      // The editor form should NOT be open by default in standard mode
+      expect(fixture.componentInstance.editorMode()).toBeNull();
+    });
+  });
+
+  // Task 2.2 — unit tests for onboarding mode save behaviour
+  // (Requirements 6.6, 6.7, 6.8, 8.1, 8.2)
+  describe('onboarding mode save behaviour', () => {
+    it('emits entryAdded after a successful saveDraft when onboardingCategory is set', async () => {
+      const fixture = TestBed.createComponent(EvidenceLibraryComponent);
+      fixture.componentRef.setInput('onboardingCategory', 'QUALIFICATION_TRAINING');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const component = fixture.componentInstance;
+      const added = vi.fn();
+      component.entryAdded.subscribe(added);
+
+      fillValidOnboardingForm(component, 'QUALIFICATION_TRAINING');
+      await component.saveDraft();
+
+      expect(createEvidence).toHaveBeenCalledOnce();
+      expect(added).toHaveBeenCalledOnce();
+      expect(component.error()).toBeNull();
+    });
+
+    it('does NOT emit entryAdded when createEvidence returns an error', async () => {
+      createEvidence.mockReturnValueOnce(throwError(() => ({status: 500, body: 'boom'})));
+      const fixture = TestBed.createComponent(EvidenceLibraryComponent);
+      fixture.componentRef.setInput('onboardingCategory', 'EMPLOYMENT');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const component = fixture.componentInstance;
+      const added = vi.fn();
+      component.entryAdded.subscribe(added);
+
+      fillValidOnboardingForm(component, 'EMPLOYMENT');
+      await component.saveDraft();
+
+      expect(createEvidence).toHaveBeenCalledOnce();
+      expect(added).not.toHaveBeenCalled();
+      expect(component.error()).not.toBeNull();
+    });
+
+    it('resets the form and keeps the editor open after a successful onboarding save', async () => {
+      const fixture = TestBed.createComponent(EvidenceLibraryComponent);
+      fixture.componentRef.setInput('onboardingCategory', 'VOLUNTEERING');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const component = fixture.componentInstance;
+
+      fillValidOnboardingForm(component, 'VOLUNTEERING');
+      await component.saveDraft();
+
+      // Editor stays open in create mode for another entry
+      expect(component.editorMode()).toBe('create');
+      // Form fields reset to empty; category remains fixed to the onboarding category
+      expect(component.roleTitle()).toBe('');
+      expect(component.organisationContext()).toBe('');
+      expect(component.description()).toBe('');
+      expect(component.category()).toBe('VOLUNTEERING');
+    });
+
+    it('does not call listEvidence on ngOnInit when onboardingCategory is set', async () => {
+      const fixture = TestBed.createComponent(EvidenceLibraryComponent);
+      fixture.componentRef.setInput('onboardingCategory', 'QUALIFICATION_TRAINING');
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(listEvidence).not.toHaveBeenCalled();
+    });
+  });
+
+  // Task 2.3 — Property 6: Onboarding mode save cycle correctness
+  // Validates: Requirements 6.4, 6.6, 6.7, 6.8
+  describe('Property 6 — onboarding mode save cycle', () => {
+    it('invokes createEvidence with the onboardingCategory, emits entryAdded once per save, and resets while keeping the editor open', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.constantFrom('QUALIFICATION_TRAINING', 'EMPLOYMENT', 'VOLUNTEERING'),
+          fc.integer({min: 1, max: 5}),
+          async (onboardingCategory, saveCount) => {
+            createEvidence.mockClear();
+            const fixture = TestBed.createComponent(EvidenceLibraryComponent);
+            fixture.componentRef.setInput('onboardingCategory', onboardingCategory);
+            fixture.detectChanges();
+            await fixture.whenStable();
+            const component = fixture.componentInstance;
+            const added = vi.fn();
+            component.entryAdded.subscribe(added);
+
+            for (let i = 0; i < saveCount; i++) {
+              fillValidOnboardingForm(component, onboardingCategory);
+              await component.saveDraft();
+            }
+
+            // createEvidence called once per save, always with the fixed category
+            expect(createEvidence).toHaveBeenCalledTimes(saveCount);
+            for (const call of createEvidence.mock.calls) {
+              expect(call[0].category).toBe(onboardingCategory);
+            }
+            // entryAdded emitted exactly once per successful save
+            expect(added).toHaveBeenCalledTimes(saveCount);
+            // Editor remains open in create mode and the form is reset
+            expect(component.editorMode()).toBe('create');
+            expect(component.category()).toBe(onboardingCategory);
+            expect(component.heading()).toBe('');
+            expect(component.roleTitle()).toBe('');
+            expect(component.qualificationTitle()).toBe('');
+            expect(component.description()).toBe('');
+          },
+        ),
+        {numRuns: 25},
+      );
+    });
+  });
+
+  // Task 2.4 — Property 8: Save failure produces error display without emitting entryAdded
+  // Validates: Requirements 8.1, 8.2
+  describe('Property 8 — save failure behaviour', () => {
+    it('sets an inline error and never emits entryAdded for any API error shape', async () => {
+      const errorArbitrary = fc.oneof(
+        // HttpErrorResponse-like shapes with varying status codes and bodies
+        fc.record({
+          status: fc.constantFrom(400, 401, 403, 404, 409, 422, 500, 502, 503),
+          body: fc.oneof(fc.string(), fc.constant(undefined), fc.constant(null)),
+        }),
+        // A plain Error
+        fc.string().map(message => new Error(message)),
+        // An arbitrary object without a status
+        fc.record({message: fc.string()}),
+      );
+
+      await fc.assert(
+        fc.asyncProperty(
+          fc.constantFrom('QUALIFICATION_TRAINING', 'EMPLOYMENT', 'VOLUNTEERING'),
+          errorArbitrary,
+          async (onboardingCategory, apiError) => {
+            createEvidence.mockClear();
+            createEvidence.mockReturnValueOnce(throwError(() => apiError));
+            const fixture = TestBed.createComponent(EvidenceLibraryComponent);
+            fixture.componentRef.setInput('onboardingCategory', onboardingCategory);
+            fixture.detectChanges();
+            await fixture.whenStable();
+            const component = fixture.componentInstance;
+            const added = vi.fn();
+            component.entryAdded.subscribe(added);
+
+            fillValidOnboardingForm(component, onboardingCategory);
+            await component.saveDraft();
+
+            // An inline error message is displayed
+            expect(component.error()).not.toBeNull();
+            expect(typeof component.error()).toBe('string');
+            // entryAdded is never emitted on failure
+            expect(added).not.toHaveBeenCalled();
+          },
+        ),
+        {numRuns: 30},
+      );
+    });
+  });
+
+  // Task 3.2 — Property 5: Onboarding mode hides non-form UI elements
+  // Validates: Requirements 6.2, 6.3
+  describe('Property 5 — onboarding mode UI hiding', () => {
+    it('never renders the category selector, entry list, or filter controls for any onboarding category', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.constantFrom('QUALIFICATION_TRAINING', 'EMPLOYMENT', 'VOLUNTEERING'),
+          async (onboardingCategory) => {
+            const fixture = TestBed.createComponent(EvidenceLibraryComponent);
+            fixture.componentRef.setInput('onboardingCategory', onboardingCategory);
+            fixture.detectChanges();
+            await fixture.whenStable();
+            fixture.detectChanges();
+
+            const el: HTMLElement = fixture.nativeElement;
+
+            // Category selector (filter-bar select and in-form category select) absent
+            expect(el.querySelector('.flex.flex-wrap.gap-3.items-end select')).toBeNull();
+            expect(el.querySelector('select[name="category"]')).toBeNull();
+            // Filter controls block absent
+            expect(el.querySelector('.flex.flex-wrap.gap-3.items-end')).toBeNull();
+            expect(el.textContent).not.toContain('Show archived');
+            // Entry list absent
+            expect(el.querySelector('[data-testid="evidence-card"]')).toBeNull();
+          },
+        ),
+        {numRuns: 15},
+      );
+    });
+  });
 });
+
+// Fills the create-form signals with the minimum valid values so that
+// validationError() returns null for the given onboarding category.
+function fillValidOnboardingForm(
+  component: EvidenceLibraryComponent,
+  category: string,
+): void {
+  switch (category) {
+    case 'QUALIFICATION_TRAINING':
+      component.qualificationTitle.set('First aid certificate');
+      component.issuer.set('St John Ambulance');
+      component.setCompletionStatus('Completed');
+      component.issueDate.set('2025-06-01');
+      break;
+    case 'EMPLOYMENT':
+      component.roleTitle.set('Software developer');
+      component.organisationContext.set('Example Ltd');
+      component.startDate.set('2024-02-01');
+      component.setOngoing(true);
+      break;
+    case 'VOLUNTEERING':
+      component.roleTitle.set('Community mentor');
+      component.organisationContext.set('Local charity');
+      component.description.set('Mentored young people seeking work.');
+      break;
+    default:
+      throw new Error(`Unsupported onboarding category: ${category}`);
+  }
+}
 
 function entry(options: {
   confirmed?: boolean;
