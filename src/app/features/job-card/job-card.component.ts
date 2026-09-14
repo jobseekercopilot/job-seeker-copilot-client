@@ -85,6 +85,37 @@ export class JobCardComponent {
   expanded = signal(false);
   descriptionExpanded = signal(false);
   statusMenuOpen = signal(false);
+
+  // The download panel appears as soon as any output is downloadable, which
+  // includes a partial generation where one document failed. Describe exactly
+  // what is present: claiming both documents succeeded while the other one's
+  // download buttons are disabled contradicts the panel it heads.
+  cvDownloadReady(): boolean {
+    const files = this.downloads();
+    return Boolean(files?.cv?.docx || files?.cv?.pdf);
+  }
+
+  coverLetterDownloadReady(): boolean {
+    const files = this.downloads();
+    return Boolean(files?.coverLetter?.docx || files?.coverLetter?.pdf);
+  }
+
+  generatedDocumentsComplete(): boolean {
+    return this.cvDownloadReady() && this.coverLetterDownloadReady();
+  }
+
+  generatedDocumentsSummary(): string {
+    if (this.generatedDocumentsComplete()) {
+      return 'CV and Cover Letter generated successfully';
+    }
+    if (this.cvDownloadReady()) {
+      return 'CV generated successfully. Cover Letter was not generated.';
+    }
+    if (this.coverLetterDownloadReady()) {
+      return 'Cover Letter generated successfully. CV was not generated.';
+    }
+    return 'No generated document is available to download.';
+  }
   uploadModalKind = signal<UploadDocumentKind | null>(null);
   selectedFile = signal<File | null>(null);
   uploadError = signal<string | null>(null);
