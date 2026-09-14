@@ -249,6 +249,19 @@ describe('JobCardComponent', () => {
     expect(buttons.filter(text => text.includes('Download PDF'))).toHaveLength(2);
   });
 
+  it('does not claim both documents succeeded when only the CV is downloadable', () => {
+    const fixture = createFixture({ downloads: { cv: downloads.cv } });
+    expandCard(fixture);
+
+    // A partial generation must not be headed by a both-documents success
+    // claim while the cover-letter downloads sit disabled beneath it.
+    expect(fixture.nativeElement.textContent)
+      .not.toContain('CV and Cover Letter generated successfully');
+    expect(fixture.nativeElement.textContent)
+      .toContain('CV generated successfully. Cover Letter was not generated.');
+    expect(fixture.componentInstance.generatedDocumentsComplete()).toBe(false);
+  });
+
   it('emits the selected download file when a download button is clicked', () => {
     const fixture = createFixture({ downloads });
     expandCard(fixture);

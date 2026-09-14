@@ -342,8 +342,8 @@
           @if (downloads(); as files) {
           <div class="generated-downloads mt-4 rounded-lg px-4 py-3">
             <div class="flex items-center gap-2 text-sm font-semibold">
-              <mat-icon class="text-base">check_circle</mat-icon>
-              <span>CV and Cover Letter generated successfully</span>
+              <mat-icon class="text-base">{{ generatedDocumentsComplete() ? 'check_circle' : 'warning_amber' }}</mat-icon>
+              <span>{{ generatedDocumentsSummary() }}</span>
             </div>
             <div class="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
